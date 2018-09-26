@@ -61,4 +61,9 @@ class Migration(migrations.Migration):
         ),
 
         migrations.RunPython(migrate_well_deprecations),
+        migrations.RemoveField(
+            model_name='well',
+            name='deprecation_admin_activity'
+        ),
+        
     ]

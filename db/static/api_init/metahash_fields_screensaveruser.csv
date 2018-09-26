@@ -23,7 +23,6 @@ gender,fields.screensaveruser,,,22,,TRUE,"The gender of the user",Gender,TRUE,us
 phone,fields.screensaveruser,,,23,,TRUE,"The phone number for this user",Phone,TRUE,,[l;d],[c;u],string,,,,,,,,,1
 mailing_address,fields.screensaveruser,reports_userprofile,,24,,TRUE,"The mailing address of the user","Mailing Address",TRUE,,[l;d],[c;u],string,,"{ 'rows': 4 }",textarea,,,,,,3
 comments,fields.screensaveruser,,,25,,TRUE,"Comments about this user",Comments,TRUE,,[d],[c;u],string,,"{ 'rows': 4 }",textarea,,,,,[readEverythingAdmin],
-facility_usage_roles,fields.screensaveruser,custom,,26,,TRUE,"Facility Usage Roles","Facility Usage Roles",TRUE,user.facilityusagerole,[d],[c;u],list,,"{ 'placeholder': 'Select roles' }",multiselect3,,,,,,3
 screens_lead,fields.screensaveruser,custom,,27,,TRUE,"Screens for which this user is a lead screener","Screens Led",TRUE,,,,list,link,"{ 'hrefTemplate': '#screen/{__val__}' }",,,,,,,3
 screens_lab_head,fields.screensaveruser,custom,,28,,TRUE,"Screens for which this user is a lab head","Lab Head for Screens",TRUE,,,,list,link,"{ 'hrefTemplate': '#screen/{__val__}' }",,,,,,,3
 screens_collaborator,fields.screensaveruser,custom,,29,,TRUE,"Screens for which this user is a collaborator","Screens collaborating",TRUE,,,,list,link,"{ 'hrefTemplate': '#screen/{__val__}' }",,,,,,,3

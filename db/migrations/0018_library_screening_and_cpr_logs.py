@@ -13,9 +13,6 @@ from django.db import migrations, models
 from db.migrations import create_log_time, _child_log_from
 from reports.utils import default_converter
 from reports.models import ApiLog
-from db.models import CherryPickLiquidTransfer, CherryPickScreening,\
-    CherryPickAssayPlate, LibraryScreening, CherryPickRequest
-
 
 logger = logging.getLogger(__name__)
 
@@ -177,25 +174,6 @@ def _create_plate_activity_log(activity_dict):
         log.username = activity_dict['email']
     log.user_id = activity_dict['screensaver_user_id']
     return log
-
-def create_copy_comments_logs(apps, schema_editor):
-    
-    #TODO convert copy.comments to apilogs
-    
-    pass
-    
-def create_screen_comments_logs(apps, schema_editor):
-    
-    #TODO convert screen.comments to apilogs
-    
-    pass
-    
-def create_user_comments_logs(apps, schema_editor):
-    
-    #TODO convert screen.comments to apilogs
-    
-    pass
-    
 
 def create_plate_generic_logs(apps, schema_editor):
     logger.info('create plate generic activity logs')
@@ -361,6 +339,8 @@ def create_plate_plated_and_retired_logs(apps, schema_editor):
     logger.info('status terms recognized: %r', status_terms_recognized)
 
 def create_library_screening_logs(apps, schema_editor):
+
+    LibraryScreening = apps.get_model('db', 'LibraryScreening')
 
     ls_cols = [
         'activity_id',
@@ -860,6 +840,8 @@ def create_cherry_pick_plating_logs(apps, schema_editor):
     NOTE: keep CherryPickLiquidTransfer entries -> LabActivity (for now)
    '''
     i = 0
+    CherryPickLiquidTransfer = apps.get_model('db', 'CherryPickLiquidTransfer')
+    
     liquid_transfers = CherryPickLiquidTransfer.objects.all().order_by()
     logger.info('create logs for %d liquid_transfers', len(liquid_transfers))
     cpr_parent_logs = {}
@@ -987,6 +969,10 @@ def create_cherry_pick_screening_logs(apps, schema_editor):
     - child logs: for each Cherry Pick Assay Plate
     Note: keep CherryPickScreening entries (for now)
    '''
+    CherryPickScreening = apps.get_model('db', 'CherryPickScreening')
+    CherryPickAssayPlate = apps.get_model('db', 'CherryPickAssayPlate')
+
+    
     cpap_to_cps_sql = '''
         select cherry_pick_assay_plate_id
         from cherry_pick_assay_plate_screening_link
@@ -1104,10 +1090,6 @@ def create_cherry_pick_screening_logs(apps, schema_editor):
                 }
             
             cpap_log.save()
-            
-            if activity.activity_id == 1049111:
-                logger.info('cpap_log saved: %r', cpap_log)
-            
             i += 1
             
             if i % 100 == 0:
@@ -1131,5 +1113,9 @@ class Migration(migrations.Migration):
         migrations.RunPython(create_library_screening_logs),
         migrations.RunPython(create_plate_plated_and_retired_logs),
         migrations.RunPython(create_plate_generic_logs),
+        
+        migrations.RunSQL('''
+            alter table cherry_pick_liquid_transfer alter COLUMN status drop not null;
+        ''')
     ]
 

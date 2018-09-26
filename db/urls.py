@@ -11,7 +11,7 @@ from db.api import ScreensaverUserResource, ScreenResource, \
     SmallMoleculeReagentResource, SilencingReagentResource, NaturalProductReagentResource, \
     CopyWellResource, UserChecklistResource, \
     CherryPickRequestResource, CherryPickPlateResource, \
-    AttachedFileResource, ServiceActivityResource, LibraryScreeningResource, \
+    AttachedFileResource, LibraryScreeningResource, \
     UserAgreementResource, PublicationResource, PlateLocationResource, \
     LabAffiliationResource, RawDataTransformerResource
 import db.api
@@ -31,7 +31,7 @@ v1_api.register(LibraryCopyPlateResource())
 v1_api.register(PlateLocationResource())
 v1_api.register(WellResource())
 v1_api.register(ActivityResource())
-v1_api.register(ServiceActivityResource())
+# v1_api.register(ServiceActivityResource())
 v1_api.register(ReagentResource())
 v1_api.register(CherryPickRequestResource())
 v1_api.register(CherryPickPlateResource())

@@ -72,48 +72,19 @@ class Migration(migrations.Migration):
         
         migrations.DeleteModel(
             name='TransfectionAgent'),
-                  
-        migrations.RemoveField(
-            model_name='reagent',
-            name='library_contents_version',
-        ),
-        migrations.DeleteModel(
-            name='LibraryContentsVersion'),
-            
-        migrations.RemoveField(
-            model_name='ScreeningRoomUser',
-            name='last_notified_smua_checklist_item_event'),
 
-        migrations.RemoveField(
-            model_name='ScreeningRoomUser',
-            name='last_notified_rnaiua_checklist_item_event'),
+#         migrations.RemoveField(
+#             model_name='ScreeningRoomUser',
+#             name='last_notified_smua_checklist_item_event'),
+# 
+#         migrations.RemoveField(
+#             model_name='ScreeningRoomUser',
+#             name='last_notified_rnaiua_checklist_item_event'),
 
-# TODO: remove: UserChecklistItem replaced by UserChecklist
-#         migrations.AlterUniqueTogether(
-#             name='userchecklistitem',
-#             unique_together=set([]),
-#         ),
-#         migrations.RemoveField(
-#             model_name='userchecklistitem',
-#             name='admin_user',
-#         ),
-#         migrations.RemoveField(
-#             model_name='userchecklistitem',
-#             name='screensaver_user',
-#         ),
-#         migrations.DeleteModel(
-#             name='UserChecklistItem',
-#         ),
         migrations.DeleteModel(
             name='AttachedFileType',
         ),
-        migrations.DeleteModel(
-            name='UserChecklistItem',
-        ),
 
-        # TODO: service_activity depends on funding support
-#         migrations.RunSQL('DROP TABLE funding_support; '),
-        
         migrations.RemoveField(
             model_name='datacolumnderivedfromlink',
             name='derived_data_column',
@@ -128,26 +99,23 @@ class Migration(migrations.Migration):
 
         # Operations already handled in migration 0002
        
-        migrations.AlterField(
-            model_name='cherrypickrequest',
-            name='volume_approved_by',
-            field=models.ForeignKey(
-                related_name='approved_cherry_pick', to='db.ScreensaverUser', 
-                null=True),
-        ),
-        migrations.AlterField(
-            model_name='cherrypickrequest',
-            name='requested_by',
-            field=models.ForeignKey(
-                related_name='requested_cherry_pick', to='db.ScreensaverUser'),
-        ),
+#         migrations.AlterField(
+#             model_name='cherrypickrequest',
+#             name='volume_approved_by',
+#             field=models.ForeignKey(
+#                 related_name='approved_cherry_pick', to='db.ScreensaverUser', 
+#                 null=True),
+#         ),
+#         migrations.AlterField(
+#             model_name='cherrypickrequest',
+#             name='requested_by',
+#             field=models.ForeignKey(
+#                 related_name='requested_cherry_pick', to='db.ScreensaverUser'),
+#         ),
         migrations.RemoveField(
             model_name='well',
             name='latest_released_reagent',
         ),
-        
-        migrations.RemoveField(
-            model_name='well', name='deprecation_admin_activity'),
         
         migrations.DeleteModel(
             name='AnnotationValue',
@@ -178,33 +146,35 @@ class Migration(migrations.Migration):
 #             model_name='screenresult',
 #             name='experimental_well_count',
 #         ),
-        
-        # TODO: remove lab head as separate model
-        migrations.AlterField(
-            model_name='labhead',
-            name='screensaver_user',
-            field=models.OneToOneField(primary_key=True, serialize=False, to='db.ScreensaverUser'),
+
+
+        migrations.DeleteModel(
+            name='ChecklistItemEvent',
         ),
-#         migrations.RemoveField(
-#             model_name='screen',
-#             name='transfection_agent',
-#         ),
-#         migrations.RenameField(
-#             model_name='screen', 
-#             old_name='transfection_agent_text', 
-#             new_name='transfection_agent'
-#         ),
         
-        # TODO: reinstate for final migration; leaving fields in the db for 
-        # now - 20170607
-        # migrations.RemoveField(
-        #     model_name='screen',
-        #     name='project_id',
-        # ),
-        # migrations.RemoveField(
-        #     model_name='screen',
-        #     name='project_phase',
-        # ),
+        migrations.DeleteModel(
+            name='ChecklistItem',
+        ),
+        
+        migrations.DeleteModel(
+            name='AdministratorUser',
+        ),
+        migrations.DeleteModel(
+            name='ScreeningRoomUser'),
+                  
+        migrations.DeleteModel(
+            name='LabHead',
+        ),
+        
+        migrations.DeleteModel(
+            name='ScreensaverUserRole',
+        ),
+
+        # 20180920 - leaving this here for archival purposes
+        # migrations.RunSQL('''
+        #     DROP TABLE screening_room_user_facility_usage_role;
+        # '''),
+
         
         # FIXME: not working on orchestra: moved to manual migration 0002
         # Keep here to convince makemigrations that this is done

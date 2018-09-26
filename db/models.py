@@ -10,17 +10,24 @@ from django.db import models
 from django.utils import timezone
 from django.utils.encoding import python_2_unicode_compatible
 
-from db import WELL_NAME_PATTERN
 from db.support import lims_utils
 from reports import ValidationError
-from reports.utils.gray_codes import create_substance_id
+#from reports.utils.gray_codes import create_substance_id
 
 
 logger = logging.getLogger(__name__)
 
 
+# 20180919: Activity Refactor:
+# 1. combine ServiceActivity into Activity:
+#  - move SA.serviced_user, SA.serviced_screen
+#  - move SA.service_activity_type to Activity.type
+#  - populate Activity.classification with SA types: LS, extLS, and CPLT; 
+#    as well as new "training" and "automation" service activity types
+# 2. move LabActivity.screen -> Activity.screen
+# 3. Remove unused activity tables and join tables 
 class Activity(models.Model):
-    
+     
     activity_id = models.AutoField(primary_key=True) 
     date_created = models.DateTimeField(default=timezone.now)
     comments = models.TextField(null=True)
@@ -35,49 +42,31 @@ class Activity(models.Model):
     date_loaded = models.DateTimeField(null=True)
     date_publicly_available = models.DateTimeField(null=True)
 
-    # New
+    # activity_refactor fields from subclasses 
+    # NOTE: SS Version 2: require either serviced screen or serviced user
+    screen = models.ForeignKey('Screen', related_name='activities', null=True,
+        on_delete=models.deletion.CASCADE)
+    serviced_user = models.ForeignKey(
+        'ScreensaverUser', null=True, on_delete=models.CASCADE)
+    funding_support = models.TextField(null=True)
+    classification = models.TextField(null=False)
+    type = models.TextField(null=False)
+    
     apilog_uri = models.TextField(null=True)
-
+ 
     class Meta:
         db_table = 'activity'
-
+ 
     def __repr__(self):
         return ('<Activity(activity_id=%r, performed_by=%r)>' 
             % (self.activity_id, self.performed_by))
-
-
-class ServiceActivity(Activity):
-    
-    activitylink = models.OneToOneField(
-        Activity, primary_key=True, parent_link=True, on_delete=models.CASCADE, 
-        db_column='activity_id')
-    service_activity_type = models.TextField()
-    
-    # NOTE: SS Version 2: require either serviced screen or serviced user
-    serviced_screen = models.ForeignKey(
-        'Screen', null=True, on_delete=models.CASCADE)
-    serviced_user = models.ForeignKey(
-        'ScreensaverUser', null=True, on_delete=models.CASCADE)
-    
-    funding_support = models.TextField(null=True)
-    
-    class Meta:
-        db_table = 'service_activity'
-
-    def __repr__(self):
-        return (
-            '<ServiceActivity(activity_id=%r, performed_by=%r, '
-            'service_activity_type=%r, serviced_screen=%r, serviced_user=%r)>' 
-            % (self.activity_id, self.performed_by, self.service_activity_type,
-               self.serviced_screen, self.serviced_user))
-
 
 class LabActivity(Activity):
 
     activitylink = models.OneToOneField(
         Activity, primary_key=True, parent_link=True, on_delete=models.CASCADE,
         db_column='activity_id')
-    screen = models.ForeignKey('Screen', on_delete=models.CASCADE)
+    # screen = models.ForeignKey('Screen', on_delete=models.CASCADE)
     volume_transferred_per_well_from_library_plates = models.DecimalField(
         null=True, max_digits=10, decimal_places=9)
     molar_concentration = models.DecimalField(
@@ -125,7 +114,10 @@ class LibraryScreening(Screening):
         on_delete=models.CASCADE, db_column='activity_id')
     abase_testset_id = models.TextField()
     is_for_external_library_plates = models.BooleanField(default=False)
+
     screened_experimental_well_count = models.IntegerField(default=0)
+
+    # Deprecated: calculated on the fly
     libraries_screened_count = models.IntegerField(null=True)
     library_plates_screened_count = models.IntegerField(null=True)
 
@@ -139,128 +131,57 @@ class LibraryScreening(Screening):
             % (self.activity_id, self.performed_by, self.screen.facility_id,
                 self.volume_transferred_per_well_from_library_plates))
 
-# Deprecated - migrate
-class AdministrativeActivity(models.Model):
+# Purpose, to record a "Screening" activity for the plates of a Cherry Pick
+# 20180925 - May remove, not used in ICCBL
+# TODO: replace with Cherry Pick Status change
+class CherryPickScreening(Screening):
     
-    activity = models.OneToOneField(
-        Activity, primary_key=True, on_delete=models.CASCADE)
-    administrative_activity_type = models.TextField()
-    class Meta:
-        db_table = 'administrative_activity'
-
-# Deprecate - remove after plate well volume migration
-class WellVolumeCorrectionActivity(models.Model):
-    
-    activity = models.OneToOneField(
-        'AdministrativeActivity', primary_key=True, on_delete=models.CASCADE)
-    class Meta:
-        db_table = 'well_volume_correction_activity'
-
-# Deprecate - migration
-class LibraryUpdateActivity(models.Model):
-    
-    library = models.ForeignKey('Library', on_delete=models.CASCADE)
-    update_activity = models.ForeignKey(
-        AdministrativeActivity, on_delete=models.CASCADE)
-    class Meta:
-        db_table = 'library_update_activity'
-
-# Deprecate - migration
-class PlateUpdateActivity(models.Model):
-    
-    plate_id = models.IntegerField()
-    update_activity_id = models.IntegerField(unique=True)
-    class Meta:
-        db_table = 'plate_update_activity'
-
-# Deprecate - migration
-class ScreenResultUpdateActivity(models.Model):
-    
-    screen_result = models.ForeignKey('ScreenResult', on_delete=models.CASCADE)
-    update_activity = models.ForeignKey(AdministrativeActivity,
-        on_delete=models.CASCADE)
-    class Meta:
-        db_table = 'screen_result_update_activity'
-
-# Deprecate - migration
-class ScreenUpdateActivity(models.Model):
-    
-    screen = models.ForeignKey('Screen', on_delete=models.CASCADE)
-    update_activity = models.ForeignKey(
-        AdministrativeActivity, on_delete=models.CASCADE)
-    class Meta:
-        db_table = 'screen_update_activity'
-
-# Deprecate - migration
-class ScreensaverUserUpdateActivity(models.Model):
-    
-    screensaver_user = models.ForeignKey(
-        'ScreensaverUser', on_delete=models.CASCADE)
-    update_activity = models.ForeignKey(
-        AdministrativeActivity, on_delete=models.CASCADE)
-    class Meta:
-        db_table = 'screensaver_user_update_activity'
-
-# Deprecate - migration
-class ActivityUpdateActivity(models.Model):
-    
-    activity = models.ForeignKey(Activity, on_delete=models.CASCADE)
-    update_activity = models.ForeignKey(
-        'AdministrativeActivity', on_delete=models.CASCADE)
-    class Meta:
-        db_table = 'activity_update_activity'
-
-# Deprecate - migration
-class AttachedFileUpdateActivity(models.Model):
-    
-    attached_file = models.ForeignKey('AttachedFile', on_delete=models.CASCADE)
-    update_activity = models.ForeignKey(
-        AdministrativeActivity, on_delete=models.CASCADE)
-    class Meta:
-        db_table = 'attached_file_update_activity'
-
-# Deprecate - migration
-class ChecklistItemEventUpdateActivity(models.Model):
-    
-    checklist_item_event = models.ForeignKey(
-        'ChecklistItemEvent', on_delete=models.CASCADE)
-    update_activity = models.ForeignKey(
-        AdministrativeActivity, on_delete=models.CASCADE)
-    class Meta:
-        db_table = 'checklist_item_event_update_activity'
-
-# Deprecate - migration
-class CopyUpdateActivity(models.Model):
-    
-    copy_id = models.IntegerField()
-    update_activity_id = models.IntegerField(unique=True)
-    class Meta:
-        db_table = 'copy_update_activity'
-
-class EquipmentUsed(models.Model):
-    
-    equipment_used_id = models.AutoField(primary_key=True)
-    protocol = models.TextField()
-    description = models.TextField()
-    equipment = models.TextField()
-    lab_activity = models.ForeignKey(
-        'LabActivity', on_delete=models.CASCADE)
+    screeninglink = models.OneToOneField(
+        'Screening', primary_key=True, parent_link=True, 
+        db_column='activity_id', on_delete=models.CASCADE)
+    cherry_pick_request = models.ForeignKey(
+        'CherryPickRequest', on_delete=models.CASCADE)
 
     class Meta:
-        db_table = 'equipment_used'
+        db_table = 'cherry_pick_screening'
 
     def __repr__(self):
         return (
-            '<EquipmentUsed(id=%d, equipment=%r, lab_activity=%r)>'
-            % (self.equipment_used_id, self.equipment, 
-               self.lab_activity.activity_id ))
+            '<CherryPickScreening(activity_id=%r, performed_by=%r, '
+            'screen=%r, cpr=%d )>' 
+            % (self.activity_id, self.performed_by, self.screen.facility_id,
+                self.cherry_pick_request.id))
 
-# Note: Assay Plate may be deprecated in the future:
+# Purpose: to record the "Cherry Pick Plate Activity" on the CherryPickAssayPlates
+class CherryPickLiquidTransfer(LabActivity):
+    
+    cherry_pick_request = models.ForeignKey(
+        'CherryPickRequest', on_delete=models.CASCADE, null=False)
+    labactivitylink = models.OneToOneField(
+        'LabActivity', primary_key=True, parent_link=True, 
+        db_column='activity_id', on_delete=models.CASCADE)
+    
+    # Deprecated
+    status = models.TextField()
+    
+    class Meta:
+        db_table = 'cherry_pick_liquid_transfer'
+
+    def __repr__(self):
+        return (
+            '<CPLT(activity_id=%r, performed_by=%r, '
+            'screen=%r, volume=%r)>' 
+            % (self.activity_id, self.performed_by, self.screen.facility_id,
+                self.volume_transferred_per_well_from_library_plates))
+
+
+# TODO: 20180925 - consider removal:
 # Original purpose: 
-# 1. correlate screening data (plates) to data loading plates
+# 1. map library_screening->plate, with ordinal count
+# 2. Old: correlate screening data (plates) to data loading plates
 # - data loading plates have been removed
-# - assay plates are not needed to track screening data
-# 2. map library_screening->plate, with ordinal count
+# 3. assay plates are not needed to track screening data
+# 4. Still need CherryPickAssayPlate for 
 class AssayPlate(models.Model):
     
     assay_plate_id = models.AutoField(primary_key=True)
@@ -268,11 +189,15 @@ class AssayPlate(models.Model):
     screen = models.ForeignKey('Screen', on_delete=models.CASCADE)
     plate = models.ForeignKey('Plate', null=True, on_delete=models.CASCADE)
     plate_number = models.IntegerField(db_index=True)
+
     library_screening = models.ForeignKey('LibraryScreening', null=True,
         on_delete=models.CASCADE)
-    screen_result_data_loading = \
-        models.ForeignKey(AdministrativeActivity, null=True, 
-            on_delete=models.SET_NULL)
+
+    # Deprecated field: per JAS, will not attempt to track plates loaded when
+    # loading screen result
+    # screen_result_data_loading = \
+    # models.ForeignKey('AdministrativeActivity', null=True, 
+    # on_delete=models.SET_NULL)
 
     class Meta:
         db_table = 'assay_plate'
@@ -468,15 +393,6 @@ class CherryPickRequest(models.Model):
             '<CherryPickRequest(cherry_pick_request_id=%r, screen=%r)>' 
             % (self.cherry_pick_request_id, self.screen.facility_id)) 
 
-# DEPRECATED, replaced by cpr.wells_to_leave_empty
-class CherryPickRequestEmptyWell(models.Model):
-    
-    cherry_pick_request = models.ForeignKey(
-        CherryPickRequest, on_delete=models.CASCADE)
-    well_name = models.CharField(max_length=255)
-    class Meta:
-        db_table = 'cherry_pick_request_empty_well'
-
 class ScreenerCherryPick(models.Model):
     
     screener_cherry_pick_id = models.AutoField(primary_key=True)
@@ -543,7 +459,8 @@ class LabCherryPick(models.Model):
                self.assay_plate_row,
                self.assay_plate_column)) 
 
-# Purpose:
+# Original Purpose:
+# (TODO: 20180925 - review requirements)
 # - assign plate_ordinal to LabCherryPick wells
 # - record each attempt for a cherry pick (support for "failed")
 # - record the "plating" activity
@@ -556,25 +473,29 @@ class CherryPickAssayPlate(models.Model):
     plate_ordinal = models.IntegerField()
     assay_plate_type = models.TextField()
 
-    # New - when set, the assay plate is "plated"
+    # TODO: 20180925 - remove new fields for plating and screening activities:
+    # - for now, these are mirrored by the activity fields:
+    # (With activity_refactor, will keep 1 cplt, and 1 screening activity:
+    # plating and screening information can be maintained in the activity class
     plating_date = models.DateField(null=True)
     plated_by = models.ForeignKey(
         'ScreensaverUser', null=True, on_delete=models.SET_NULL,
         related_name='plated_cherry_pick_plates')
-
     screening_date = models.DateField(null=True)
     screened_by = models.ForeignKey(
         'ScreensaverUser', null=True, on_delete=models.SET_NULL,
         related_name='screened_cherry_pick_plates')
-    
-    # Deprecated
-    # status = models.TextField(null=True)
-    attempt_ordinal = models.IntegerField()
+
+    # TODO: 20180913 - migrate 
     cherry_pick_liquid_transfer = models.ForeignKey(
         'CherryPickLiquidTransfer', null=True, on_delete=models.SET_NULL)
+    
+    # Deprecated fields:
+    # status = models.TextField(null=True)
+    attempt_ordinal = models.IntegerField()
     legacy_plate_name = models.TextField(null=True)
     
-    # TODO: created to distinguish between:
+    # TODO: deprecate: created to distinguish between:
     # "LegacyCherryPickAssayPlate" and "CherryPickAssayPlate"
     cherry_pick_assay_plate_type = models.CharField(max_length=31)
 
@@ -601,101 +522,6 @@ class RnaiCherryPickRequest(models.Model):
     class Meta:
         db_table = 'rnai_cherry_pick_request'
 
-# Purpose: 
-# - to record updates to the CPR; 
-# - to record manual edit of the source copies chosen
-# Deprecate - migration
-class CherryPickRequestUpdateActivity(models.Model):
-    
-    cherry_pick_request = models.ForeignKey(
-        'CherryPickRequest', on_delete=models.CASCADE)
-    update_activity = models.OneToOneField(
-        'AdministrativeActivity', unique=True, on_delete=models.CASCADE)
-    class Meta:
-        db_table = 'cherry_pick_request_update_activity'
-
-
-# Purpose, to record a "Screening" activity for the plates of a Cherry Pick
-# Deprecate 
-# TODO: replace with Cherry Pick Status change
-class CherryPickScreening(Screening):
-    
-    screeninglink = models.OneToOneField(
-        'Screening', primary_key=True, parent_link=True, 
-        db_column='activity_id', on_delete=models.CASCADE)
-    cherry_pick_request = models.ForeignKey(
-        'CherryPickRequest', on_delete=models.CASCADE)
-
-    class Meta:
-        db_table = 'cherry_pick_screening'
-
-    def __repr__(self):
-        return (
-            '<CherryPickScreening(activity_id=%r, performed_by=%r, '
-            'screen=%r, cpr=%d )>' 
-            % (self.activity_id, self.performed_by, self.screen.facility_id,
-                self.cherry_pick_request.id))
-
-# Purpose: to record the "Cherry Pick Plate Activity"
-# Deprecate
-# TODO: record plating as a status on cherry pick/CPAP
-class CherryPickLiquidTransfer(LabActivity):
-    
-    cherry_pick_request = models.ForeignKey(
-        'CherryPickRequest', on_delete=models.CASCADE, null=False)
-    labactivitylink = models.OneToOneField(
-        'LabActivity', primary_key=True, parent_link=True, 
-        db_column='activity_id', on_delete=models.CASCADE)
-    status = models.TextField()
-    
-    class Meta:
-        db_table = 'cherry_pick_liquid_transfer'
-
-    def __repr__(self):
-        return (
-            '<CPLT(activity_id=%r, performed_by=%r, '
-            'screen=%r, volume=%r)>' 
-            % (self.activity_id, self.performed_by, self.screen.facility_id,
-                self.volume_transferred_per_well_from_library_plates))
-
-# Purpose:
-# Record LabCherryPick volume deallocations
-# Record manual well volume adjustments
-# Deprecated - migrate to CopyWell & ApiLog records
-class WellVolumeAdjustment(models.Model):
-    
-    well_volume_adjustment_id = models.AutoField(primary_key=True)
-    well = models.ForeignKey('Well', on_delete=models.CASCADE)
-    lab_cherry_pick = models.ForeignKey(
-        'LabCherryPick', null=True, on_delete=models.CASCADE)
-    well_volume_correction_activity = models.ForeignKey(
-        'WellVolumeCorrectionActivity', on_delete=models.CASCADE, null=True)
-    volume = models.DecimalField(null=True, max_digits=10, decimal_places=9)
-    copy = models.ForeignKey('Copy', on_delete=models.CASCADE)
-
-    class Meta:
-        db_table = 'well_volume_adjustment'
-
-    def __repr__(self):
-        return (
-            '<WVA(id=%d, well=%r, lab_cherry_pick=%d '
-            'well_volume_correction_activity=%d, volume=%r )>' 
-            % (self.well_volume_adjustment_id, 
-               self.lab_cherry_pick.lab_cherry_pick_id, 
-               self.well_volume_correction_activity.activity_id,
-               self.volume))
-
-# Purpose:
-# - record the CherryPickScreening activity
-# TODO: deprecate: use a status on the CherryPick instead
-class CherryPickAssayPlateScreeningLink(models.Model):
-    
-    cherry_pick_assay_plate = models.ForeignKey(
-        CherryPickAssayPlate, on_delete=models.CASCADE)
-    cherry_pick_screening = models.ForeignKey(
-        'CherryPickScreening', on_delete=models.CASCADE)
-    class Meta:
-        db_table = 'cherry_pick_assay_plate_screening_link'
 
 class Publication(models.Model):
     
@@ -780,12 +606,16 @@ class Screen(models.Model):
     pubchem_deposited_date = models.DateField(null=True)
     pubchem_assay_id = models.IntegerField(null=True)
 
-    pin_transfer_admin_activity = models.ForeignKey(
-        'Activity', null=True, on_delete=models.CASCADE, 
-        related_name='pin_transfer_approved_screen')
+    # TODO: 20180913, remove with Actvity rework
+#     pin_transfer_admin_activity = models.ForeignKey(
+#         'Activity', null=True, on_delete=models.CASCADE, 
+#         related_name='pin_transfer_approved_screen')
 #     # New
-#     pin_transfer_approved_by = models.ForeignKey('ScreensaverUser', null=True)
-#     pin_transfer_approval_comment = models.TextField(null=True)
+    pin_transfer_approved_by = models.ForeignKey(
+        'ScreensaverUser', null=True,
+        related_name='pin_transfer_approved_screen', on_delete=models.SET_NULL)
+    pin_transfer_date_approved = models.DateField(null=True)
+    pin_transfer_comments = models.TextField(null=True)
     
     abase_study_id = models.TextField(null=True)
     abase_protocol_id = models.TextField(null=True)
@@ -1087,107 +917,6 @@ class LabAffiliation(models.Model):
     class Meta:
         db_table = 'lab_affiliation'
 
-# TODO: remove, see migrations 0004, 0007
-class ScreeningRoomUser(models.Model):
-    
-    screensaver_user = models.OneToOneField(
-        'ScreensaverUser', primary_key=True, on_delete=models.CASCADE)
-    # TODO: remove after all migrations
-    user_classification = models.TextField()
-    lab_head = models.ForeignKey('LabHead', null=True, on_delete=models.CASCADE)
-    
-    coms_crhba_permit_number = models.TextField()
-    coms_crhba_permit_principal_investigator = models.TextField()
-    
-    # # TODO: remove after all migrations
-    # last_notified_smua_checklist_item_event = models.ForeignKey(
-    #     ChecklistItemEvent, null=True, related_name='smua_user')
-    # # TODO: remove after all migrations
-    # last_notified_rnaiua_checklist_item_event = models.ForeignKey(
-    #     ChecklistItemEvent, null=True, related_name='rnai_ua_user')
-
-    class Meta:
-        db_table = 'screening_room_user'
-
-    def __repr__(self):
-        return (
-            '<ScreeningRoomUser(screensaver_user_id: %r, username: %r)>' 
-            % (self.screensaver_user.screensaver_user_id, 
-               self.screensaver_user.username ))
-
-# TODO: Remove, see migration 0004
-class AdministratorUser(models.Model):
-    
-    screensaver_user = models.OneToOneField(
-        'ScreensaverUser', primary_key=True, on_delete=models.CASCADE)
-    class Meta:
-        db_table = 'administrator_user'
-    
-
-# TODO: remove after all migrations completed; screensaver_user.lab_head_id replaces       
-class LabHead(models.Model):
-    
-    screensaver_user = models.OneToOneField(
-        'ScreensaverUser', primary_key=True, on_delete=models.CASCADE)
-    lab_affiliation = models.ForeignKey(
-        'LabAffiliation', null=True, on_delete=models.CASCADE)
-    lab_head_appointment_category = models.TextField(null=True)
-    lab_head_appointment_department = models.TextField(null=True)
-    lab_head_appointment_update_date = models.DateField(null=True)
-    
-    class Meta:
-        db_table = 'lab_head'
-
-    def __repr__(self):
-        return (
-            '<LabHead(lab_head_username: %r, '
-            'affiliation: %r)>' 
-            % (self.screensaver_user.username, self.lab_affiliation.name ))
-
-# New
-class UserFacilityUsageRole(models.Model):
-    
-    screensaver_user = models.ForeignKey(
-        'ScreensaverUser', on_delete=models.CASCADE)
-    facility_usage_role = models.TextField()
-    class Meta:
-        db_table = 'user_facility_usage_role'
-        unique_together = (('screensaver_user', 'facility_usage_role'))
-
-
-# TODO: obsoleted by UserFacilityUsageRole: remove after migrating
-class ScreeningRoomUserFacilityUsageRole(models.Model):
-    
-    screening_room_user = models.ForeignKey(
-        ScreeningRoomUser, on_delete=models.CASCADE)
-    facility_usage_role = models.TextField()
-    class Meta:
-        db_table = 'screening_room_user_facility_usage_role'
-        
-# TODO: remove, see migration 0004 / 0005
-class ScreensaverUserRole(models.Model):
-    
-    screensaver_user = models.ForeignKey(
-        ScreensaverUser, on_delete=models.CASCADE)
-    screensaver_user_role = models.TextField()
-    
-    class Meta:
-        db_table = 'screensaver_user_role'
-
-def create_id():
-    try:
-        cursor = connection.cursor()
-        cursor.execute("SELECT nextval('substance_id_seq')")
-        row = cursor.fetchone();
-        val = row[0]
-        new_id = create_substance_id(val)
-        if val % 10000 == 0:
-            logger.debug('created substance id %r from %r', new_id,val)
-        logger.debug('seq: %r, created_id: %r', val, new_id)
-        return new_id
-    except Exception, e:
-        return None
-
 class Well(models.Model):
     
     well_id = models.TextField(primary_key=True)
@@ -1211,7 +940,7 @@ class Well(models.Model):
     
     barcode = models.TextField(null=True, unique=True)
 
-    # TODO: remove 0098
+    # removed in 0020
     # deprecation_admin_activity = \
     #     models.ForeignKey('AdministrativeActivity', null=True)
 
@@ -1223,7 +952,6 @@ class Well(models.Model):
             '<Well(well_id: %r, library: %r)>' 
             % (self.well_id, self.library.short_name ))
         
-
 class CachedQuery(models.Model):
     ''' For caching large resultvalue queries '''
     
@@ -1264,24 +992,12 @@ class WellQueryIndex(models.Model):
             '<WellQueryIndex(id: %r, well: %r, query: %r)>' 
             % (self.id, self.well, self.query ))
         
-# TODO: 2018-07-09: proposed, but unused 
-class Substance(models.Model):
-    ''' Substance is the ORM specific method for creating the substance_id_seq
-    '''
-    comment = models.TextField(null=True)
-    
-    def __unicode__(self):
-        return unicode(str(self.id)) 
-    
-    class Meta:
-        db_table = 'substance'
-        
 class Reagent(models.Model):
 
     reagent_id = models.AutoField(primary_key=True)
-    substance_id = models.CharField(
-        max_length=8, unique=True, 
-        default=create_id)
+    # substance_id = models.CharField(
+    #     max_length=8, unique=True, 
+    #     default=create_id)
     
     vendor_identifier = models.TextField(null=True)
     vendor_name = models.TextField(null=True)
@@ -1332,7 +1048,6 @@ class SilencingReagent(Reagent):
             % (self.reagent_id, self.well.well_id, 
                self.well.library.short_name ))
 
-
 class Gene(models.Model):
     
     gene_id = models.AutoField(primary_key=True)
@@ -1347,7 +1062,6 @@ class Gene(models.Model):
         return (
             '<Gene(id: %r, entrezegene_id: %r, gene_name: %r)>' 
             % (self.gene_id, self.entrezgene_id, self.gene_name ))
-
 
 class GeneGenbankAccessionNumber(models.Model):
     
@@ -1455,7 +1169,6 @@ class SmallMoleculeCherryPickRequest(models.Model):
     class Meta:
         db_table = 'small_molecule_cherry_pick_request'
 
-
 class Library(models.Model):
     
     library_id = models.AutoField(primary_key=True) 
@@ -1528,12 +1241,6 @@ class Copy(models.Model):
         'ScreensaverUser', null=True, on_delete=models.PROTECT)
     date_plated = models.DateField(null=True)
     
-    # Deprecated - verify removal once UI is approved - Jen
-#     primary_plate_status = models.TextField(null=True)
-#     primary_plate_location_id = models.IntegerField(null=True)
-#     plate_locations_count = models.IntegerField(null=True)
-#     plates_available = models.IntegerField(null=True)
-    
     date_loaded = models.DateTimeField(null=True)
     date_publicly_available = models.DateTimeField(null=True)
 
@@ -1543,7 +1250,6 @@ class Copy(models.Model):
     def __repr__(self):
         return ('<Copy(library.short_name=%r, name=%r, usage_type=%r, id=%r )>' 
             % (self.library.short_name, self.name, self.usage_type, self.copy_id))
-
 
 class Plate(models.Model):
 
@@ -1599,7 +1305,6 @@ class Plate(models.Model):
         return ('<Plate(copy=%r, plate_number=%d, well_volume=%r)>' 
             % (self.copy.name, self.plate_number, self.well_volume))
 
-
 class CopyWell(models.Model):
 
     plate = models.ForeignKey('Plate', on_delete=models.CASCADE)
@@ -1627,7 +1332,6 @@ class CopyWell(models.Model):
     def __repr__(self):
         return ('<CopyWell(well=%r, copy=%r, volume: %r)>' 
             % (self.well.well_id, self.copy.name, self.volume))
-
 
 class PlateLocation(models.Model):
     
@@ -1698,45 +1402,6 @@ class RawDataInputFile(models.Model):
     class Meta:
         db_table = 'raw_data_input_file'
     
-    
-
-# TODO: deprecated - see migration 0004
-class ChecklistItem(models.Model):
-    
-    checklist_item_id = models.IntegerField(primary_key=True)
-    checklist_item_group = models.TextField()
-    is_expirable = models.BooleanField()
-    item_name = models.TextField(unique=True)
-    order_statistic = models.IntegerField()
-
-    class Meta:
-        db_table = 'checklist_item'
-
-    def __repr__(self):
-        return (
-            '<ChecklistItem(checklist_item_id=%d, checklist_item_group=%r, '
-            'item_name=%r)>' 
-            % ( self.checklist_item_id, self.checklist_item_group, 
-                self.item_name))
-
-# TODO: deprecate
-class ChecklistItemEvent(models.Model):
-    
-    checklist_item_event_id = models.IntegerField(primary_key=True)
-    date_performed = models.DateField(null=True)
-    is_expiration = models.BooleanField()
-    checklist_item_id = models.IntegerField()
-    screening_room_user = models.ForeignKey(
-        'ScreeningRoomUser', on_delete=models.CASCADE)
-    is_not_applicable = models.BooleanField()
-    date_created = models.DateTimeField(default=timezone.now)
-    created_by = models.ForeignKey(
-        'ScreensaverUser', null=True, on_delete=models.CASCADE)
-    date_loaded = models.DateTimeField(null=True)
-    date_publicly_available = models.DateTimeField(null=True)
-
-    class Meta:
-        db_table = 'checklist_item_event'
 
 # TODO: remove per discussion with Jen
 # Deprecated
@@ -1750,32 +1415,399 @@ class ScreenKeyword(models.Model):
         unique_together = (('screen', 'keyword'))
         db_table = 'screen_keyword'
 
-# TODO: deprecate
-# django migrations supercede this
-class SchemaHistory(models.Model):
+# TODO: 2018-07-09: proposed, but unused 
+# def create_id():
+#     try:
+#         cursor = connection.cursor()
+#         cursor.execute("SELECT nextval('substance_id_seq')")
+#         row = cursor.fetchone();
+#         val = row[0]
+#         new_id = create_substance_id(val)
+#         if val % 10000 == 0:
+#             logger.debug('created substance id %r from %r', new_id,val)
+#         logger.debug('seq: %r, created_id: %r', val, new_id)
+#         return new_id
+#     except Exception, e:
+#         return None
+# 
+# class Substance(models.Model):
+#     ''' Substance is the ORM specific method for creating the substance_id_seq
+#     '''
+#     comment = models.TextField(null=True)
+#     
+#     def __unicode__(self):
+#         return unicode(str(self.id)) 
+#     
+#     class Meta:
+#         db_table = 'substance'
+        
 
-    screensaver_revision = models.IntegerField(primary_key=True)
-    date_updated = models.DateTimeField(null=True)
-    comment = models.TextField()
+
+
+# TODO: remove, see migrations 0004, 0007
+# class ScreeningRoomUser(models.Model):
+#     
+#     screensaver_user = models.OneToOneField(
+#         'ScreensaverUser', primary_key=True, on_delete=models.CASCADE)
+#     # TODO: remove after all migrations
+#     user_classification = models.TextField()
+#     lab_head = models.ForeignKey('LabHead', null=True, on_delete=models.CASCADE)
+#     
+#     coms_crhba_permit_number = models.TextField()
+#     coms_crhba_permit_principal_investigator = models.TextField()
+#     
+#     # # TODO: remove after all migrations
+#     # last_notified_smua_checklist_item_event = models.ForeignKey(
+#     #     ChecklistItemEvent, null=True, related_name='smua_user')
+#     # # TODO: remove after all migrations
+#     # last_notified_rnaiua_checklist_item_event = models.ForeignKey(
+#     #     ChecklistItemEvent, null=True, related_name='rnai_ua_user')
+# 
+#     class Meta:
+#         db_table = 'screening_room_user'
+# 
+#     def __repr__(self):
+#         return (
+#             '<ScreeningRoomUser(screensaver_user_id: %r, username: %r)>' 
+#             % (self.screensaver_user.screensaver_user_id, 
+#                self.screensaver_user.username ))
+
+# Removed, see migration 0007, 0098
+# class AdministratorUser(models.Model):
+#     
+#     screensaver_user = models.OneToOneField(
+#         'ScreensaverUser', primary_key=True, on_delete=models.CASCADE)
+#     class Meta:
+#         db_table = 'administrator_user'
     
-    class Meta:
-        db_table = 'schema_history'
 
-    def __repr__(self):
-        return (
-            '<SchemaHistory(screensaver_revision=%r, date_updated=%r, '
-            'comment=%r)>'
-            % (self.screensaver_revision, self.date_updated, 
-               self.comment)) 
+# Removed, see migration 0011, 0098
+# TODO: remove after all migrations completed; screensaver_user.lab_head_id replaces       
+# class LabHead(models.Model):
+#     
+#     screensaver_user = models.OneToOneField(
+#         'ScreensaverUser', primary_key=True, on_delete=models.CASCADE)
+#     lab_affiliation = models.ForeignKey(
+#         'LabAffiliation', null=True, on_delete=models.CASCADE)
+#     lab_head_appointment_category = models.TextField(null=True)
+#     lab_head_appointment_department = models.TextField(null=True)
+#     lab_head_appointment_update_date = models.DateField(null=True)
+#     
+#     class Meta:
+#         db_table = 'lab_head'
+# 
+#     def __repr__(self):
+#         return (
+#             '<LabHead(lab_head_username: %r, '
+#             'affiliation: %r)>' 
+#             % (self.screensaver_user.username, self.lab_affiliation.name ))
+
+# TODO: 20180919: not needed anymore (per JAS)
+# New
+# class UserFacilityUsageRole(models.Model):
+#     
+#     screensaver_user = models.ForeignKey(
+#         'ScreensaverUser', on_delete=models.CASCADE)
+#     facility_usage_role = models.TextField()
+#     class Meta:
+#         db_table = 'user_facility_usage_role'
+#         unique_together = (('screensaver_user', 'facility_usage_role'))
+
+
+# TODO: obsoleted by UserFacilityUsageRole: remove after migrating
+# class ScreeningRoomUserFacilityUsageRole(models.Model):
+#     
+#     screening_room_user = models.ForeignKey(
+#         ScreeningRoomUser, on_delete=models.CASCADE)
+#     facility_usage_role = models.TextField()
+#     class Meta:
+#         db_table = 'screening_room_user_facility_usage_role'
+        
+# TODO: remove, see migration 0007 / 0008
+# class ScreensaverUserRole(models.Model):
+#     
+#     screensaver_user = models.ForeignKey(
+#         ScreensaverUser, on_delete=models.CASCADE)
+#     screensaver_user_role = models.TextField()
+#     
+#     class Meta:
+#         db_table = 'screensaver_user_role'
+
+# # TODO: deprecate
+# # django migrations supercede this
+# class SchemaHistory(models.Model):
+# 
+#     screensaver_revision = models.IntegerField(primary_key=True)
+#     date_updated = models.DateTimeField(null=True)
+#     comment = models.TextField()
+#     
+#     class Meta:
+#         db_table = 'schema_history'
+# 
+#     def __repr__(self):
+#         return (
+#             '<SchemaHistory(screensaver_revision=%r, date_updated=%r, '
+#             'comment=%r)>'
+#             % (self.screensaver_revision, self.date_updated, 
+#                self.comment)) 
+
+# # Deprecated: will migrate with the activity migration.
+# # Purpose: Link CherryPickScreening Activity(s) to Assay Plate
+# # - record the CherryPickScreening activity
+# # TODO: deprecate: use a status on the CherryPick instead
+# class CherryPickAssayPlateScreeningLink(models.Model):
+#     
+#     cherry_pick_assay_plate = models.ForeignKey(
+#         CherryPickAssayPlate, on_delete=models.CASCADE)
+#     cherry_pick_screening = models.ForeignKey(
+#         'CherryPickScreening', on_delete=models.CASCADE)
+#     class Meta:
+#         db_table = 'cherry_pick_assay_plate_screening_link'
+    
+# 20180925 - refactor; join to Activity
+# class ServiceActivity(Activity):
+#      
+#     activitylink = models.OneToOneField(
+#         Activity, primary_key=True, parent_link=True, on_delete=models.CASCADE, 
+#         db_column='activity_id')
+#     service_activity_type = models.TextField()
+# 
+#     # 20180922 - to be removed with activity refactor
+#     # # NOTE: SS Version 2: require either serviced screen or serviced user
+#     # serviced_screen = models.ForeignKey(
+#     #     'Screen', null=True, on_delete=models.CASCADE)
+#     # serviced_user = models.ForeignKey(
+#     #     'ScreensaverUser', null=True, on_delete=models.CASCADE,
+#     #     related_name='users_servicing')
+#     #   
+#     # funding_support = models.TextField(null=True)
+#      
+#     class Meta:
+#         db_table = 'service_activity'
+#  
+#     def __repr__(self):
+#         return (
+#             '<ServiceActivity(activity_id=%r, performed_by=%r, '
+#             'service_activity_type=%r, serviced_screen=%r, serviced_user=%r)>' 
+#             % (self.activity_id, self.performed_by, self.service_activity_type,
+#                self.serviced_screen, self.serviced_user))
+
+# Dropped 20180919
+# # Purpose: 
+# # - to record updates to the CPR; 
+# # - to record manual edit of the source copies chosen
+# # Deprecate - migration
+# class CherryPickRequestUpdateActivity(models.Model):
+#     
+#     cherry_pick_request = models.ForeignKey(
+#         'CherryPickRequest', on_delete=models.CASCADE)
+#     update_activity = models.OneToOneField(
+#         'AdministrativeActivity', unique=True, on_delete=models.CASCADE)
+#     class Meta:
+#         db_table = 'cherry_pick_request_update_activity'
+
+
+# # Purpose:
+# # Record LabCherryPick volume deallocations
+# # Record manual well volume adjustments
+# # Deprecated - migrate to CopyWell & ApiLog records
+# class WellVolumeAdjustment(models.Model):
+#     
+#     well_volume_adjustment_id = models.AutoField(primary_key=True)
+#     well = models.ForeignKey('Well', on_delete=models.CASCADE)
+#     lab_cherry_pick = models.ForeignKey(
+#         'LabCherryPick', null=True, on_delete=models.CASCADE)
+#     well_volume_correction_activity = models.ForeignKey(
+#         'WellVolumeCorrectionActivity', on_delete=models.CASCADE, null=True)
+#     volume = models.DecimalField(null=True, max_digits=10, decimal_places=9)
+#     copy = models.ForeignKey('Copy', on_delete=models.CASCADE)
+# 
+#     class Meta:
+#         db_table = 'well_volume_adjustment'
+# 
+#     def __repr__(self):
+#         return (
+#             '<WVA(id=%d, well=%r, lab_cherry_pick=%d '
+#             'well_volume_correction_activity=%d, volume=%r )>' 
+#             % (self.well_volume_adjustment_id, 
+#                self.lab_cherry_pick.lab_cherry_pick_id, 
+#                self.well_volume_correction_activity.activity_id,
+#                self.volume))
+
+# # Deprecated - removed in 0022
+# class AdministrativeActivity(models.Model):
+#     
+#     activity = models.OneToOneField(
+#         Activity, primary_key=True, on_delete=models.CASCADE)
+#     administrative_activity_type = models.TextField()
+#     class Meta:
+#         db_table = 'administrative_activity'
+
+# # Deprecate - remove after plate well volume migration
+# class WellVolumeCorrectionActivity(models.Model):
+#     
+#     activity = models.OneToOneField(
+#         'AdministrativeActivity', primary_key=True, on_delete=models.CASCADE)
+#     class Meta:
+#         db_table = 'well_volume_correction_activity'
+
+# # Deprecate - migration
+# class LibraryUpdateActivity(models.Model):
+#     
+#     library = models.ForeignKey('Library', on_delete=models.CASCADE)
+#     update_activity = models.ForeignKey(
+#         AdministrativeActivity, on_delete=models.CASCADE)
+#     class Meta:
+#         db_table = 'library_update_activity'
+
+# # Deprecate - migration
+# class PlateUpdateActivity(models.Model):
+#     
+#     plate_id = models.IntegerField()
+#     update_activity_id = models.IntegerField(unique=True)
+#     class Meta:
+#         db_table = 'plate_update_activity'
+
+# Deprecate - migration
+# class ScreenResultUpdateActivity(models.Model):
+#     
+#     screen_result = models.ForeignKey('ScreenResult', on_delete=models.CASCADE)
+#     update_activity = models.ForeignKey(AdministrativeActivity,
+#         on_delete=models.CASCADE)
+#     class Meta:
+#         db_table = 'screen_result_update_activity'
+
+# Deprecate - migration
+# class ScreenUpdateActivity(models.Model):
+#     
+#     screen = models.ForeignKey('Screen', on_delete=models.CASCADE)
+#     update_activity = models.ForeignKey(
+#         AdministrativeActivity, on_delete=models.CASCADE)
+#     class Meta:
+#         db_table = 'screen_update_activity'
+
+# Deprecate - migration
+# class ScreensaverUserUpdateActivity(models.Model):
+#     
+#     screensaver_user = models.ForeignKey(
+#         'ScreensaverUser', on_delete=models.CASCADE)
+#     update_activity = models.ForeignKey(
+#         AdministrativeActivity, on_delete=models.CASCADE)
+#     class Meta:
+#         db_table = 'screensaver_user_update_activity'
+
+# Deprecate - migration
+# class ActivityUpdateActivity(models.Model):
+#     
+#     activity = models.ForeignKey(Activity, on_delete=models.CASCADE)
+#     update_activity = models.ForeignKey(
+#         'AdministrativeActivity', on_delete=models.CASCADE)
+#     class Meta:
+#         db_table = 'activity_update_activity'
+
+# Deprecate - migration
+# class AttachedFileUpdateActivity(models.Model):
+#     
+#     attached_file = models.ForeignKey('AttachedFile', on_delete=models.CASCADE)
+#     update_activity = models.ForeignKey(
+#         AdministrativeActivity, on_delete=models.CASCADE)
+#     class Meta:
+#         db_table = 'attached_file_update_activity'
+
+# Deprecate - migration
+# class ChecklistItemEventUpdateActivity(models.Model):
+#     
+#     checklist_item_event = models.ForeignKey(
+#         'ChecklistItemEvent', on_delete=models.CASCADE)
+#     update_activity = models.ForeignKey(
+#         AdministrativeActivity, on_delete=models.CASCADE)
+#     class Meta:
+#         db_table = 'checklist_item_event_update_activity'
+
+# # Deprecate - migration
+# class CopyUpdateActivity(models.Model):
+#     
+#     copy_id = models.IntegerField()
+#     update_activity_id = models.IntegerField(unique=True)
+#     class Meta:
+#         db_table = 'copy_update_activity'
+
+# # DEPRECATED, replaced by cpr.wells_to_leave_empty
+# class CherryPickRequestEmptyWell(models.Model):
+#     
+#     cherry_pick_request = models.ForeignKey(
+#         CherryPickRequest, on_delete=models.CASCADE)
+#     well_name = models.CharField(max_length=255)
+#     class Meta:
+#         db_table = 'cherry_pick_request_empty_well'
+
+
+# TODO: deprecated - migrated to UserChecklist, see migration 0007
+# class ChecklistItem(models.Model):
+#     
+#     checklist_item_id = models.IntegerField(primary_key=True)
+#     checklist_item_group = models.TextField()
+#     is_expirable = models.BooleanField()
+#     item_name = models.TextField(unique=True)
+#     order_statistic = models.IntegerField()
+# 
+#     class Meta:
+#         db_table = 'checklist_item'
+# 
+#     def __repr__(self):
+#         return (
+#             '<ChecklistItem(checklist_item_id=%d, checklist_item_group=%r, '
+#             'item_name=%r)>' 
+#             % ( self.checklist_item_id, self.checklist_item_group, 
+#                 self.item_name))
+# 
+# # TODO: deprecated - migrated to UserChecklist, see migration 0007
+# class ChecklistItemEvent(models.Model):
+#     
+#     checklist_item_event_id = models.IntegerField(primary_key=True)
+#     date_performed = models.DateField(null=True)
+#     is_expiration = models.BooleanField()
+#     checklist_item_id = models.IntegerField()
+#     screening_room_user = models.ForeignKey(
+#         'ScreeningRoomUser', on_delete=models.CASCADE)
+#     is_not_applicable = models.BooleanField()
+#     date_created = models.DateTimeField(default=timezone.now)
+#     created_by = models.ForeignKey(
+#         'ScreensaverUser', null=True, on_delete=models.CASCADE)
+#     date_loaded = models.DateTimeField(null=True)
+#     date_publicly_available = models.DateTimeField(null=True)
+# 
+#     class Meta:
+#         db_table = 'checklist_item_event'
 
 # TODO: deprecate
 # Not used in SS1
-class LegacySmallMoleculeCasNumber(models.Model):
-    
-    smiles = models.CharField(max_length=2047)
-    cas_number = models.TextField()
-    class Meta:
-        db_table = '_legacy_small_molecule_cas_number'
+# class LegacySmallMoleculeCasNumber(models.Model):
+#     
+#     smiles = models.CharField(max_length=2047)
+#     cas_number = models.TextField()
+#     class Meta:
+#         db_table = '_legacy_small_molecule_cas_number'
+
+# # Deprecate - not used
+# # Not used in SS1
+# class EquipmentUsed(models.Model):
+#      
+#     equipment_used_id = models.AutoField(primary_key=True)
+#     protocol = models.TextField()
+#     description = models.TextField()
+#     equipment = models.TextField()
+#     lab_activity = models.ForeignKey(
+#         'LabActivity', on_delete=models.CASCADE)
+#  
+#     class Meta:
+#         db_table = 'equipment_used'
+#  
+#     def __repr__(self):
+#         return (
+#             '<EquipmentUsed(id=%d, equipment=%r, lab_activity=%r)>'
+#             % (self.equipment_used_id, self.equipment, 
+#                self.lab_activity.activity_id ))
 
 # # Deprecated: to be calculated on the fly:
 # # Note: this model is not in SS1

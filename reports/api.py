@@ -1929,6 +1929,7 @@ class ApiResource(SqlAlchemyResource):
                 continue
             
             ##FIXME: some vocab fields are not choices fields
+            logger.debug('field: %s, choices: %r', name, field.get('choices'))
             if 'choices' in field and field['choices']:
                 if field['data_type'] != 'list':
                     # note: comparing as string
@@ -2138,44 +2139,42 @@ class ApiResource(SqlAlchemyResource):
             def keys(self):
                 return self.row.keys();
             def __getitem__(self, key):
-                if self.row[key] is None:
-                    return None
-                
+                val = self.row[key]
+                if not val:
+                    return val
                 if key in vocabularies:
-                    if self.row[key] not in vocabularies[key]:
-                        if str(self.row[key]) not in vocabularies[key]:
-                            logger.error(
-                                ('Unknown vocabulary:'
-                                 ' scope:%s key:%s val:%r, keys defined: %r'),
-                                field_hash[key]['vocabulary_scope_ref'], key, 
-                                self.row[key],vocabularies[key].keys() )
-                            return self.row[key] 
-                        else:
-                            return vocabularies[key][str(self.row[key])]['title']
-                    else:
-                        return vocabularies[key][self.row[key]]['title']
-                else:
-                    return self.row[key]
-                
-                
-                
-                if key in vocabularies:
-                    raw_val = self.row[key]
-                    if raw_val is None or not str(raw_val):
-                        return raw_val
-                    vocab = vocabularies[key].get(raw_val,
-                        vocabularies[key].get(str(raw_val)))
-                    if vocab is None:
+                    val = str(val)
+                    if val not in vocabularies[key]:
                         logger.error(
                             ('Unknown vocabulary:'
                              ' scope:%s key:%s val:%r, keys defined: %r'),
                             field_hash[key]['vocabulary_scope_ref'], key, 
-                            raw_val,vocabularies[key].keys() )
-                        return raw_val
+                            val,vocabularies[key].keys() )
+                        return self.row[key]
                     else:
-                        return vocab[SCHEMA.VOCABULARY.TITLE]
+                        return vocabularies[key][val][SCHEMA.VOCABULARY.TITLE]
                 else:
                     return self.row[key]
+                
+                
+#                 
+#                 if key in vocabularies:
+#                     raw_val = self.row[key]
+#                     if raw_val is None or not str(raw_val):
+#                         return raw_val
+#                     vocab = vocabularies[key].get(raw_val,
+#                         vocabularies[key].get(str(raw_val)))
+#                     if vocab is None:
+#                         logger.error(
+#                             ('Unknown vocabulary:'
+#                              ' scope:%s key:%s val:%r, keys defined: %r'),
+#                             field_hash[key]['vocabulary_scope_ref'], key, 
+#                             raw_val,vocabularies[key].keys() )
+#                         return raw_val
+#                     else:
+#                         return vocab[SCHEMA.VOCABULARY.TITLE]
+#                 else:
+#                     return self.row[key]
         
         def vocabulary_rowproxy_generator(cursor):
             if extant_generator is not None:
@@ -2244,7 +2243,8 @@ class ApiResource(SqlAlchemyResource):
     def make_log_key(
             self, log, attributes, id_attribute=None, schema=None, **kwargs):
         
-        logger.debug('make_log_key: %r, %r', id_attribute, schema is not None)
+        logger.debug('make_log_key: %r, %r, %r', 
+            id_attribute, schema is not None, kwargs)
         
         if id_attribute is None:
             if schema is None:
@@ -3567,6 +3567,8 @@ class ResourceResource(ApiResource):
                             field['table'] = resource.get('table', None)
                             
                     supertype_key = resource.get('supertype')
+                    if DEBUG_RESOURCES:
+                        logger.info('key: %r, supertype: %r', key, supertype_key)
                     if supertype_key:
                         
                         supertype_resource = get_resource(supertype_key)

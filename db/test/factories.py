@@ -103,9 +103,9 @@ csChFnd70/04290511482D
   4 12  2  0  0  0  0
 M  END'''         
     
-class SubstanceFactory(factory.django.DjangoModelFactory):
-    class Meta:
-        model = db.models.Substance
+# class SubstanceFactory(factory.django.DjangoModelFactory):
+#     class Meta:
+#         model = db.models.Substance
 
 class LabAffiliationFactory(factory.Factory):
 

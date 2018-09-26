@@ -165,6 +165,7 @@ class ACTIVITY(schema_obj):
     DATE_OF_ACTIVITY = 'date_of_activity'
     ACTVITY_CLASS = 'activity_class'
     TYPE = 'type'
+    SCREEN_FACILITY_ID = 'screen_facility_id'
     SERVICED_USER_ID = 'serviced_user_id'
     SERVICED_USERNAME = 'serviced_username'
     PERFORMED_BY_USER_ID = 'performed_by_user_id'
@@ -304,6 +305,26 @@ class SILENCING_REAGENT(schema_obj):
 class VOCAB(reports.schema.VOCAB):
     ''' Define selected vocabulary constants used by the API.'''
     
+    class activity(schema_obj):
+        class classification(schema_obj):
+            SCREENING = 'screening'
+            TRAINING = 'training'
+            AUTOMATION = 'automation'
+            OTHER = 'other'
+            
+            SERVICE_CLASSIFICATIONS = [
+                TRAINING, AUTOMATION, OTHER]
+        
+        class type(schema_obj):
+            LIBRARY_SCREENING =  'library_screening'
+            EXT_LIBRARY_SCREENING = 'ext_library_screening'
+            CHERRY_PICK_TRANSFER = 'cp_transfer'
+            CHERRY_PICK_SCREENING = 'cp_screening'
+            
+            SCREENING_TYPES = [
+                LIBRARY_SCREENING, EXT_LIBRARY_SCREENING, 
+                CHERRY_PICK_SCREENING, CHERRY_PICK_TRANSFER]
+            
     class datacolumn(schema_obj):
         class data_type(schema_obj):
             BOOLEAN_POSITIVE = 'boolean_positive_indicator'

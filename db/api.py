@@ -55,22 +55,20 @@ from db import WELL_ID_PATTERN, WELL_NAME_PATTERN, PLATE_PATTERN, \
     PLATE_RANGE_PATTERN, COPY_NAME_PATTERN
 from db.models import ScreensaverUser, Screen, \
     ScreenResult, DataColumn, Library, Plate, Copy, \
-    CopyWell, UserFacilityUsageRole, \
-    PlateLocation, Reagent, Well, Activity, \
-    AdministrativeActivity, SmallMoleculeReagent, SilencingReagent, GeneSymbol, \
+    CopyWell, PlateLocation, Reagent, Well, Activity, \
+    SmallMoleculeReagent, SilencingReagent, GeneSymbol, \
     NaturalProductReagent, Molfile, Gene, GeneGenbankAccessionNumber, \
     CherryPickRequest, CherryPickAssayPlate, CherryPickLiquidTransfer, \
     CachedQuery, UserChecklist, AttachedFile, \
-    ServiceActivity, LabActivity, Screening, LibraryScreening, AssayPlate, \
+    LabActivity, Screening, LibraryScreening, AssayPlate, \
     SmallMoleculeChembankId, SmallMoleculePubchemCid, SmallMoleculeChemblId, \
     SmallMoleculeCompoundName, ScreenCellLines, ScreenFundingSupports, \
     ScreenKeyword, ResultValue, AssayWell, Publication, ScreenerCherryPick, \
-    LabCherryPick, CherryPickRequestEmptyWell, CherryPickScreening, \
+    LabCherryPick, CherryPickScreening, \
     LabAffiliation, UserAgreement, RawDataTransform, RawDataInputFile
 from db.schema import VOCAB
 from db.support import lims_utils, screen_result_importer, bin_packer, \
     raw_data_reader, plate_matrix_transformer
-from reports.utils import default_converter
 from db.support.plate_matrix_transformer import Collation
 from db.support.screen_result_importer import PARTITION_POSITIVE_MAPPING, \
     CONFIRMED_POSITIVE_MAPPING
@@ -89,7 +87,6 @@ from reports.api import ApiLogResource, UserGroupAuthorization, \
     VocabularyResource, UserResource, UserGroupResource, \
     UserResourceAuthorization, FieldResource
 import reports.api
-import reports.utils.si_unit as si_unit
 from reports.api_base import un_cache, MultiAuthentication, \
     IccblBasicAuthentication, IccblSessionAuthentication, TRAILING_SLASH
 from reports.models import Vocabulary, ApiLog, UserProfile
@@ -108,8 +105,10 @@ from reports.serializers import LimsSerializer, \
     XLSSerializer, ScreenResultSerializer
 from reports.sqlalchemy_resource import SqlAlchemyResource
 from reports.sqlalchemy_resource import _concat, _concat_with_sep
+from reports.utils import default_converter
 from reports.utils import sort_nicely, alphanum_key
 from reports.utils.django_requests import convert_request_method_to_put
+import reports.utils.si_unit as si_unit
 import schema as SCHEMA
 
 
@@ -1624,7 +1623,6 @@ class LibraryCopyPlateResource(DbApiResource):
         _c = self.bridge['copy']
         _l = self.bridge['library']
         _ls = self.bridge['library_screening']
-        _la = self.bridge['lab_activity']
         _a = self.bridge['activity']
         _ap = self.bridge['assay_plate']
         _screen = self.bridge['screen']
@@ -1650,8 +1648,7 @@ class LibraryCopyPlateResource(DbApiResource):
                    .join(_p, _ap.c.plate_id==_p.c.plate_id)
                    .join(_c, _c.c.copy_id==_p.c.copy_id)
                    .join(_l, _c.c.library_id==_l.c.library_id)
-                   .join(_la,_ls.c.activity_id==_la.c.activity_id)
-                   .join(_screen,_la.c.screen_id==_screen.c.screen_id)
+                   .join(_screen,_a.c.screen_id==_screen.c.screen_id)
                 )
             .where(_ap.c.replicate_ordinal==0))
         
@@ -7272,12 +7269,6 @@ class CherryPickRequestResource(DbApiResource):
                 self.wrap_view('dispatch_set_duplex_lab_cherry_picks'), 
                 name="api_dispatch_set_duplex_lab_cherry_picks"),
 
-#             url(r"^(?P<resource_name>%s)"
-#                 r"/(?P<cherry_pick_request_id>[\d]+)/plate_lab_cherrypicks%s$" 
-#                     % (self._meta.resource_name, TRAILING_SLASH),
-#                 self.wrap_view('dispatch_plate_lab_cherrypicks'), 
-#                 name="api_dispatch_plate_lab_cherrypicks"),
-
             url(r"^(?P<resource_name>%s)"
                 r"/(?P<cherry_pick_request_id>[\d]+)/reserve_map_lab_cherry_picks%s$" 
                     % (self._meta.resource_name, TRAILING_SLASH),
@@ -7814,7 +7805,7 @@ class CherryPickRequestResource(DbApiResource):
                     best_alt = sorted(alt_list, reverse=True,
                                       key=lambda x: x['molar_concentration'])[0]
                     alt_library = best_alt['library_short_name']
-                    logger.info('scp: %r, best_alt: %r', searched_well_id, best_alt)
+                    logger.debug('scp: %r, best_alt: %r', searched_well_id, best_alt)
                     if library_short_name == alt_library \
                         and best_alt['molar_concentration'] > molar_concentration:
                         scp_warn_map[searched_well_id] = {
@@ -7853,6 +7844,7 @@ class CherryPickRequestResource(DbApiResource):
         logger.info('cpr warnings done')
         
         return meta
+    
     def build_list_response(self, request, schema=None, **kwargs):
         
         param_hash = self._convert_request_to_dict(request)
@@ -8055,7 +8047,7 @@ class CherryPickRequestResource(DbApiResource):
                 _cpr.c.cherry_pick_request_id==cherry_pick_request_id )
         _scps_not_loaded= _scps_not_loaded.cte('_scps_not_loaded')
     
-        _la = self.bridge['lab_activity']
+        _a = self.bridge['activity']
         _ls = self.bridge['library_screening']
         _ap = self.bridge['assay_plate']
         _scps_not_screened = (
@@ -8070,10 +8062,10 @@ class CherryPickRequestResource(DbApiResource):
             .where(_scp.c.selected)
             .where(~exists(
                 select([None])
-                .select_from(_la.join(_ls, _ls.c.activity_id==_la.c.activity_id)
+                .select_from(_a.join(_ls, _ls.c.activity_id==_a.c.activity_id)
                              .join(_ap, _ap.c.library_screening_id==_ls.c.activity_id))
                 .where(_ap.c.plate_number==_well.c.plate_number)
-                .where(_cpr.c.screen_id==_la.c.screen_id)
+                .where(_cpr.c.screen_id==_a.c.screen_id)
                 ))
             .group_by(_cpr.c.cherry_pick_request_id, _scp.c.screened_well_id)
             .order_by(_cpr.c.cherry_pick_request_id, _scp.c.screened_well_id))
@@ -11453,7 +11445,12 @@ class CherryPickPlateResource(DbApiResource):
     @un_cache
     @transaction.atomic
     def patch_list(self, request, **kwargs):
-
+        '''
+        Note: For now, the only update fields in the cherry pick plates are for
+        updating the plating and screening activities.
+        20180925 - TODO: remove plating fields on the cherry_pick_assay_plate; 
+            track the values on the activity classes.
+        '''
         schema = kwargs.pop('schema', None)
         if not schema:
             raise Exception('schema not initialized')
@@ -11549,6 +11546,10 @@ class CherryPickPlateResource(DbApiResource):
                         raise ValidationError(
                             key='plated_by_username', 
                             msg='User: "%s" not found' % plated_by_username)
+
+                parent_log.diffs['last_plating_activity_date'] = [
+                    original_cpr.get('last_plating_activity_date', None),
+                    plating_date] 
                 
             if screening_date is not None:
                 if cpap.plating_date is None:
@@ -11586,52 +11587,77 @@ class CherryPickPlateResource(DbApiResource):
                         raise ValidationError(
                             key='screened_by_username', 
                             msg='User: "%s" not found' % screened_by_username)
-                # NOTE: last_screening_activity_date is handled in log_patch below
-                # parent_log.diffs['last_screening_activity_date'] = [
-                #     original_cpr.get('last_screening_activity_date', None),
-                #     plating_date] 
 
+                parent_log.diffs['last_screening_activity_date'] = [
+                    original_cpr.get('last_screening_activity_date', None),
+                    screening_date] 
         if plated_cpaps:
-            # TODO: create a cherry pick liquid transfer (plating) activity 
-            # - for legacy activity tracking system (201703)
-            # TODO: test
-
+            # TODO: 20180925: activity_refactor:
+            # CPLT(activity) mirrors the plating_date and plated_by fields:
+            # rework when req's are clear:
+            # - consider removing plating_date and plated_by and using the 
+            # activity to track information.
+            # - address orphaned CPLT issue
             cplt = CherryPickLiquidTransfer.objects.create(
-                status="Successful",
                 screen=cpr.screen,
                 cherry_pick_request = cpr,
+                
+                # TODO: deprecate vol (not entered)
                 volume_transferred_per_well_from_library_plates
                     =cpr.transfer_volume_per_well_approved,
+                
                 apilog_uri=parent_log.log_uri,
+                # Activity fields
+                comments=parent_log.comment,
                 date_of_activity=plated_cpaps[0].plating_date,
                 performed_by = plated_cpaps[0].plated_by,
-                created_by = self.get_request_user(request)
+                created_by = self.get_request_user(request),
+                classification = SCHEMA.VOCAB.activity.classification.SCREENING,
+                type = SCHEMA.VOCAB.activity.type.CHERRY_PICK_TRANSFER
             )
+
+            # TODO: 20180925 - remove: associate plates with plating activity:
+            # Alternate is to use the apilog_uri to generate a report of child 
+            # (plate) logs
+            for cpap in plated_cpaps:
+                cpap.cherry_pick_liquid_transfer = cplt
+                cpap.save()
             
-            # Set the legacy cplt link; NOTE: this is not used in V2
-            cpap.cherry_pick_liquid_transfer = cplt
-            cpap.save()
-            # TODO: set api log to activity
-            # cplt.log_id = parent_log
         if screened_cpaps:
-            # TODO: create a cherry pick liquid transfer (plating) activity 
-            # - for legacy activity tracking system (201703)
-            # TODO: test
+            # TODO: deprecate/rework CherryPickScreening: 
+            # 20180925: not used at ICCB-L; revisit when req's are clear
+            # - if assay_plate tracking is needed, asoc. with cpap's
+            # - consider removing screened_by, screening_date; as these mirror
+            # current activity fields
+            # - address orphaned CherryPickScreening issue
             cp_screening = CherryPickScreening.objects.create(
                 screen = cpr.screen,
                 cherry_pick_request = cpr,
+                
+                # TODO: deprecate protocol, type
                 assay_protocol = '',
                 assay_protocol_type = '',
+                # TODO: deprecate vol xfer (not entered)
                 volume_transferred_per_well_to_assay_plates
                     =cpr.transfer_volume_per_well_approved,
+
                 apilog_uri=parent_log.log_uri,
+                # Activity fields
+                comments=parent_log.comment,
                 date_of_activity=screened_cpaps[0].screening_date,
                 performed_by = screened_cpaps[0].screened_by,
-                created_by = self.get_request_user(request)
+                created_by = self.get_request_user(request),
+                classification = SCHEMA.VOCAB.activity.classification.SCREENING,
+                type = SCHEMA.VOCAB.activity.type.CHERRY_PICK_SCREENING
                 )
-            # TODO: set api log to activity
-            # cplt.log_id = parent_log
             
+            # TODO: 20180925 - associate plates with screening activity:
+            # Alternate is to use the apilog_uri to generate a report of child 
+            # (plate) logs
+            # for cpap in screened_cpaps:
+            #     cpap.cherry_pick_screening = cp_screening
+            #     cpap.save()
+
         # Log
         self.get_cherry_pick_resource().clear_cache(request)
         new_cpr = self.get_cherry_pick_resource()._get_detail_response_internal(**{
@@ -12728,12 +12754,11 @@ class AttachedFileResource(DbApiResource):
         '''
         Creates a parent log for attached_files for screens
         '''
-        user_resource = self.get_screen_resource()
+        user_resource = self.get_user_resource()
         parent_log = user_resource.make_log(request)
         parent_log.api_action = API_ACTION.PATCH
         parent_log.key = str(user.screensaver_user_id)
         parent_log.uri = '/'.join([parent_log.ref_resource_name,parent_log.key])
-#         parent_log.diff_keys = ['attached_files']
         if is_delete:
             parent_log.diffs =  { 'attached_fiels': [af.filename,None] }
         else:
@@ -13163,14 +13188,10 @@ class ActivityResourceAuthorization(ScreenAuthorization):
         my_screens = self.get_user_screens(screensaver_user)
         # Can only see own activities
          
-        if self.resource_name == 'serviceactivity':
-            auth_filter = or_(
-                column('screen_facility_id').in_(
-                    [screen.facility_id for screen in my_screens]),
-                column('serviced_user_id') == screensaver_user.screensaver_user_id )
-        else:
-            auth_filter = column('screen_facility_id').in_(
-                    [screen.facility_id for screen in my_screens])
+        auth_filter = or_(
+            column('screen_facility_id').in_(
+                [screen.facility_id for screen in my_screens]),
+            column('serviced_user_id') == screensaver_user.screensaver_user_id )
              
         if filter_expression is not None:
             filter_expression = and_(filter_expression, auth_filter)
@@ -13192,49 +13213,33 @@ class ActivityResourceAuthorization(ScreenAuthorization):
             my_screens = self.get_user_screens(screensaver_user)
             
             activity = Activity.objects.get(activity_id=activity_id)
-            if hasattr(activity, 'labactivity'):
-                return activity.labactivity.screen.facility_id in set([
-                    screen.facility_id for screen in my_screens])
-            if hasattr(activity, 'serviceactivity'):
-                return activity.serviceactivity.serviced_user.username == user.username
+            result = activity.screen.facility_id in set([
+                screen.facility_id for screen in my_screens])
+            if not result:
+                result = activity.serviced_user.username == user.username
             
             return False        
-        
+
 class ActivityResource(DbApiResource):
-    '''
-    Activity Resource is a combination of the LabActivity and the ServiceActivity
-    
-    NOTE: 20170523
-    ActivityResource needs to be reworked; the current design is from the 
-    legacy Screensaver 1; 
-    Activity is both a logging facility and a join class between User, Screen, 
-    and CherryPickRequest.
-    Refactor to make Activity a Reporting resource that logs:
-    - performed by
-    - serviced resource: Screen, User
-    - serviced context: Screen, User, CherryPickRequest
-    - referenced resources: Equipment
-    - 
-    '''
 
     class Meta:
 
-        queryset = Activity.objects.all()  # .order_by('facility_id')
+        queryset = Activity.objects.all()
         authentication = MultiAuthentication(IccblBasicAuthentication(),
                                              IccblSessionAuthentication())
         resource_name = 'activity'
         authorization = ActivityResourceAuthorization(resource_name)
         serializer = LimsSerializer()
-        ordering = []
-        filtering = {}
-        always_return_data = True 
         
     def __init__(self, **kwargs):
 
-        self.service_activity_resource = None
-        self.screen_resource = None
-        self.su_resource = None
         super(ActivityResource, self).__init__(**kwargs)
+        self.su_resource = None
+
+    def get_su_resource(self):
+        if self.su_resource is None:
+            self.su_resource = ScreensaverUserResource()
+        return self.su_resource
 
     def prepend_urls(self):
         
@@ -13248,21 +13253,6 @@ class ActivityResource(DbApiResource):
                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
         ]
     
-    def get_su_resource(self):
-        if self.su_resource is None:
-            self.su_resource = ScreensaverUserResource()
-        return self.su_resource
-
-    def get_service_activity_resource(self):
-        if self.service_activity_resource is None:
-            self.service_activity_resource = ServiceActivityResource()
-        return self.service_activity_resource
-
-    def get_screen_resource(self):
-        if self.screen_resource is None:
-            self.screen_resource = ScreenResource()
-        return self.screen_resource
-
     def build_schema(self, user=None, **kwargs):
          
         schema = super(ActivityResource, self).build_schema(user=user, **kwargs)
@@ -13286,323 +13276,6 @@ class ActivityResource(DbApiResource):
 
         kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
         return self.build_list_response(request, **kwargs)
-
-    def get_custom_columns(self, alias_qualifier):
-        '''
-        Convenience method for subclasses: reusable custom columns
-        @param alias_qualifier a sql compatible string used to name subqueries
-            so that this method may be called multiple times to compose a query
-        '''
-        _screen = self.bridge['screen']
-        _activity = self.bridge['activity']
-        _su = self.bridge['screensaver_user']
-        # perform some hacks to speed up the query
-        _performed_by_users_cte = \
-            ScreensaverUserResource.get_user_cte()\
-            .where(
-                exists(select([None]).select_from(_activity)
-                    .where(_su.c.screensaver_user_id==_activity.c.performed_by_id)))\
-            .cte('performers_%s' % alias_qualifier)
-        _performed_by = _performed_by_users_cte.alias('performed_by_%s' % alias_qualifier)
-        _performed_by1 = _performed_by_users_cte.alias('performed_by1_%s' % alias_qualifier)
-        _performed_by2 = _performed_by_users_cte.alias('performed_by2_%s' % alias_qualifier)
-        _created_by_users_cte = \
-            ScreensaverUserResource.get_user_cte()\
-            .where(
-                exists(select([None]).select_from(_activity)
-                    .where(_su.c.screensaver_user_id==_activity.c.created_by_id)))\
-            .cte('creators_%s' % alias_qualifier)
-        _created_by = _created_by_users_cte.alias('created_by_%s' % alias_qualifier)
-        _created_by1 = _created_by_users_cte.alias('created_by1_%s' % alias_qualifier)
-        _lhsu = _su.alias('lhsu_%s' % alias_qualifier)
-        _sfs = self.bridge['screen_funding_supports']
-        
-        lab_head_table = \
-            ScreensaverUserResource.get_lab_head_cte(alias_qualifier)\
-                .cte('lab_heads_%s' % alias_qualifier)
-        return {
-            'performed_by_name': (
-                select([_performed_by1.c.name])
-                    .select_from(_performed_by1)
-                    .where(_performed_by1.c.screensaver_user_id 
-                        == _activity.c.performed_by_id)
-                ),
-            'performed_by_username': (
-                select([_performed_by.c.username])
-                    .select_from(_performed_by)
-                    .where(_performed_by.c.screensaver_user_id 
-                        == _activity.c.performed_by_id)
-                ),
-            'performed_by_user_id': (
-                select([_performed_by2.c.screensaver_user_id])
-                    .select_from(_performed_by2)
-                    .where(_performed_by2.c.screensaver_user_id 
-                        == _activity.c.performed_by_id)
-                ),
-            'created_by_name': (
-                select([_created_by1.c.name])
-                    .select_from(_created_by1)
-                    .where(_created_by1.c.screensaver_user_id 
-                        == _activity.c.created_by_id)
-                ),
-            'created_by_username': (
-                select([_created_by.c.username])
-                    .select_from(_created_by)
-                    .where(_created_by.c.screensaver_user_id 
-                        == _activity.c.created_by_id)
-                ),
-            'screen_lab_affiliation': (
-                select([lab_head_table.c.lab_affiliation])
-                .select_from(lab_head_table)
-                .where(lab_head_table.c.screensaver_user_id==_screen.c.lab_head_id)),
-            'screen_lab_name': (
-                select([lab_head_table.c.lab_name_full])
-                .select_from(lab_head_table)
-                .where(lab_head_table.c.screensaver_user_id==_screen.c.lab_head_id)),
-            'screen_lab_head_id': (
-                select([lab_head_table.c.screensaver_user_id])
-                .select_from(lab_head_table)
-                .where(lab_head_table.c.screensaver_user_id==_screen.c.lab_head_id)),
-            'screen_funding_supports':
-                select([func.array_to_string(
-                    func.array_agg(literal_column('funding_support')
-                    ), LIST_DELIMITER_SQL_ARRAY)])
-                    .select_from(
-                        select([_sfs.c.funding_support])
-                            .select_from(_sfs)
-                            .order_by(_sfs.c.funding_support)
-                            .where(_sfs.c.screen_id 
-                                == literal_column('screen.screen_id'))
-                            .alias('inner')),
-            'screen_lead_screener_name': (
-                select([_concat(_su.c.first_name, ' ', _su.c.last_name)])
-                    .select_from(_su)
-                    .where(_su.c.screensaver_user_id 
-                        == _screen.c.lead_screener_id)),
-            'screen_lead_screener_id': (
-                select([_su.c.screensaver_user_id])
-                    .select_from(_su)
-                    .where(_su.c.screensaver_user_id 
-                        == _screen.c.lead_screener_id)),
-            'screen_date_of_last_activity': literal_column(
-                '( (select date_of_activity '
-                '  from activity '
-                '  join lab_activity la using(activity_id) '
-                '  where la.screen_id=screen.screen_id '
-                '  and not exists(select null from cherry_pick_liquid_transfer cplt'
-                '     where cplt.activity_id = activity.activity_id) '
-                '  UNION ALL'
-                '  select date_of_activity '
-                '  from activity '
-                '  join service_activity sa using(activity_id) '
-                '  where sa.serviced_screen_id=screen.screen_id )'
-                '  order by date_of_activity desc LIMIT 1 )'),
-        }
-
-    def get_query(self, param_hash, user):
-        # general setup
-        schema = self.build_schema(user=user)
-        logger.info('activity get_query, schema: %r, %r', 
-            schema['key'], schema['fields'].keys())
-        
-        manual_field_includes = set(param_hash.get('includes', []))
-        # for join to screen query (TODO: only include if screen fields rqst'd)
-        manual_field_includes.add('screen_id')
-        manual_field_includes.add('activity_class')
-        # for join to cherrypickrequest (TODO: req'd to complete activity id link)
-        manual_field_includes.add('cherry_pick_request_id')
-        param_hash['includes'] = list(manual_field_includes)
-        
-        (filter_expression, filter_hash, readable_filter_hash) = \
-            SqlAlchemyResource.build_sqlalchemy_filters(
-                schema, param_hash=param_hash)
-        filename = self._get_filename(readable_filter_hash, schema)
-        
-        # NOTE: try "filter_in_sql" for performance
-        # NOTE: filters are done in the subquery clauses
-        # filter_expression = \
-        #     self._meta.authorization.filter(user,filter_expression)
-              
-        order_params = param_hash.get('order_by', [])
-        order_params.append('-date_of_activity')
-        field_hash = self.get_visible_fields(
-            schema['fields'], filter_hash.keys(), manual_field_includes,
-            param_hash.get('visibilities'),
-            exact_fields=set(param_hash.get('exact_fields', [])),
-            order_params=order_params)
-        order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
-            order_params, field_hash)
-
-        # specific setup
-        
-        _activity = self.bridge['activity']
-        # Create a UNION query of each subclass query:
-        (field_hash_sa, columns_sa, stmt_sa, count_stmt_sa, filenamesa) = (
-            self.get_service_activity_resource().get_query(param_hash, user))
-        # if a field is not present in the subquery, create an empty field            
-        sa_columns = []
-        for key, field in field_hash.items():
-            if field['scope'] == 'fields.activity':
-                if key not in columns_sa:
-                    if field['data_type'] == 'string':
-                        sa_columns.append(cast(literal_column("null"), 
-                            sqlalchemy.sql.sqltypes.Text).label(key))
-                    else:
-                        sa_columns.append(literal_column("null").label(key))
-                else:
-                    sa_columns.append(literal_column(key))
-#         logger.info('sa_columns: %r', sa_columns)
-        stmt_sa = stmt_sa.cte('serviceactivities')
-        stmt1 = select(sa_columns).select_from(stmt_sa)
-
-        (field_hash_la, columns_la, stmt_la, count_stmt_la) = (
-            self.get_lab_activity_query(param_hash, user))
-        # if a field is not present in the subquery, create an empty field            
-        la_columns = []
-        for key, field in field_hash.items():
-            if field['scope'] == 'fields.activity':
-                if key not in columns_la:
-                    logger.info('create dummy col for %r', key)
-                    if field['data_type'] == 'string':
-                        la_columns.append(cast(literal_column("null"), 
-                            sqlalchemy.sql.sqltypes.Text).label(key))
-                    else: 
-                        la_columns.append(literal_column("null").label(key))
-                else:
-                    la_columns.append(literal_column(key))
-                    
-#         logger.info('la_columns: %r', la_columns)
-        stmt_la = stmt_la.cte('labactivities')
-        stmt2 = select(la_columns).select_from(stmt_la)
-        
-        stmt = stmt1.union_all(stmt2)
-        (stmt, count_stmt) = self.wrap_statement(
-            stmt, order_clauses, filter_expression)
-
-        if logger.isEnabledFor(logging.DEBUG):
-            compiled_stmt = str(stmt.compile(
-                dialect=postgresql.dialect(),
-                compile_kwargs={"literal_binds": True}))
-            logger.info('compiled_stmt %s', compiled_stmt)
-
-
-        columns = { key:literal_column(key) for key in field_hash.keys()}
-        return (field_hash, columns, stmt, count_stmt, filename)
-    
-    def get_custom_lab_activity_columns(self, alias_qualifier):
-
-        _library_screening = self.bridge['library_screening']
-        _cps = self.bridge['cherry_pick_screening']
-        # _cplt = self.bridge['cherry_pick_liquid_transfer']
-        _screen = self.bridge['screen']
-        
-        activity_type_column = cast(case([
-            (_library_screening.c.activity_id != None,
-               case([(_library_screening.c.is_for_external_library_plates,
-                        'externallibraryscreening')],
-                    else_='libraryscreening')),
-            (_cps.c.activity_id != None,
-                'cherrypickscreening')
-            ],
-            else_='cplt'), sqlalchemy.sql.sqltypes.Text)
-
-        return { 
-            'serviced_user_id': cast(
-                literal_column("null"),sqlalchemy.sql.sqltypes.Numeric),
-            'serviced_user': cast(
-                literal_column("null"),sqlalchemy.sql.sqltypes.Text),
-            'serviced_username': cast(
-                literal_column("null"),sqlalchemy.sql.sqltypes.Text),
-            'funding_support': cast(
-                literal_column("null"),sqlalchemy.sql.sqltypes.Text),
-            'cherry_pick_request_id': _cps.c.cherry_pick_request_id,
-            # 20171108 - Do not show CPLT activities in the general activity report
-            # 'cherry_pick_request_id': 
-            #     cast(func.coalesce(
-            #             _cps.c.cherry_pick_request_id, 
-            #             _cplt.c.cherry_pick_request_id, None), 
-            #         sqlalchemy.sql.sqltypes.Text),
-            'type': activity_type_column,
-            'activity_class': activity_type_column,
-            }
-        
-    def get_lab_activity_query(self, param_hash, user):
-
-        # general setup
-        # schema for labactivity part of the query should only be the activity fields
-        # (exclude the screen.fields)
-        schema = deepcopy(self.build_schema(user=user))
-        field_hash = schema['fields']
-        field_hash = { key:val for key, val in field_hash.items() 
-            if val['scope'] == 'fields.activity'}  
-        schema['fields'] = field_hash
-        
-        manual_field_includes = set(param_hash.get('includes', []))
-        manual_field_includes.add('screen_id')
-        
-        (filter_expression, filter_hash, readable_filter_hash) = \
-            SqlAlchemyResource.build_sqlalchemy_filters(
-                schema, param_hash=param_hash)
-        filter_expression = \
-            self._meta.authorization.filter(user,filter_expression)
-              
-        order_params = param_hash.get('order_by', [])
-        field_hash = self.get_visible_fields(
-            schema['fields'], filter_hash.keys(), manual_field_includes,
-            param_hash.get('visibilities'),
-            exact_fields=set(param_hash.get('exact_fields', [])),
-            order_params=order_params)
-        order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
-            order_params, field_hash)
-         
-        # specific setup
-        _sfs = self.bridge['screen_funding_supports']
-        _a = self.bridge['activity']
-        _la = self.bridge['lab_activity']
-        _screening = self.bridge['screening']
-        _screen = self.bridge['screen']
-
-        j = _a
-        j = j.join(_la, _a.c.activity_id == _la.c.activity_id)
-        j = j.join(_screen, _la.c.screen_id == _screen.c.screen_id)
-
-        # TODO: delegate to sub_classes (when built)
-        _library_screening = self.bridge['library_screening']
-        _cps = self.bridge['cherry_pick_screening']
-        # 20171108 - Do not show CPLT activities in general report
-        _cplt = self.bridge['cherry_pick_liquid_transfer']
-        j = j.join(
-            _library_screening,
-            _la.c.activity_id == _library_screening.c.activity_id, isouter=True)
-        j = j.join(_cps, _la.c.activity_id == _cps.c.activity_id, isouter=True)
-        # j = j.join(_cplt, _la.c.activity_id == _cplt.c.activity_id, isouter=True)
-                
-        custom_columns = self.get_custom_columns('la')
-        custom_columns.update(self.get_custom_lab_activity_columns('lab_activity'))
-        
-        base_query_tables = ['activity', 'lab_activity', 'screening', 'screen'] 
-        columns = self.build_sqlalchemy_columns(
-            field_hash.values(), base_query_tables=base_query_tables,
-            custom_columns=custom_columns)
-        
-        stmt = select(columns.values()).select_from(j)
-        
-        stmt = stmt.where(~exists(
-            select([None]).select_from(_cplt).where(_cplt.c.activity_id==_a.c.activity_id)))
-        # stmt = self._meta.authorization.filter_in_sql(
-        #     user, stmt, screen_table=_screen)
-        # general setup
-         
-        (stmt, count_stmt) = self.wrap_statement(
-            stmt, order_clauses, filter_expression)
-        
-        if logger.isEnabledFor(logging.DEBUG):
-            compiled_stmt = str(stmt.compile(
-                dialect=postgresql.dialect(),
-                compile_kwargs={"literal_binds": True}))
-            logger.info('compiled_stmt %s', compiled_stmt)
-        
-        return (field_hash, columns, stmt, count_stmt)
 
     def build_list_response(self, request, **kwargs):
         schema = kwargs.pop('schema', None)
@@ -13649,43 +13322,135 @@ class ActivityResource(DbApiResource):
             rowproxy_generator=rowproxy_generator,
             title_function=title_function, meta=kwargs.get('meta', None),
             use_caching=True)
-             
+      
+    def get_join_and_custom_columns(self):
+        '''
+        Motivation: expose the join and custom column defs for subclass (LibraryScreening)
+        '''
+        _a = self.bridge['activity']
+        _screen_activity = _a.alias('screen_activity')
+        _screen = self.bridge['screen']
+        _user_cte = ScreensaverUserResource.get_user_cte().cte('activity_user')
+        _serviced_user = _user_cte.alias('svcu')
+        _performed_by = _user_cte.alias('pbu')
+        _created_by = _user_cte.alias('cbu')
+        _screen_lead = _user_cte.alias('s_ls')
+        _lh = ScreensaverUserResource.get_lab_head_cte('lht').cte('lht')
+        _sfs = self.bridge['screen_funding_supports']
+                
+        j = _a
+        j = j.join(
+            _serviced_user,
+            _a.c.serviced_user_id == _serviced_user.c.screensaver_user_id, isouter=True)
+        j = j.join(
+            _performed_by,
+            _a.c.performed_by_id == _performed_by.c.screensaver_user_id, isouter=True)
+        j = j.join(
+            _created_by,
+            _a.c.created_by_id == _created_by.c.screensaver_user_id, isouter=True)
+        j = j.join(
+            _screen,
+            _a.c.screen_id == _screen.c.screen_id, isouter=True)
+        j = j.join(
+            _lh, _screen.c.lab_head_id==_lh.c.screensaver_user_id, isouter=True)
+        j = j.join(
+            _screen_lead, 
+            _screen.c.lead_screener_id==_screen_lead.c.screensaver_user_id, isouter=True)
+        custom_columns = {
+            'serviced_user': _serviced_user.c.name,
+            'serviced_user_id': _serviced_user.c.screensaver_user_id,
+            'serviced_username': _serviced_user.c.username,
+            'performed_by_user_id': _performed_by.c.screensaver_user_id,
+            'performed_by_username': _performed_by.c.username,
+            'performed_by_name': _performed_by.c.name,
+            'created_by_user_id': _created_by.c.screensaver_user_id,
+            'created_by_username': _created_by.c.username,
+            'created_by_name': _created_by.c.name,
+            'screen_lab_name': _lh.c.lab_name_full,
+            'screen_lab_head_id': _lh.c.screensaver_user_id,
+            'screen_funding_supports':
+                select([func.array_to_string(
+                    func.array_agg(literal_column('funding_support')
+                    ), LIST_DELIMITER_SQL_ARRAY)])
+                    .select_from(
+                        select([_sfs.c.funding_support])
+                            .select_from(_sfs)
+                            .order_by(_sfs.c.funding_support)
+                            .where(_sfs.c.screen_id 
+                                == literal_column('screen.screen_id'))
+                            .alias('inner')),
+            'screen_lead_screener_id': _screen_lead.c.screensaver_user_id,
+            'screen_lead_screener_name': _screen_lead.c.name,
+            'screen_date_of_last_activity': (
+                select([func.max(_screen_activity.c.date_of_activity)])
+                .select_from(_screen_activity)
+                .where(_screen_activity.c.screen_id
+                    == literal_column('screen.screen_id'))
+                ),
+            'cherry_pick_request_id': cast(
+                literal_column("null"),sqlalchemy.sql.sqltypes.Numeric),
+        }
+        
+        return (j, custom_columns)
 
-class ServiceActivityResource(ActivityResource):    
+        
+    # TODO: 20180924 - get_query was created for the LibraryScreening subclass,
+    # but it is not needed, see get_join_and_custom_columns
+    def get_query(self, param_hash, user):
+        # general setup
+        schema = self.build_schema(user=user)
+        logger.info('activity get_query, schema: %r, %r', 
+            schema['key'], schema['fields'].keys())
+        
+        manual_field_includes = set(param_hash.get('includes', []))
+        # for join to screen query (TODO: only include if screen fields rqst'd)
+        manual_field_includes.add('screen_id')
+        manual_field_includes.add('activity_class')
+        # for join to cherrypickrequest (TODO: req'd to complete activity id link)
+        manual_field_includes.add('cherry_pick_request_id')
+        param_hash['includes'] = list(manual_field_includes)
+        
+        (filter_expression, filter_hash, readable_filter_hash) = \
+            SqlAlchemyResource.build_sqlalchemy_filters(
+                schema, param_hash=param_hash)
+        filename = self._get_filename(readable_filter_hash, schema)
+        
+        filter_expression = \
+            self._meta.authorization.filter(user,filter_expression)
+              
+        order_params = param_hash.get('order_by', [])
+        order_params.append('-date_of_activity')
+        field_hash = self.get_visible_fields(
+            schema['fields'], filter_hash.keys(), manual_field_includes,
+            param_hash.get('visibilities'),
+            exact_fields=set(param_hash.get('exact_fields', [])),
+            order_params=order_params)
+        order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
+            order_params, field_hash)
 
-    class Meta:
+        # specific setup
+        (join_clause, custom_columns) = self.get_join_and_custom_columns()
+        
+        base_query_tables = ['activity', 'screen'] 
 
-        queryset = ServiceActivity.objects.all()
-        authentication = MultiAuthentication(IccblBasicAuthentication(),
-                                             IccblSessionAuthentication())
-        resource_name = 'serviceactivity'
-        authorization = ActivityResourceAuthorization(resource_name)
-        ordering = []
-        filtering = {}
-        serializer = LimsSerializer()
-        max_limit = 10000
-        always_return_data = True
+        columns = self.build_sqlalchemy_columns(
+            field_hash.values(), base_query_tables=base_query_tables,
+            custom_columns=custom_columns)
+        
+        stmt = select(columns.values()).select_from(join_clause)
+        # stmt = self._meta.authorization.filter_in_sql(
+        #     user, stmt, serviced_user_table=_serviced, screen_table=_screen)
+        # general setup
+         
+        (stmt, count_stmt) = self.wrap_statement(
+            stmt, order_clauses, filter_expression)
 
-    def __init__(self, **kwargs):
-        super(ServiceActivityResource, self).__init__(**kwargs)
-
-    def prepend_urls(self):
-
-        return [
-            url(r"^(?P<resource_name>%s)/schema%s$" 
-                % (self._meta.resource_name, TRAILING_SLASH),
-                self.wrap_view('get_schema'), name="api_get_schema"),
-            url((r"^(?P<resource_name>%s)/" 
-                 r"(?P<activity_id>([\d]+))%s$")
-                    % (self._meta.resource_name, TRAILING_SLASH),
-                self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
-            url(r"^(?P<resource_name>%s)/for_user/(?P<serviced_user_id>([\d]+))%s$" 
-                    % (self._meta.resource_name, TRAILING_SLASH),
-                self.wrap_view('dispatch_list'), name="api_dispatch_list"),
-            url(r"^(?P<resource_name>%s)/for_user/(?P<serviced_user_id>([\d]+))%s$" 
-                    % (self._meta.resource_name, TRAILING_SLASH),
-                self.wrap_view('dispatch_list'), name="api_dispatch_list"),
-        ]    
+        # compiled_stmt = str(stmt.compile(
+        #     dialect=postgresql.dialect(),
+        #     compile_kwargs={"literal_binds": True}))
+        # logger.info('compiled_stmt %s', compiled_stmt)
+        
+        return (field_hash, columns, stmt, count_stmt, filename)
 
     @write_authorization
     @transaction.atomic
@@ -13696,14 +13461,9 @@ class ServiceActivityResource(ActivityResource):
             raise Exception('schema not initialized')
         fields = schema['fields']
 
-        # NOTE: parse params only if needed for client overrides
-        # param_hash = self._convert_request_to_dict(request)
-        # param_hash.update(kwargs)
-        # logger.debug('param_hash: %r', param_hash)
-
         id_kwargs = self.get_id(deserialized, schema=schema, **kwargs)
 
-        logger.info('patch ServiceActivity: %r', deserialized)
+        logger.info('patch Activity: %r, %r', id_kwargs, deserialized)
         
         patch = bool(id_kwargs)
         initializer_dict = self.parse(deserialized, create=not patch, schema=schema)
@@ -13711,10 +13471,8 @@ class ServiceActivityResource(ActivityResource):
         if errors:
             raise ValidationError(errors)
         
-        activity_type = deserialized.get('type', None)
-        if activity_type:
-            initializer_dict['service_activity_type'] = activity_type
-
+        activity_type = deserialized.get('type')
+        classification = deserialized.get('classification')
         serviced_user_id = deserialized.get('serviced_user_id', None)
         performed_by_user_id = deserialized.get('performed_by_user_id', None)
         serviced_screen_facility_id = deserialized.get('screen_facility_id', None)
@@ -13730,6 +13488,26 @@ class ServiceActivityResource(ActivityResource):
                 raise ValidationError(
                     key='type',
                     msg='required')
+            
+            screening_types = SCHEMA.VOCAB.activity.type.SCREENING_TYPES
+            if activity_type in screening_types:
+                raise ValidationError(
+                    key='type',
+                    msg='Reserved for "screening" Activities: (%s)'
+                        % ', '.join(screening_types))    
+            
+            if not classification:
+                raise ValidationError(
+                    key='classification', msg='required')
+            
+            service_classifications = \
+                SCHEMA.VOCAB.activity.classification.SERVICE_CLASSIFICATIONS
+            if classification not in service_classifications:
+                raise ValidationError(
+                    key='classification', 
+                    msg='A service activity must be one of (%s)'
+                        % ', '.join(service_classifications))
+            
             if not performed_by_user_id:
                 raise ValidationError(
                     key='performed_by_user_id',
@@ -13748,7 +13526,7 @@ class ServiceActivityResource(ActivityResource):
             try:
                 serviced_screen = Screen.objects.get(
                     facility_id=serviced_screen_facility_id)
-                initializer_dict['serviced_screen'] = serviced_screen
+                initializer_dict['screen'] = serviced_screen
             except ObjectDoesNotExist:
                 raise ValidationError(
                     key='screen_facility_id',
@@ -13767,14 +13545,14 @@ class ServiceActivityResource(ActivityResource):
                     key='performed_by_user_id',
                     msg='Must be a staff user')
 
-        service_activity = None
+        activity = None
         if patch:
             try:
-                service_activity = ServiceActivity.objects.get(
+                activity = Activity.objects.get(
                     pk=id_kwargs['activity_id'])
             except ObjectDoesNotExist:
                 raise Http404(
-                    'ServiceActivity does not exist for: %r', id_kwargs)
+                    'Activity does not exist for: %r', id_kwargs)
         else:
             # Set the created_by field:
             # NOTE: deprecate for SS V2
@@ -13784,29 +13562,25 @@ class ServiceActivityResource(ActivityResource):
                 logger.error('admin user: %r does not exist', request.user.username )
                 raise
             
-            service_activity = ServiceActivity()
-            service_activity.created_by = adminuser
+            activity = Activity()
+            activity.created_by = adminuser
         
-        service_activity.performed_by_id = performed_by_user_id
+        activity.performed_by_id = performed_by_user_id
         
-        model_field_names = [
-            x.name for x in service_activity._meta.get_fields()]
         for key, val in initializer_dict.items():
-            if key in model_field_names:
-                setattr(service_activity, key, val)
+            setattr(activity, key, val)
 
-        service_activity.save()
-        logger.info('saved service_activity: %r', service_activity)
-        return { API_RESULT_OBJ: service_activity }
+        activity.save()
+        logger.info('saved activity: %r', activity)
+        return { API_RESULT_OBJ: activity }
 
     def make_log_key(self, log, attributes, id_attribute=None, schema=None, **kwargs):
 
-        logger.debug('make_log_key: %r, %r, %r', attributes, id_attribute, kwargs)
+        logger.info('make_log_key: %r, %r', id_attribute, kwargs)
         
         if attributes:
-            ActivityResource.make_log_key(
-                self, log, attributes, id_attribute=id_attribute, 
-                schema=schema, **kwargs)
+            super(ActivityResource, self).make_log_key(
+                log, attributes, id_attribute=id_attribute, schema=schema, **kwargs)
             logger.info('log key: %r, %r', log.key, log)
     
             keys = []
@@ -13830,94 +13604,734 @@ class ServiceActivityResource(ActivityResource):
         activity_id = kwargs.get('activity_id', None)
         if activity_id:
             try:
-                sa = ServiceActivity.objects.get(
+                activity = Activity.objects.get(
                     activity_id=activity_id)
-                sa.delete()
+                activity.delete()
             except ObjectDoesNotExist:
-                logger.warn('no such ServiceActivity: %s' % activity_id)
+                logger.warn('no such Activity: %s' % activity_id)
                 raise Exception(
-                    'ServiceActivity for activity_id: %s not found' % activity_id)
+                    'Activity for activity_id: %s not found' % activity_id)
         else:
             raise Exception(
-                'ServiceActivity delete action requires an activity_id %s' 
+                'Activity delete action requires an activity_id %s' 
                 % kwargs)
         
-    def get_query(self, param_hash, user):
+# class ActivityResourceOld(DbApiResource):
+#     '''
+#     Activity Resource is a combination of the LabActivity and the ServiceActivity
+#     
+#     NOTE: 20170523
+#     ActivityResource needs to be reworked; the current design is from the 
+#     legacy Screensaver 1; 
+#     Activity is both a logging facility and a join class between User, Screen, 
+#     and CherryPickRequest.
+#     Refactor to make Activity a Reporting resource that logs:
+#     - performed by
+#     - serviced resource: Screen, User
+#     - serviced context: Screen, User, CherryPickRequest
+#     - referenced resources: Equipment
+#     - 
+#     '''
+# 
+#     class Meta:
+# 
+#         queryset = Activity.objects.all()
+#         authentication = MultiAuthentication(IccblBasicAuthentication(),
+#                                              IccblSessionAuthentication())
+#         resource_name = 'activity'
+#         authorization = ActivityResourceAuthorization(resource_name)
+#         serializer = LimsSerializer()
+#         ordering = []
+#         filtering = {}
+#         always_return_data = True 
+#         
+#     def __init__(self, **kwargs):
+# 
+#         self.service_activity_resource = None
+#         self.screen_resource = None
+#         self.su_resource = None
+#         super(ActivityResource, self).__init__(**kwargs)
+# 
+#     def prepend_urls(self):
+#         
+#         return [
+#             url(r"^(?P<resource_name>%s)/schema%s$" 
+#                 % (self._meta.resource_name, TRAILING_SLASH),
+#                 self.wrap_view('get_schema'), name="api_get_schema"),
+#             url(r"^(?P<resource_name>%s)"
+#                 r"/(?P<activity_id>[\d]+)%s$" 
+#                     % (self._meta.resource_name, TRAILING_SLASH),
+#                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+#         ]
+#     
+#     def get_su_resource(self):
+#         if self.su_resource is None:
+#             self.su_resource = ScreensaverUserResource()
+#         return self.su_resource
+# 
+#     def get_service_activity_resource(self):
+#         if self.service_activity_resource is None:
+#             self.service_activity_resource = ServiceActivityResource()
+#         return self.service_activity_resource
+# 
+#     def get_screen_resource(self):
+#         if self.screen_resource is None:
+#             self.screen_resource = ScreenResource()
+#         return self.screen_resource
+# 
+#     def build_schema(self, user=None, **kwargs):
+#          
+#         schema = super(ActivityResource, self).build_schema(user=user, **kwargs)
+#         return schema
+# 
+#     @read_authorization
+#     def get_detail(self, request, **kwargs):
+#  
+#         activity_id = kwargs.pop('activity_id', None)
+#         if not activity_id:
+#             raise Http404('must provide an activity_id parameter')
+#         else:
+#             kwargs['activity_id__eq'] = activity_id
+#  
+#         kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
+#         kwargs['is_for_detail'] = True
+#         return self.build_list_response(request, **kwargs)
+#         
+#     @read_authorization
+#     def get_list(self, request, **kwargs):
+# 
+#         kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
+#         return self.build_list_response(request, **kwargs)
+# 
+#     def get_custom_columns(self, alias_qualifier):
+#         '''
+#         Convenience method for subclasses: reusable custom columns
+#         @param alias_qualifier a sql compatible string used to name subqueries
+#             so that this method may be called multiple times to compose a query
+#         '''
+#         _screen = self.bridge['screen']
+#         _activity = self.bridge['activity']
+#         _su = self.bridge['screensaver_user']
+#         # perform some hacks to speed up the query
+#         _performed_by_users_cte = \
+#             ScreensaverUserResource.get_user_cte()\
+#             .where(
+#                 exists(select([None]).select_from(_activity)
+#                     .where(_su.c.screensaver_user_id==_activity.c.performed_by_id)))\
+#             .cte('performers_%s' % alias_qualifier)
+#         _performed_by = _performed_by_users_cte.alias('performed_by_%s' % alias_qualifier)
+#         _performed_by1 = _performed_by_users_cte.alias('performed_by1_%s' % alias_qualifier)
+#         _performed_by2 = _performed_by_users_cte.alias('performed_by2_%s' % alias_qualifier)
+#         _created_by_users_cte = \
+#             ScreensaverUserResource.get_user_cte()\
+#             .where(
+#                 exists(select([None]).select_from(_activity)
+#                     .where(_su.c.screensaver_user_id==_activity.c.created_by_id)))\
+#             .cte('creators_%s' % alias_qualifier)
+#         _created_by = _created_by_users_cte.alias('created_by_%s' % alias_qualifier)
+#         _created_by1 = _created_by_users_cte.alias('created_by1_%s' % alias_qualifier)
+#         _lhsu = _su.alias('lhsu_%s' % alias_qualifier)
+#         _sfs = self.bridge['screen_funding_supports']
+#         
+#         lab_head_table = \
+#             ScreensaverUserResource.get_lab_head_cte(alias_qualifier)\
+#                 .cte('lab_heads_%s' % alias_qualifier)
+#         return {
+#             'performed_by_name': (
+#                 select([_performed_by1.c.name])
+#                     .select_from(_performed_by1)
+#                     .where(_performed_by1.c.screensaver_user_id 
+#                         == _activity.c.performed_by_id)
+#                 ),
+#             'performed_by_username': (
+#                 select([_performed_by.c.username])
+#                     .select_from(_performed_by)
+#                     .where(_performed_by.c.screensaver_user_id 
+#                         == _activity.c.performed_by_id)
+#                 ),
+#             'performed_by_user_id': (
+#                 select([_performed_by2.c.screensaver_user_id])
+#                     .select_from(_performed_by2)
+#                     .where(_performed_by2.c.screensaver_user_id 
+#                         == _activity.c.performed_by_id)
+#                 ),
+#             'created_by_name': (
+#                 select([_created_by1.c.name])
+#                     .select_from(_created_by1)
+#                     .where(_created_by1.c.screensaver_user_id 
+#                         == _activity.c.created_by_id)
+#                 ),
+#             'created_by_username': (
+#                 select([_created_by.c.username])
+#                     .select_from(_created_by)
+#                     .where(_created_by.c.screensaver_user_id 
+#                         == _activity.c.created_by_id)
+#                 ),
+#             'screen_lab_affiliation': (
+#                 select([lab_head_table.c.lab_affiliation])
+#                 .select_from(lab_head_table)
+#                 .where(lab_head_table.c.screensaver_user_id==_screen.c.lab_head_id)),
+#             'screen_lab_name': (
+#                 select([lab_head_table.c.lab_name_full])
+#                 .select_from(lab_head_table)
+#                 .where(lab_head_table.c.screensaver_user_id==_screen.c.lab_head_id)),
+#             'screen_lab_head_id': (
+#                 select([lab_head_table.c.screensaver_user_id])
+#                 .select_from(lab_head_table)
+#                 .where(lab_head_table.c.screensaver_user_id==_screen.c.lab_head_id)),
+#             'screen_funding_supports':
+#                 select([func.array_to_string(
+#                     func.array_agg(literal_column('funding_support')
+#                     ), LIST_DELIMITER_SQL_ARRAY)])
+#                     .select_from(
+#                         select([_sfs.c.funding_support])
+#                             .select_from(_sfs)
+#                             .order_by(_sfs.c.funding_support)
+#                             .where(_sfs.c.screen_id 
+#                                 == literal_column('screen.screen_id'))
+#                             .alias('inner')),
+#             'screen_lead_screener_name': (
+#                 select([_concat(_su.c.first_name, ' ', _su.c.last_name)])
+#                     .select_from(_su)
+#                     .where(_su.c.screensaver_user_id 
+#                         == _screen.c.lead_screener_id)),
+#             'screen_lead_screener_id': (
+#                 select([_su.c.screensaver_user_id])
+#                     .select_from(_su)
+#                     .where(_su.c.screensaver_user_id 
+#                         == _screen.c.lead_screener_id)),
+#             'screen_date_of_last_activity': literal_column(
+#                 '( (select date_of_activity '
+#                 '  from activity '
+#                 '  join lab_activity la using(activity_id) '
+#                 '  where la.screen_id=screen.screen_id '
+#                 '  and not exists(select null from cherry_pick_liquid_transfer cplt'
+#                 '     where cplt.activity_id = activity.activity_id) '
+#                 '  UNION ALL'
+#                 '  select date_of_activity '
+#                 '  from activity '
+#                 '  join service_activity sa using(activity_id) '
+#                 '  where sa.serviced_screen_id=screen.screen_id )'
+#                 '  order by date_of_activity desc LIMIT 1 )'),
+#         }
+# 
+#     def get_query(self, param_hash, user):
+#         # general setup
+#         schema = self.build_schema(user=user)
+#         logger.info('activity get_query, schema: %r, %r', 
+#             schema['key'], schema['fields'].keys())
+#         
+#         manual_field_includes = set(param_hash.get('includes', []))
+#         # for join to screen query (TODO: only include if screen fields rqst'd)
+#         manual_field_includes.add('screen_id')
+#         manual_field_includes.add('activity_class')
+#         # for join to cherrypickrequest (TODO: req'd to complete activity id link)
+#         manual_field_includes.add('cherry_pick_request_id')
+#         param_hash['includes'] = list(manual_field_includes)
+#         
+#         (filter_expression, filter_hash, readable_filter_hash) = \
+#             SqlAlchemyResource.build_sqlalchemy_filters(
+#                 schema, param_hash=param_hash)
+#         filename = self._get_filename(readable_filter_hash, schema)
+#         
+#         # NOTE: try "filter_in_sql" for performance
+#         # NOTE: filters are done in the subquery clauses
+#         # filter_expression = \
+#         #     self._meta.authorization.filter(user,filter_expression)
+#               
+#         order_params = param_hash.get('order_by', [])
+#         order_params.append('-date_of_activity')
+#         field_hash = self.get_visible_fields(
+#             schema['fields'], filter_hash.keys(), manual_field_includes,
+#             param_hash.get('visibilities'),
+#             exact_fields=set(param_hash.get('exact_fields', [])),
+#             order_params=order_params)
+#         order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
+#             order_params, field_hash)
+# 
+#         # specific setup
+#         
+#         _activity = self.bridge['activity']
+#         # Create a UNION query of each subclass query:
+#         (field_hash_sa, columns_sa, stmt_sa, count_stmt_sa, filenamesa) = (
+#             self.get_service_activity_resource().get_query(param_hash, user))
+#         # if a field is not present in the subquery, create an empty field            
+#         sa_columns = []
+#         for key, field in field_hash.items():
+#             if field['scope'] == 'fields.activity':
+#                 if key not in columns_sa:
+#                     if field['data_type'] == 'string':
+#                         sa_columns.append(cast(literal_column("null"), 
+#                             sqlalchemy.sql.sqltypes.Text).label(key))
+#                     else:
+#                         sa_columns.append(literal_column("null").label(key))
+#                 else:
+#                     sa_columns.append(literal_column(key))
+#         stmt_sa = stmt_sa.cte('serviceactivities')
+#         stmt1 = select(sa_columns).select_from(stmt_sa)
+# 
+#         (field_hash_la, columns_la, stmt_la, count_stmt_la) = (
+#             self.get_lab_activity_query(param_hash, user))
+#         # if a field is not present in the subquery, create an empty field            
+#         la_columns = []
+#         for key, field in field_hash.items():
+#             if field['scope'] == 'fields.activity':
+#                 if key not in columns_la:
+#                     logger.info('create dummy col for %r', key)
+#                     if field['data_type'] == 'string':
+#                         la_columns.append(cast(literal_column("null"), 
+#                             sqlalchemy.sql.sqltypes.Text).label(key))
+#                     else: 
+#                         la_columns.append(literal_column("null").label(key))
+#                 else:
+#                     la_columns.append(literal_column(key))
+#                     
+#         stmt_la = stmt_la.cte('labactivities')
+#         stmt2 = select(la_columns).select_from(stmt_la)
+#         
+#         stmt = stmt1.union_all(stmt2)
+#         (stmt, count_stmt) = self.wrap_statement(
+#             stmt, order_clauses, filter_expression)
+# 
+# #         if logger.isEnabledFor(logging.DEBUG):
+#         compiled_stmt = str(stmt.compile(
+#             dialect=postgresql.dialect(),
+#             compile_kwargs={"literal_binds": True}))
+#         logger.info('compiled_stmt %s', compiled_stmt)
+# 
+# 
+#         columns = { key:literal_column(key) for key in field_hash.keys()}
+#         return (field_hash, columns, stmt, count_stmt, filename)
+#     
+#     def get_custom_lab_activity_columns(self, alias_qualifier):
+# 
+#         _library_screening = self.bridge['library_screening']
+#         _cps = self.bridge['cherry_pick_screening']
+#         # _cplt = self.bridge['cherry_pick_liquid_transfer']
+#         _screen = self.bridge['screen']
+#         
+#         activity_type_column = cast(case([
+#             (_library_screening.c.activity_id != None,
+#                case([(_library_screening.c.is_for_external_library_plates,
+#                         'externallibraryscreening')],
+#                     else_='libraryscreening')),
+#             (_cps.c.activity_id != None,
+#                 'cherrypickscreening')
+#             ],
+#             else_='cplt'), sqlalchemy.sql.sqltypes.Text)
+# 
+#         return { 
+#             'serviced_user_id': cast(
+#                 literal_column("null"),sqlalchemy.sql.sqltypes.Numeric),
+#             'serviced_user': cast(
+#                 literal_column("null"),sqlalchemy.sql.sqltypes.Text),
+#             'serviced_username': cast(
+#                 literal_column("null"),sqlalchemy.sql.sqltypes.Text),
+#             'funding_support': cast(
+#                 literal_column("null"),sqlalchemy.sql.sqltypes.Text),
+#             'cherry_pick_request_id': _cps.c.cherry_pick_request_id,
+#             # 20171108 - Do not show CPLT activities in the general activity report
+#             # 'cherry_pick_request_id': 
+#             #     cast(func.coalesce(
+#             #             _cps.c.cherry_pick_request_id, 
+#             #             _cplt.c.cherry_pick_request_id, None), 
+#             #         sqlalchemy.sql.sqltypes.Text),
+#             'type': activity_type_column,
+#             'activity_class': activity_type_column,
+#             }
+#         
+#     def get_lab_activity_query(self, param_hash, user):
+# 
+#         # general setup
+#         # schema for labactivity part of the query should only be the activity fields
+#         # (exclude the screen.fields)
+#         schema = deepcopy(self.build_schema(user=user))
+#         field_hash = schema['fields']
+#         field_hash = { key:val for key, val in field_hash.items() 
+#             if val['scope'] == 'fields.activity'}  
+#         schema['fields'] = field_hash
+#         
+#         manual_field_includes = set(param_hash.get('includes', []))
+#         manual_field_includes.add('screen_id')
+#         
+#         (filter_expression, filter_hash, readable_filter_hash) = \
+#             SqlAlchemyResource.build_sqlalchemy_filters(
+#                 schema, param_hash=param_hash)
+#         filter_expression = \
+#             self._meta.authorization.filter(user,filter_expression)
+#               
+#         order_params = param_hash.get('order_by', [])
+#         field_hash = self.get_visible_fields(
+#             schema['fields'], filter_hash.keys(), manual_field_includes,
+#             param_hash.get('visibilities'),
+#             exact_fields=set(param_hash.get('exact_fields', [])),
+#             order_params=order_params)
+#         order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
+#             order_params, field_hash)
+#          
+#         # specific setup
+#         _sfs = self.bridge['screen_funding_supports']
+#         _a = self.bridge['activity']
+#         _la = self.bridge['lab_activity']
+#         _screening = self.bridge['screening']
+#         _screen = self.bridge['screen']
+# 
+#         j = _a
+#         j = j.join(_la, _a.c.activity_id == _la.c.activity_id)
+#         j = j.join(_screen, _la.c.screen_id == _screen.c.screen_id)
+# 
+#         # TODO: delegate to sub_classes (when built)
+#         _library_screening = self.bridge['library_screening']
+#         _cps = self.bridge['cherry_pick_screening']
+#         # 20171108 - Do not show CPLT activities in general report
+#         _cplt = self.bridge['cherry_pick_liquid_transfer']
+#         j = j.join(
+#             _library_screening,
+#             _la.c.activity_id == _library_screening.c.activity_id, isouter=True)
+#         j = j.join(_cps, _la.c.activity_id == _cps.c.activity_id, isouter=True)
+#         # j = j.join(_cplt, _la.c.activity_id == _cplt.c.activity_id, isouter=True)
+#                 
+#         custom_columns = self.get_custom_columns('la')
+#         custom_columns.update(self.get_custom_lab_activity_columns('lab_activity'))
+#         
+#         base_query_tables = ['activity', 'lab_activity', 'screening', 'screen'] 
+#         columns = self.build_sqlalchemy_columns(
+#             field_hash.values(), base_query_tables=base_query_tables,
+#             custom_columns=custom_columns)
+#         
+#         stmt = select(columns.values()).select_from(j)
+#         
+#         stmt = stmt.where(~exists(
+#             select([None]).select_from(_cplt).where(_cplt.c.activity_id==_a.c.activity_id)))
+#         # stmt = self._meta.authorization.filter_in_sql(
+#         #     user, stmt, screen_table=_screen)
+#         # general setup
+#          
+#         (stmt, count_stmt) = self.wrap_statement(
+#             stmt, order_clauses, filter_expression)
+#         
+#         if logger.isEnabledFor(logging.DEBUG):
+#             compiled_stmt = str(stmt.compile(
+#                 dialect=postgresql.dialect(),
+#                 compile_kwargs={"literal_binds": True}))
+#             logger.info('compiled_stmt %s', compiled_stmt)
+#         
+#         return (field_hash, columns, stmt, count_stmt)
+# 
+#     def build_list_response(self, request, **kwargs):
+#         schema = kwargs.pop('schema', None)
+#         if not schema:
+#             raise Exception('schema not initialized')
+# 
+#         param_hash = self._convert_request_to_dict(request)
+#         param_hash.update(kwargs)
+#         is_data_interchange = param_hash.get(HTTP_PARAM_DATA_INTERCHANGE, False)
+#         use_vocab = param_hash.get(HTTP_PARAM_USE_VOCAB, False)
+#         use_titles = param_hash.get(HTTP_PARAM_USE_TITLES, False)
+#         if is_data_interchange:
+#             use_vocab = False
+#             use_titles = False
+#         is_for_detail = kwargs.pop('is_for_detail', False)
+#         
+#         (field_hash, columns, stmt, count_stmt, filename) = \
+#             self.get_query(param_hash, request.user)
+#         
+#         rowproxy_generator = None
+#         if use_vocab is True:
+#             rowproxy_generator = \
+#                 DbApiResource.create_vocabulary_rowproxy_generator(field_hash)
+#             # use "use_vocab" as a proxy to also adjust siunits for viewing
+#             rowproxy_generator = DbApiResource.create_siunit_rowproxy_generator(
+#                 field_hash, rowproxy_generator)
+#         rowproxy_generator = \
+#            self._meta.authorization.get_row_property_generator(
+#                request.user, field_hash, rowproxy_generator)
+# 
+#         title_function = None
+#         if use_titles is True:
+#             def title_function(key):
+#                 return field_hash[key]['title']
+#         if is_data_interchange:
+#             title_function = DbApiResource.datainterchange_title_function(
+#                 field_hash,schema['id_attribute'])
+#         
+#         return self.stream_response_from_statement(
+#             request, stmt, count_stmt, filename,
+#             field_hash=field_hash,
+#             param_hash=param_hash,
+#             is_for_detail=is_for_detail,
+#             rowproxy_generator=rowproxy_generator,
+#             title_function=title_function, meta=kwargs.get('meta', None),
+#             use_caching=True)
+             
 
-        schema = self.build_schema(user=user)
-        logger.debug('serviceactivity query: %r', schema['fields'].keys())
-        # general setup
-        alias_qualifier = 'sa'
-        manual_field_includes = set(param_hash.get('includes', []))
-        # for join to screen query (TODO: only include if screen fields rqst'd)
-        manual_field_includes.add('screen_id')
-        
-        (filter_expression, filter_hash, readable_filter_hash) = \
-            SqlAlchemyResource.build_sqlalchemy_filters(
-                schema, param_hash=param_hash)
-        filename = self._get_filename(readable_filter_hash, schema)
-        filter_expression = \
-            self._meta.authorization.filter(user,filter_expression)
-
-              
-        order_params = param_hash.get('order_by', [])
-        order_params.append('-date_of_activity')
-        field_hash = self.get_visible_fields(
-            schema['fields'], filter_hash.keys(), manual_field_includes,
-            param_hash.get('visibilities'),
-            exact_fields=set(param_hash.get('exact_fields', [])),
-            order_params=order_params)
-        order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
-            order_params, field_hash)
-         
-        # specific setup
-        _a = self.bridge['activity']
-        _sa = self.bridge['service_activity']
-        _screen = self.bridge['screen']
-        _user_cte = ScreensaverUserResource.get_user_cte().cte('users_serviced_sa')
-        _serviced = _user_cte.alias('serviced_user')
-        
-        j = _a
-        j = j.join(_sa, _a.c.activity_id == _sa.c.activity_id)
-        j = j.join(
-            _serviced,
-            _sa.c.serviced_user_id == _serviced.c.screensaver_user_id, isouter=True)
-        j = j.join(
-            _screen,
-            _sa.c.serviced_screen_id == _screen.c.screen_id, isouter=True)
-        
-        # Get custom columns from the parent (ActivityResource); the
-        # ServiceActivity query rows contain the needed activity and screen ids
-        custom_columns = \
-            super(ServiceActivityResource, self).get_custom_columns('sa')
-        custom_columns.update({
-            'activity_class': cast(
-                literal_column("'serviceactivity'"), 
-                sqlalchemy.sql.sqltypes.Text),
-            'serviced_user': _serviced.c.name,
-            'serviced_username': _serviced.c.username,
-            'serviced_user_id': _serviced.c.screensaver_user_id,
-            })
-
-        base_query_tables = ['activity', 'service_activity', 'screen'] 
-        columns = self.build_sqlalchemy_columns(
-            field_hash.values(), base_query_tables=base_query_tables,
-            custom_columns=custom_columns)
-        
-        stmt = select(columns.values()).select_from(j)
-        # stmt = self._meta.authorization.filter_in_sql(
-        #     user, stmt, serviced_user_table=_serviced, screen_table=_screen)
-        # general setup
-         
-        (stmt, count_stmt) = self.wrap_statement(
-            stmt, order_clauses, filter_expression)
-
-        # compiled_stmt = str(stmt.compile(
-        #     dialect=postgresql.dialect(),
-        #     compile_kwargs={"literal_binds": True}))
-        # logger.info('compiled_stmt %s', compiled_stmt)
-        
-        return (field_hash, columns, stmt, count_stmt, filename)
+# class ServiceActivityResource(ActivityResource):    
+# 
+#     class Meta:
+# 
+#         queryset = ServiceActivity.objects.all()
+#         authentication = MultiAuthentication(IccblBasicAuthentication(),
+#                                              IccblSessionAuthentication())
+#         resource_name = 'serviceactivity'
+#         authorization = ActivityResourceAuthorization(resource_name)
+#         ordering = []
+#         filtering = {}
+#         serializer = LimsSerializer()
+#         max_limit = 10000
+#         always_return_data = True
+# 
+#     def __init__(self, **kwargs):
+#         super(ServiceActivityResource, self).__init__(**kwargs)
+# 
+#     def prepend_urls(self):
+# 
+#         return [
+#             url(r"^(?P<resource_name>%s)/schema%s$" 
+#                 % (self._meta.resource_name, TRAILING_SLASH),
+#                 self.wrap_view('get_schema'), name="api_get_schema"),
+#             url((r"^(?P<resource_name>%s)/" 
+#                  r"(?P<activity_id>([\d]+))%s$")
+#                     % (self._meta.resource_name, TRAILING_SLASH),
+#                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
+#             url(r"^(?P<resource_name>%s)/for_user/(?P<serviced_user_id>([\d]+))%s$" 
+#                     % (self._meta.resource_name, TRAILING_SLASH),
+#                 self.wrap_view('dispatch_list'), name="api_dispatch_list"),
+#             url(r"^(?P<resource_name>%s)/for_user/(?P<serviced_user_id>([\d]+))%s$" 
+#                     % (self._meta.resource_name, TRAILING_SLASH),
+#                 self.wrap_view('dispatch_list'), name="api_dispatch_list"),
+#         ]    
+# 
+#     @write_authorization
+#     @transaction.atomic
+#     def patch_obj(self, request, deserialized, **kwargs):
+# 
+#         schema = kwargs.pop('schema', None)
+#         if schema is None:
+#             raise Exception('schema not initialized')
+#         fields = schema['fields']
+# 
+#         # NOTE: parse params only if needed for client overrides
+#         # param_hash = self._convert_request_to_dict(request)
+#         # param_hash.update(kwargs)
+#         # logger.debug('param_hash: %r', param_hash)
+# 
+#         id_kwargs = self.get_id(deserialized, schema=schema, **kwargs)
+# 
+#         logger.info('patch ServiceActivity: %r', deserialized)
+#         
+#         patch = bool(id_kwargs)
+#         initializer_dict = self.parse(deserialized, create=not patch, schema=schema)
+#         errors = self.validate(initializer_dict, schema=schema, patch=patch)
+#         if errors:
+#             raise ValidationError(errors)
+#         
+#         activity_type = deserialized.get('type', None)
+#         if activity_type:
+#             initializer_dict['service_activity_type'] = activity_type
+# 
+#         serviced_user_id = deserialized.get('serviced_user_id', None)
+#         performed_by_user_id = deserialized.get('performed_by_user_id', None)
+#         serviced_screen_facility_id = deserialized.get('screen_facility_id', None)
+#         
+#         if not patch:
+#             if serviced_user_id is None and serviced_screen_facility_id is None:
+#                 msg = 'Either serviced user or serviced screen_facility_id is required'
+#                 raise ValidationError({
+#                     'serviced_user_id': msg,
+#                     'screen_facility_id': msg
+#                     })
+#             if not activity_type:
+#                 raise ValidationError(
+#                     key='type',
+#                     msg='required')
+#             if not performed_by_user_id:
+#                 raise ValidationError(
+#                     key='performed_by_user_id',
+#                     msg='required')
+# 
+#         if serviced_user_id:
+#             try:
+#                 serviced_user = ScreensaverUser.objects.get(
+#                     screensaver_user_id=serviced_user_id)
+#                 initializer_dict['serviced_user'] = serviced_user
+#             except ObjectDoesNotExist:
+#                 raise ValidationError(
+#                     key='serviced_user_id',
+#                     msg='id does not exist: %r' % serviced_user_id)
+#         if serviced_screen_facility_id:
+#             try:
+#                 serviced_screen = Screen.objects.get(
+#                     facility_id=serviced_screen_facility_id)
+#                 initializer_dict['serviced_screen'] = serviced_screen
+#             except ObjectDoesNotExist:
+#                 raise ValidationError(
+#                     key='screen_facility_id',
+#                     msg='screen does not exist: %r' % serviced_screen_facility_id)
+#         if performed_by_user_id:
+#             performed_by = \
+#                 self.get_su_resource()._get_detail_response_internal(
+#                 exact_fields=['screensaver_user_id','is_staff'],
+#                 screensaver_user_id=performed_by_user_id)
+#             if not performed_by: 
+#                 raise ValidationError(
+#                     key='performed_by_user_id',
+#                     msg='No such screensaver_user_id: %r' % performed_by_user_id)
+#             if performed_by.get('is_staff',False) != True:
+#                 raise ValidationError(
+#                     key='performed_by_user_id',
+#                     msg='Must be a staff user')
+# 
+#         service_activity = None
+#         if patch:
+#             try:
+#                 service_activity = ServiceActivity.objects.get(
+#                     pk=id_kwargs['activity_id'])
+#             except ObjectDoesNotExist:
+#                 raise Http404(
+#                     'ServiceActivity does not exist for: %r', id_kwargs)
+#         else:
+#             # Set the created_by field:
+#             # NOTE: deprecate for SS V2
+#             try:
+#                 adminuser = ScreensaverUser.objects.get(username=request.user.username)
+#             except ObjectDoesNotExist as e:
+#                 logger.error('admin user: %r does not exist', request.user.username )
+#                 raise
+#             
+#             service_activity = ServiceActivity()
+#             service_activity.created_by = adminuser
+#         
+#         service_activity.performed_by_id = performed_by_user_id
+#         
+#         model_field_names = [
+#             x.name for x in service_activity._meta.get_fields()]
+#         for key, val in initializer_dict.items():
+#             if key in model_field_names:
+#                 setattr(service_activity, key, val)
+# 
+#         service_activity.save()
+#         logger.info('saved service_activity: %r', service_activity)
+#         return { API_RESULT_OBJ: service_activity }
+# 
+#     def make_log_key(self, log, attributes, id_attribute=None, schema=None, **kwargs):
+# 
+#         logger.debug('make_log_key: %r, %r, %r', attributes, id_attribute, kwargs)
+#         
+#         if attributes:
+#             ActivityResource.make_log_key(
+#                 self, log, attributes, id_attribute=id_attribute, 
+#                 schema=schema, **kwargs)
+#             logger.info('log key: %r, %r', log.key, log)
+#     
+#             keys = []
+#             # Always create the service activity log for the user, if available 
+#             if attributes.get('serviced_user_id', None):
+#                 keys.append('screensaveruser')
+#                 keys.append(str(attributes['serviced_user_id']))
+#             elif attributes.get('screen_facility_id', None):
+#                 keys.append('screen')
+#                 keys.append(attributes['screen_facility_id'])
+#             keys.append(self._meta.resource_name)
+#             log.uri = '%s/%s' % ('/'.join(keys), log.key)
+#         
+#             logger.info('log uri: %r, %r', log.uri, log)
+# 
+#     @write_authorization
+#     @un_cache
+#     @transaction.atomic
+#     def delete_obj(self, request, deserialized, **kwargs):
+# 
+#         activity_id = kwargs.get('activity_id', None)
+#         if activity_id:
+#             try:
+#                 sa = ServiceActivity.objects.get(
+#                     activity_id=activity_id)
+#                 sa.delete()
+#             except ObjectDoesNotExist:
+#                 logger.warn('no such ServiceActivity: %s' % activity_id)
+#                 raise Exception(
+#                     'ServiceActivity for activity_id: %s not found' % activity_id)
+#         else:
+#             raise Exception(
+#                 'ServiceActivity delete action requires an activity_id %s' 
+#                 % kwargs)
+#         
+#     def get_query(self, param_hash, user):
+# 
+#         schema = self.build_schema(user=user)
+#         logger.debug('serviceactivity query: %r', schema['fields'].keys())
+#         # general setup
+#         alias_qualifier = 'sa'
+#         manual_field_includes = set(param_hash.get('includes', []))
+#         # for join to screen query (TODO: only include if screen fields rqst'd)
+#         manual_field_includes.add('screen_id')
+#         
+#         (filter_expression, filter_hash, readable_filter_hash) = \
+#             SqlAlchemyResource.build_sqlalchemy_filters(
+#                 schema, param_hash=param_hash)
+#         filename = self._get_filename(readable_filter_hash, schema)
+#         filter_expression = \
+#             self._meta.authorization.filter(user,filter_expression)
+# 
+#               
+#         order_params = param_hash.get('order_by', [])
+#         order_params.append('-date_of_activity')
+#         field_hash = self.get_visible_fields(
+#             schema['fields'], filter_hash.keys(), manual_field_includes,
+#             param_hash.get('visibilities'),
+#             exact_fields=set(param_hash.get('exact_fields', [])),
+#             order_params=order_params)
+#         order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
+#             order_params, field_hash)
+#          
+#         # specific setup
+#         _a = self.bridge['activity']
+#         _sa = self.bridge['service_activity']
+#         _screen = self.bridge['screen']
+#         _user_cte = ScreensaverUserResource.get_user_cte().cte('users_serviced_sa')
+#         _serviced = _user_cte.alias('serviced_user')
+#         
+#         j = _a
+#         j = j.join(_sa, _a.c.activity_id == _sa.c.activity_id)
+#         j = j.join(
+#             _serviced,
+#             _sa.c.serviced_user_id == _serviced.c.screensaver_user_id, isouter=True)
+#         j = j.join(
+#             _screen,
+#             _sa.c.serviced_screen_id == _screen.c.screen_id, isouter=True)
+#         
+#         # Get custom columns from the parent (ActivityResource); the
+#         # ServiceActivity query rows contain the needed activity and screen ids
+#         custom_columns = \
+#             super(ServiceActivityResource, self).get_custom_columns('sa')
+#         custom_columns.update({
+#             'activity_class': cast(
+#                 literal_column("'serviceactivity'"), 
+#                 sqlalchemy.sql.sqltypes.Text),
+#             'serviced_user': _serviced.c.name,
+#             'serviced_username': _serviced.c.username,
+#             'serviced_user_id': _serviced.c.screensaver_user_id,
+#             })
+# 
+#         base_query_tables = ['activity', 'service_activity', 'screen'] 
+#         columns = self.build_sqlalchemy_columns(
+#             field_hash.values(), base_query_tables=base_query_tables,
+#             custom_columns=custom_columns)
+#         
+#         stmt = select(columns.values()).select_from(j)
+#         # stmt = self._meta.authorization.filter_in_sql(
+#         #     user, stmt, serviced_user_table=_serviced, screen_table=_screen)
+#         # general setup
+#          
+#         (stmt, count_stmt) = self.wrap_statement(
+#             stmt, order_clauses, filter_expression)
+# 
+#         # compiled_stmt = str(stmt.compile(
+#         #     dialect=postgresql.dialect(),
+#         #     compile_kwargs={"literal_binds": True}))
+#         # logger.info('compiled_stmt %s', compiled_stmt)
+#         
+#         return (field_hash, columns, stmt, count_stmt, filename)
 
 
 class LibraryScreeningResource(ActivityResource):
@@ -14315,7 +14729,6 @@ class LibraryScreeningResource(ActivityResource):
             _pl = self.bridge['plate_location']
             _l = self.bridge['library']
             _ls = self.bridge['library_screening']
-            _la = self.bridge['lab_activity']
             _ap = self.bridge['assay_plate']
             _screen = self.bridge['screen']
             
@@ -14342,13 +14755,12 @@ class LibraryScreeningResource(ActivityResource):
                        .join(_p, _ap.c.plate_id==_p.c.plate_id)
                        .join(_c, _c.c.copy_id==_p.c.copy_id)
                        .join(_l, _c.c.library_id==_l.c.library_id)
-                       .join(_la,_ls.c.activity_id==_la.c.activity_id)
                     )
                 .where(_ap.c.replicate_ordinal==0))
             extant_plate_numbers = []
             if screen is not None:
                 _assay_plates_query = _assay_plates_query.where(
-                    _la.c.screen_id==screen.screen_id)
+                    _a.c.screen_id==screen.screen_id)
                 extant_plate_numbers = [
                     x[1] for x in conn.execute(_assay_plates_query)]
             _assay_plates_query = _assay_plates_query.cte('assay_plates')
@@ -14652,7 +15064,6 @@ class LibraryScreeningResource(ActivityResource):
         filter_expression = \
             self._meta.authorization.filter(user,filter_expression)
 
-              
         order_params = param_hash.get('order_by', [])
         order_params.append('-date_of_activity')
         field_hash = self.get_visible_fields(
@@ -14664,35 +15075,25 @@ class LibraryScreeningResource(ActivityResource):
             order_params, field_hash)
          
         # specific setup
+        (join_clause, custom_columns) = \
+            super(LibraryScreeningResource, self).get_join_and_custom_columns()
+            
         _a = self.bridge['activity']
         _la = self.bridge['lab_activity']
         _screening = self.bridge['screening']
         _library_screening = self.bridge['library_screening']
-        _screen = self.bridge['screen']
         _ap = self.bridge['assay_plate']
         _c = self.bridge['copy']
         _p = self.bridge['plate']
-        j = _a
-        j = j.join(_la, _a.c.activity_id == _la.c.activity_id)
-        j = j.join(_screening, _screening.c.activity_id == _la.c.activity_id)
-        j = j.join(
+        join_clause = join_clause.join(
+            _la, _a.c.activity_id == _la.c.activity_id)    
+        join_clause = join_clause.join(
+            _screening, _screening.c.activity_id == _la.c.activity_id)    
+        join_clause = join_clause.join(
             _library_screening,
             _library_screening.c.activity_id == _la.c.activity_id)
-        j = j.join(_screen, _la.c.screen_id == _screen.c.screen_id)
-
-        # Get custom columns from the parent (ActivityResource); the
-        # LibraryScreening query rows contain the needed activity and screen ids
-        custom_columns = \
-            super(LibraryScreeningResource, self).get_custom_columns('ls')
+            
         custom_columns.update({
-            'type': cast(case([
-                (_library_screening.c.is_for_external_library_plates,
-                        'externallibraryscreening')],
-                    else_='libraryscreening'), sqlalchemy.sql.sqltypes.Text),
-            'activity_class': cast(case([
-                (_library_screening.c.is_for_external_library_plates,
-                        'externallibraryscreening')],
-                    else_='libraryscreening'), sqlalchemy.sql.sqltypes.Text),
             'libraries_screened_count': literal_column(
                 '(select count(distinct(l.*)) from library l '
                 'join copy using(library_id) join plate using(copy_id) '
@@ -14712,7 +15113,7 @@ class LibraryScreeningResource(ActivityResource):
             field_hash.values(), base_query_tables=base_query_tables,
             custom_columns=custom_columns)
         
-        stmt = select(columns.values()).select_from(j)
+        stmt = select(columns.values()).select_from(join_clause)
 
         extra_params = {}
         if library_plates_screened_search:
@@ -14759,7 +15160,6 @@ class LibraryScreeningResource(ActivityResource):
          
         (stmt, count_stmt) = self.wrap_statement(
             stmt, order_clauses, filter_expression)
-        logger.info('order_clauses: %r', order_clauses)
         stmt = stmt.order_by('activity_id')
 
         filename = self._get_filename(
@@ -14921,7 +15321,9 @@ class LibraryScreeningResource(ActivityResource):
 
 
     def build_patch_detail(self, request, deserialized, log=None, **kwargs):
-
+        '''
+        TODO: refactor patch/post detail to remove common operations
+        '''
         schema = kwargs.pop('schema', None)
         if not schema:
             raise Exception('schema not initialized')
@@ -14969,7 +15371,6 @@ class LibraryScreeningResource(ActivityResource):
         new_data_display = self._get_detail_response_internal(**kwargs_for_log)
         self.log_patch(request, original_data,new_data,log=log, **kwargs)
         log.save()
-
         meta = { 
             API_MSG_SCREENING_TOTAL_PLATE_COUNT: 
                 new_data_display['library_plates_screened_count'],
@@ -14983,6 +15384,9 @@ class LibraryScreeningResource(ActivityResource):
         return _data
 
     def build_post_detail(self, request, deserialized, log=None, **kwargs):
+        '''
+        TODO: refactor patch/post detail to remove common operations
+        '''
         
         schema = kwargs.pop('schema', None)
         if not schema:
@@ -15161,12 +15565,16 @@ class LibraryScreeningResource(ActivityResource):
         #   warn if not equal to: 
         #   volume_transferred_per_well_to_assay_plates * number_of_replicates
         
-        model_field_names = [
-            x.name for x in library_screening._meta.get_fields()]
         for key, val in initializer_dict.items():
-            if key in model_field_names:
-                setattr(library_screening, key, val)
+            setattr(library_screening, key, val)
 
+        library_screening.classification = SCHEMA.VOCAB.activity.classification.SCREENING
+        
+        if library_screening.is_for_external_library_plates:
+            library_screening.type = SCHEMA.VOCAB.activity.type.EXT_LIBRARY_SCREENING
+        else:
+            library_screening.type = SCHEMA.VOCAB.activity.type.LIBRARY_SCREENING
+            
         library_screening.save()
         library_plates_screened = deserialized.get(
             'library_plates_screened', None)
@@ -17426,12 +17834,12 @@ class ScreenResource(DbApiResource):
         _user_cte = ScreensaverUserResource.get_user_cte().cte('users_s1')
         _collaborator = _user_cte.alias('collaborator')
         _activity = self.bridge['activity']
+        _activity1 = _activity.alias('a1')
+        
         _screen_keyword = self.bridge['screen_keyword']
         _screen_cell_lines = self.bridge['screen_cell_lines']
         _library_screening = self.bridge['library_screening']
         _cp_screening = self.bridge['cherry_pick_screening']
-        _lab_activity = self.bridge['lab_activity']
-        _service_activity = self.bridge['service_activity']
         _publication = self.bridge['publication']
         _attached_file = self.bridge['attached_file']
         _dc = self.bridge['data_column']
@@ -17459,23 +17867,6 @@ class ScreenResource(DbApiResource):
                 _screen_collaborators.c.screen_id==screen_id)
         collaborators = collaborators.cte('collaborators')
 
-        pin_transfer_approval = (
-            select([
-                _screen.c.screen_id,
-                _user_cte.c.username,_user_cte.c.name,
-                _activity.c.date_of_activity, _activity.c.comments])
-            .select_from(
-                _activity.join(
-                    _user_cte, 
-                    _activity.c.performed_by_id==_user_cte.c.screensaver_user_id)
-                .join(
-                    _screen, 
-                    _activity.c.activity_id==_screen.c.pin_transfer_admin_activity_id))
-            )
-        if screen_id:
-            pin_transfer_approval = pin_transfer_approval.where(
-                _screen.c.screen_id==screen_id)
-        pin_transfer_approval = pin_transfer_approval.cte('pta')
 
         # create a cte for the max screened replicates_per_assay_plate
         # - cross join version:
@@ -17734,50 +18125,31 @@ class ScreenResource(DbApiResource):
                     .select_from(_screen_cell_lines)
                     .where(_screen_cell_lines.c.screen_id 
                         == literal_column('screen.screen_id'))),
-                'date_of_first_activity': literal_column(
-                    '( select date_of_activity '
-                    '  from activity '
-                    '  join lab_activity la using(activity_id) '
-                    '  where la.screen_id=screen.screen_id '
-                    '  order by date_of_activity asc LIMIT 1 )'
-                    ),
-                'date_of_last_activity': literal_column(
-                    '( (select date_of_activity '
-                    '  from activity '
-                    '  join lab_activity la using(activity_id) '
-                    '  where la.screen_id=screen.screen_id '
-                    '  UNION ALL'
-                    '  select date_of_activity '
-                    '  from activity '
-                    '  join service_activity sa using(activity_id) '
-                    '  where sa.serviced_screen_id=screen.screen_id )'
-                    '  order by date_of_activity desc LIMIT 1 )'
-                    ),
-                'date_of_last_library_screening': literal_column(
-                    '(select date_of_activity '
-                    '  from activity '
-                    '  join lab_activity la using(activity_id) '
-                    '  join library_screening ls using(activity_id) '
-                    '  where la.screen_id=screen.screen_id '
-                    '  and ls.is_for_external_library_plates is not true '
-                    '  order by date_of_activity desc LIMIT 1 )'
-                    ),
-                # FIXME: 20170713 - rework to be performant - 
+                'date_of_first_activity': (
+                    select([func.min(_activity1.c.date_of_activity)])
+                    .select_from(_activity1)
+                    .where(_activity1.c.screen_id
+                        ==literal_column('screen.screen_id'))
+                    .where(_activity1.c.classification=='screening')
+                    ),        
+                'date_of_last_activity': (
+                    select([func.max(_activity1.c.date_of_activity)])
+                    .select_from(_activity1)
+                    .where(_activity1.c.screen_id
+                        ==literal_column('screen.screen_id'))
+                    ),        
+                'date_of_last_library_screening': (
+                    select([func.max(_activity1.c.date_of_activity)])
+                    .select_from(_activity1)
+                    .where(_activity1.c.screen_id
+                        ==literal_column('screen.screen_id'))
+                    .where(_activity1.c.classification=='screening')
+                    ),        
                 'activity_count': (
                     select([func.count(_activity.c.activity_id)])
-                    .select_from(
-                        _activity
-                            .join(_service_activity, _activity.c.activity_id
-                                ==_service_activity.c.activity_id,
-                                isouter=True)
-                            .join(_lab_activity, _activity.c.activity_id
-                                == _lab_activity.c.activity_id,
-                                isouter=True))
-                    .where(or_(
-                        _service_activity.c.serviced_screen_id
-                            == literal_column('screen.screen_id'),
-                        _lab_activity.c.screen_id
-                            == literal_column('screen.screen_id')))
+                    .select_from(_activity)
+                    .where(_activity.c.screen_id
+                        ==literal_column('screen.screen_id'))
                     ),
                 # # TODO: rework the update activity
                 # 'screenresult_last_imported': (
@@ -17822,19 +18194,19 @@ class ScreenResource(DbApiResource):
                 'library_screenings': (
                     select([func.count(_library_screening.c.activity_id)])
                     .select_from(
-                        _lab_activity.join(
+                        _activity.join(
                             _library_screening,
                             _library_screening.c.activity_id 
-                                == _lab_activity.c.activity_id))
-                    .where(_lab_activity.c.screen_id == _screen.c.screen_id)),
+                                == _activity.c.activity_id))
+                    .where(_activity.c.screen_id == _screen.c.screen_id)),
                 'cherry_pick_screenings': (
                     select([func.count(_cp_screening.c.activity_id)])
                     .select_from(
-                        _lab_activity.join(
+                        _activity.join(
                             _cp_screening,
                             _cp_screening.c.activity_id 
-                                == _lab_activity.c.activity_id))
-                    .where(_lab_activity.c.screen_id == _screen.c.screen_id)),
+                                == _activity.c.activity_id))
+                    .where(_activity.c.screen_id == _screen.c.screen_id)),
 
                 'assay_plates_screened': (
                     select([aps.c.count]).select_from(aps)
@@ -17889,14 +18261,14 @@ class ScreenResource(DbApiResource):
                     new_screen_result.c.date_loaded,
                 'experimental_well_count': 
                     literal_column('screen_result.experimental_well_count'),
-                'pin_transfer_approved_by_name': 
-                    pin_transfer_approval.c.name,
-                'pin_transfer_approved_by_username': 
-                    pin_transfer_approval.c.username,
-                'pin_transfer_date_approved': 
-                    pin_transfer_approval.c.date_of_activity,
-                'pin_transfer_comments': 
-                    pin_transfer_approval.c.comments,
+                'pin_transfer_approved_by_name': (
+                    select([_concat(_su.c.first_name, ' ', _su.c.last_name)])
+                    .select_from(_su)
+                    .where(_su.c.screensaver_user_id == _screen.c.pin_transfer_approved_by_id)),
+                'pin_transfer_approved_by_username': (
+                    select([_su.c.username])
+                    .select_from(_su)
+                    .where(_su.c.screensaver_user_id == _screen.c.pin_transfer_approved_by_id)),
                 'keywords': (
                     select([
                         func.array_to_string(
@@ -17983,9 +18355,6 @@ class ScreenResource(DbApiResource):
         
         j = j.join(new_screen_result,
             _screen.c.screen_id == new_screen_result.c.screen_id)
-        
-        j = j.join(pin_transfer_approval,
-            _screen.c.screen_id == pin_transfer_approval.c.screen_id, isouter=True)
         
         j = j.join(
             lab_head_table, 
@@ -18432,22 +18801,10 @@ class ScreenResource(DbApiResource):
         
         # Set the pin transfer approval data
         if pin_transfer_approved_by is not None:
-            if screen.pin_transfer_admin_activity is None:
-                activity = \
-                    Activity(performed_by_id=
-                        pin_transfer_approved_by['screensaver_user_id'])
-                activity.date_of_activity = \
-                    activity.date_created
-                activity.save()
-                screen.pin_transfer_admin_activity = activity
-                screen.save()
-                logger.info('created pta: %r', 
-                    screen.pin_transfer_admin_activity)
-            else:
-                screen.pin_transfer_admin_activity.performed_by_id = \
-                    pin_transfer_approved_by['screensaver_user_id']
-                screen.pin_transfer_admin_activity.save()
-        if screen.pin_transfer_admin_activity is None:
+            screen.pin_transfer_approved_by_id \
+                = pin_transfer_approved_by['screensaver_user_id']
+            
+        elif screen.pin_transfer_approved_by is None:
             # secondary pin transfer validation
             if pin_transfer_date_approved:
                 raise ValidationError(
@@ -18457,16 +18814,8 @@ class ScreenResource(DbApiResource):
                 raise ValidationError(
                     key='pin_transfer_comments',
                     msg='requires pin_transfer_approved_by_username')    
-        else:
-            if pin_transfer_date_approved:
-                screen.pin_transfer_admin_activity.date_of_activity = \
-                    pin_transfer_date_approved
-            if pin_transfer_comments is not None:
-                screen.pin_transfer_admin_activity.comments = \
-                    pin_transfer_comments
-            screen.pin_transfer_admin_activity.save()
             
-        # TODO: determine if this is still used
+        # TODO: deprecated <20180925
         _key = 'keywords'
         _val = related_initializer.get(_key, None)
         if _val is not None:
@@ -19964,10 +20313,11 @@ class ScreensaverUserResource(DbApiResource):
     
     def dispatch_user_serviceactivityview(self, request, **kwargs):
         kwargs['serviced_user_id__eq'] = kwargs.pop('screensaver_user_id')
-        return ServiceActivityResource().dispatch('list', request, **kwargs)    
+        # kwargs['classification__ne'] = SCHEMA.VOCAB.activity.classification.SCREENING
+        return ActivityResource().dispatch('list', request, **kwargs)    
     
     def dispatch_user_serviceactivitydetailview(self, request, **kwargs):
-        return ServiceActivityResource().dispatch('detail', request, **kwargs)    
+        return ActivityResource().dispatch('detail', request, **kwargs)    
     
     def dispatch_user_activityview(self, request, **kwargs):
         screensaver_user_id = kwargs.pop('screensaver_user_id')
@@ -20151,7 +20501,6 @@ class ScreensaverUserResource(DbApiResource):
         _up = self.bridge['reports_userprofile']
         _s = self.bridge['screen']
         _screen_collab = self.bridge['screen_collaborators']
-        _fur = self.bridge['user_facility_usage_role']
         _lhsu = _su.alias('lhsu')
         _user_agreement = self.bridge['user_agreement']
 
@@ -20268,14 +20617,15 @@ class ScreensaverUserResource(DbApiResource):
                 ),
             'lab_affiliation_name': lab_head_table.c.lab_affiliation_name,
             'lab_affiliation_category': lab_head_table.c.lab_affiliation_category,
-            'facility_usage_roles': (
-                select([
-                    func.array_to_string(
-                        func.array_agg(_fur.c.facility_usage_role),
-                        LIST_DELIMITER_SQL_ARRAY)])
-                .select_from(_fur)
-                .where(_fur.c.screensaver_user_id 
-                    == _su.c.screensaver_user_id)),
+            # Removed: 20180920 - no longer needed (JAS)
+            # 'facility_usage_roles': (
+            #     select([
+            #         func.array_to_string(
+            #             func.array_agg(_fur.c.facility_usage_role),
+            #             LIST_DELIMITER_SQL_ARRAY)])
+            #     .select_from(_fur)
+            #     .where(_fur.c.screensaver_user_id 
+            #         == _su.c.screensaver_user_id)),
             'sm_data_sharing_level': (
                 select([_user_agreement.c.data_sharing_level])
                 .select_from(_user_agreement)
@@ -20856,27 +21206,28 @@ class ScreensaverUserResource(DbApiResource):
             screensaver_user.lab_members = lab_members
         screensaver_user.save()
                 
-        if 'facility_usage_roles' in initializer_dict:
-            current_roles = set([r.facility_usage_role 
-                for r in screensaver_user.userfacilityusagerole_set.all()])
-            new_roles = initializer_dict['facility_usage_roles']
-            if new_roles is None:
-                new_roles = []
-            new_roles = set(new_roles)
-            if DEBUG_USER_PATCH:
-                logger.info('roles to delete: %s', current_roles - new_roles)
-            (screensaver_user.userfacilityusagerole_set
-                .filter(facility_usage_role__in=current_roles - new_roles)
-                .delete())
-            for role in new_roles - current_roles:
-                if DEBUG_USER_PATCH:
-                    logger.info(
-                        'create facility_usage_role: %s, %s', 
-                        screensaver_user, role)
-                ur = UserFacilityUsageRole.objects.create(
-                    screensaver_user=screensaver_user,
-                    facility_usage_role=role)            
-                ur.save()
+        # Removed 20180820 - no longer needed (JAS)
+        # if 'facility_usage_roles' in initializer_dict:
+        #     current_roles = set([r.facility_usage_role 
+        #         for r in screensaver_user.userfacilityusagerole_set.all()])
+        #     new_roles = initializer_dict['facility_usage_roles']
+        #     if new_roles is None:
+        #         new_roles = []
+        #     new_roles = set(new_roles)
+        #     if DEBUG_USER_PATCH:
+        #         logger.info('roles to delete: %s', current_roles - new_roles)
+        #     (screensaver_user.userfacilityusagerole_set
+        #         .filter(facility_usage_role__in=current_roles - new_roles)
+        #         .delete())
+        #     for role in new_roles - current_roles:
+        #         if DEBUG_USER_PATCH:
+        #             logger.info(
+        #                 'create facility_usage_role: %s, %s', 
+        #                 screensaver_user, role)
+        #         ur = UserFacilityUsageRole.objects.create(
+        #             screensaver_user=screensaver_user,
+        #             facility_usage_role=role)            
+        #         ur.save()
 
         logger.info('patch_obj done: %r', screensaver_user)
         
@@ -22166,7 +22517,7 @@ class ReagentResource(DbApiResource):
             
         manual_field_includes = set(param_hash.get('includes', []))
         # 20180426 - eliminate substance_id from viewing (TODO: remove from api?)
-        manual_field_includes.add('-substance_id')
+        # manual_field_includes.add('-substance_id')
         
         content_type = self.get_serializer().get_accept_content_type(
             request, format=kwargs.get('format', None))
@@ -24688,7 +25039,7 @@ class LibraryResource(DbApiResource):
         
         bridge = get_tables()
         _screen = bridge['screen']
-        _lab_activity = bridge['lab_activity']
+        _activity = bridge['activity']
         _library_screening = bridge['library_screening']
         _assay_plate = bridge['assay_plate']
         _plate = bridge['plate']
@@ -24696,12 +25047,12 @@ class LibraryResource(DbApiResource):
         
         j = _screen
         j = j.join(
-            _lab_activity,
-            _lab_activity.c.screen_id == _screen.c.screen_id)
+            _activity,
+            _activity.c.screen_id == _screen.c.screen_id)
         j = j.join(
             _library_screening,
             _library_screening.c.activity_id
-                == _lab_activity.c.activity_id)
+                == _activity.c.activity_id)
         j = j.join(
             _assay_plate,
             _library_screening.c.activity_id

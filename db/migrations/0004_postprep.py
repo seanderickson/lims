@@ -28,13 +28,15 @@ class Migration(migrations.Migration):
             model_name='screensaveruser',
             name='lab_head',
             field=models.ForeignKey(
-                related_name='lab_members', to='db.ScreensaverUser', null=True),
+                related_name='lab_members', to='db.ScreensaverUser', null=True,
+                on_delete=models.deletion.SET_NULL),
         ),
         migrations.AddField(
             model_name='screensaveruser',
             name='lab_affiliation',
             field=models.ForeignKey(related_name='lab_heads', 
-                to='db.LabAffiliation', null=True),
+                to='db.LabAffiliation', null=True,
+                on_delete=models.deletion.SET_NULL),
         ),
 #         migrations.AddField(
 #             model_name='screensaveruser',

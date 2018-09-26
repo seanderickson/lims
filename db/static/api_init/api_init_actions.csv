@@ -7,7 +7,6 @@ patch,vocabulary,vocabulary_checklists_data.csv
 patch,vocabulary,vocabulary_data_updates.csv
 patch,field,metahash_fields_labcherrypick.csv
 patch,field,metahash_fields_screensaveruser.csv
-patch,field,metahash_fields_screeningroomuser.csv
 patch,field,metahash_fields_screen.csv
 patch,field,metahash_fields_study.csv
 patch,field,metahash_fields_screenresult.csv
@@ -26,7 +25,6 @@ patch,field,metahash_fields_cherrypickassayplate.csv
 patch,field,metahash_fields_userchecklist.csv
 patch,field,metahash_fields_attachedfile.csv
 patch,field,metahash_fields_activity.csv
-patch,field,metahash_fields_serviceactivity.csv
 patch,field,metahash_fields_libraryscreening.csv
 patch,field,metahash_fields_cherrypickscreening.csv
 patch,field,metahash_fields_cplt.csv

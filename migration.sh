@@ -378,16 +378,22 @@ function migratedb {
     echo "migration $migration complete: $(ts)" >> "$LOGFILE"
   fi
     
+  migration='0022'
+  if [[ ! $completed_migrations =~ $migration ]]; then
+    $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
+    echo "migration $migration complete: $(ts)" >> "$LOGFILE"
+  fi
+    
 
 # TEMP: 20170614 disable post migrations; leaves vestigal fields/tables in place TODO: reinstate    
-#    migration='0098' 
-#    if [[ ! $completed_migrations =~ $migration ]]; then
-#      echo "migration $migration: $(ts) ..." >> "$LOGFILE"
-#      $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
-#      echo "migration $migration complete: $(ts)" >> "$LOGFILE"
-#    fi
+  migration='0098' 
+  if [[ ! $completed_migrations =~ $migration ]]; then
+   echo "migration $migration: $(ts) ..." >> "$LOGFILE"
+   $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
+   echo "migration $migration complete: $(ts)" >> "$LOGFILE"
+  fi
 
-    # substance ID generation left until last
+  # substance ID generation left until last
 #    migration='0099' 
 #    if [[ ! $completed_migrations =~ $migration ]]; then
 #      echo "migration $migration: $(ts) ..." >> "$LOGFILE"
@@ -811,7 +817,7 @@ function main {
   # wget https://dev.screensaver2.med.harvard.edu/db/api/v1/screenresult/1158?page=1&limit=25&offset=0&library_well_type__eq=experimental
 
   if [[ $IS_DEV_SERVER -ne 1 ]]; then
-    PYTHONPATH=. python reports/utils/django_requests.py -u sde  \
+    PYTHONPATH=. python reports/utils/django_requests.py  -c ${credential_file} \
       -a GET "https://dev.screensaver2.med.harvard.edu/db/api/v1/screenresult/1158?page=1&limit=25&offset=0&library_well_type__eq=experimental"
   fi
   

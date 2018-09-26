@@ -3,9 +3,6 @@ from __future__ import unicode_literals
 
 from django.db import migrations, models
 import django.utils.timezone
-from django.db.models.deletion import SET_NULL
-# import db.models
-# import django.db.models.deletion
 
 ## Note: existing migrations are intended for migrating an existing screensaver 
 ## database to the new database schema.
@@ -58,17 +55,20 @@ class Migration(migrations.Migration):
                 'db_table': 'activity',
             },
         ),
-        migrations.CreateModel(
-            name='ActivityUpdateActivity',
-            fields=[
-                ('id', models.AutoField(
-                    verbose_name='ID', serialize=False, auto_created=True, 
-                    primary_key=True)),
-            ],
-            options={
-                'db_table': 'activity_update_activity',
-            },
-        ),
+
+# Dropped 20180919
+#         migrations.CreateModel(
+#             name='ActivityUpdateActivity',
+#             fields=[
+#                 ('id', models.AutoField(
+#                     verbose_name='ID', serialize=False, auto_created=True, 
+#                     primary_key=True)),
+#             ],
+#             options={
+#                 'db_table': 'activity_update_activity',
+#             },
+#         ),
+
         migrations.CreateModel(
             name='AnnotationType',
             fields=[
@@ -127,6 +127,8 @@ class Migration(migrations.Migration):
             fields=[
                 ('attached_file_id', models.AutoField(serialize=False, primary_key=True)),
                 ('date_created', models.DateTimeField(default=django.utils.timezone.now)),
+                # file_contents will be migrated, see manual/0002, no OID field support
+                # ('file_contents', models.OID()),
                 ('contents', models.BinaryField()),
                 ('filename', models.TextField()),
 #                 ('type', models.TextField()),
@@ -150,16 +152,17 @@ class Migration(migrations.Migration):
                 'db_table': 'attached_file_type',
             },
         ),
-        migrations.CreateModel(
-            name='AttachedFileUpdateActivity',
-            fields=[
-                ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
-                ('attached_file', models.ForeignKey(to='db.AttachedFile')),
-            ],
-            options={
-                'db_table': 'attached_file_update_activity',
-            },
-        ),
+# Dropped 20180919
+#         migrations.CreateModel(
+#             name='AttachedFileUpdateActivity',
+#             fields=[
+#                 ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
+#                 ('attached_file', models.ForeignKey(to='db.AttachedFile')),
+#             ],
+#             options={
+#                 'db_table': 'attached_file_update_activity',
+#             },
+#         ),
         
         
 #         migrations.CreateModel(
@@ -219,16 +222,19 @@ class Migration(migrations.Migration):
                 'db_table': 'checklist_item_event',
             },
         ),
-        migrations.CreateModel(
-            name='ChecklistItemEventUpdateActivity',
-            fields=[
-                ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
-                ('checklist_item_event', models.ForeignKey(to='db.ChecklistItemEvent')),
-            ],
-            options={
-                'db_table': 'checklist_item_event_update_activity',
-            },
-        ),
+# Dropped 20180919
+#         migrations.CreateModel(
+#             name='ChecklistItemEventUpdateActivity',
+#             fields=[
+#                 ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
+#                 ('checklist_item_event', models.ForeignKey(to='db.ChecklistItemEvent')),
+#             ],
+#             options={
+#                 'db_table': 'checklist_item_event_update_activity',
+#             },
+#         ),
+
+
         migrations.CreateModel(
             name='CherryPickAssayPlate',
             fields=[
@@ -245,16 +251,16 @@ class Migration(migrations.Migration):
                 'db_table': 'cherry_pick_assay_plate',
             },
         ),
-        migrations.CreateModel(
-            name='CherryPickAssayPlateScreeningLink',
-            fields=[
-                ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
-                ('cherry_pick_assay_plate', models.ForeignKey(to='db.CherryPickAssayPlate')),
-            ],
-            options={
-                'db_table': 'cherry_pick_assay_plate_screening_link',
-            },
-        ),
+#         migrations.CreateModel(
+#             name='CherryPickAssayPlateScreeningLink',
+#             fields=[
+#                 ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
+#                 ('cherry_pick_assay_plate', models.ForeignKey(to='db.CherryPickAssayPlate')),
+#             ],
+#             options={
+#                 'db_table': 'cherry_pick_assay_plate_screening_link',
+#             },
+#         ),
         migrations.CreateModel(
             name='CherryPickRequest',
             fields=[
@@ -282,25 +288,28 @@ class Migration(migrations.Migration):
                 'db_table': 'cherry_pick_request',
             },
         ),
-        migrations.CreateModel(
-            name='CherryPickRequestEmptyWell',
-            fields=[
-                ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
-                ('well_name', models.CharField(max_length=255)),
-            ],
-            options={
-                'db_table': 'cherry_pick_request_empty_well',
-            },
-        ),
-        migrations.CreateModel(
-            name='CherryPickRequestUpdateActivity',
-            fields=[
-                ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
-            ],
-            options={
-                'db_table': 'cherry_pick_request_update_activity',
-            },
-        ),
+# Dropped 20180919
+#         migrations.CreateModel(
+#             name='CherryPickRequestEmptyWell',
+#             fields=[
+#                 ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
+#                 ('well_name', models.CharField(max_length=255)),
+#             ],
+#             options={
+#                 'db_table': 'cherry_pick_request_empty_well',
+#             },
+#         ),
+# Dropped 20180919
+#         migrations.CreateModel(
+#             name='CherryPickRequestUpdateActivity',
+#             fields=[
+#                 ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
+#             ],
+#             options={
+#                 'db_table': 'cherry_pick_request_update_activity',
+#             },
+#         ),
+
 #         migrations.CreateModel(
 #             name='CollaboratorLink',
 #             fields=[
@@ -338,17 +347,18 @@ class Migration(migrations.Migration):
                 'db_table': 'copy',
             },
         ),
-        migrations.CreateModel(
-            name='CopyUpdateActivity',
-            fields=[
-                ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
-                ('copy_id', models.IntegerField()),
-                ('update_activity_id', models.IntegerField(unique=True)),
-            ],
-            options={
-                'db_table': 'copy_update_activity',
-            },
-        ),
+# Dropped 20180919
+#         migrations.CreateModel(
+#             name='CopyUpdateActivity',
+#             fields=[
+#                 ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
+#                 ('copy_id', models.IntegerField()),
+#                 ('update_activity_id', models.IntegerField(unique=True)),
+#             ],
+#             options={
+#                 'db_table': 'copy_update_activity',
+#             },
+#         ),
 #         migrations.CreateModel(
 #             name='CopyWell',
 #             fields=[
@@ -404,19 +414,20 @@ class Migration(migrations.Migration):
                 'db_table': 'data_column_derived_from_link',
             },
         ),
-        migrations.CreateModel(
-            name='EquipmentUsed',
-            fields=[
-                ('equipment_used_id', models.AutoField(serialize=False, primary_key=True)),
-                ('version', models.IntegerField()),
-                ('protocol', models.TextField()),
-                ('description', models.TextField()),
-                ('equipment', models.TextField()),
-            ],
-            options={
-                'db_table': 'equipment_used',
-            },
-        ),
+# Dropped 20180919
+#         migrations.CreateModel(
+#             name='EquipmentUsed',
+#             fields=[
+#                 ('equipment_used_id', models.AutoField(serialize=False, primary_key=True)),
+#                 ('version', models.IntegerField()),
+#                 ('protocol', models.TextField()),
+#                 ('description', models.TextField()),
+#                 ('equipment', models.TextField()),
+#             ],
+#             options={
+#                 'db_table': 'equipment_used',
+#             },
+#         ),
         migrations.CreateModel(
             name='FundingSupport',
             fields=[
@@ -485,23 +496,23 @@ class Migration(migrations.Migration):
                 ('cherry_pick_assay_plate', 
                     models.ForeignKey(
                         to='db.CherryPickAssayPlate', null=True, 
-                        on_delete=SET_NULL)),
+                        on_delete=models.deletion.SET_NULL)),
             ],
             options={
                 'db_table': 'lab_cherry_pick',
             },
         ),
-        migrations.CreateModel(
-            name='LegacySmallMoleculeCasNumber',
-            fields=[
-                ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
-                ('smiles', models.CharField(max_length=2047)),
-                ('cas_number', models.TextField()),
-            ],
-            options={
-                'db_table': '_legacy_small_molecule_cas_number',
-            },
-        ),
+#         migrations.CreateModel(
+#             name='LegacySmallMoleculeCasNumber',
+#             fields=[
+#                 ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
+#                 ('smiles', models.CharField(max_length=2047)),
+#                 ('cas_number', models.TextField()),
+#             ],
+#             options={
+#                 'db_table': '_legacy_small_molecule_cas_number',
+#             },
+#         ),
         migrations.CreateModel(
             name='Library',
             fields=[
@@ -532,6 +543,7 @@ class Migration(migrations.Migration):
                 'db_table': 'library',
             },
         ),
+        # NOTE: LibraryContentsVersion is needed for the migrations
         migrations.CreateModel(
             name='LibraryContentsVersion',
             fields=[
@@ -544,16 +556,16 @@ class Migration(migrations.Migration):
                 'db_table': 'library_contents_version',
             },
         ),
-        migrations.CreateModel(
-            name='LibraryUpdateActivity',
-            fields=[
-                ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
-                ('library', models.ForeignKey(to='db.Library')),
-            ],
-            options={
-                'db_table': 'library_update_activity',
-            },
-        ),
+#         migrations.CreateModel(
+#             name='LibraryUpdateActivity',
+#             fields=[
+#                 ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
+#                 ('library', models.ForeignKey(to='db.Library')),
+#             ],
+#             options={
+#                 'db_table': 'library_update_activity',
+#             },
+#         ),
         migrations.CreateModel(
             name='Plate',
             fields=[
@@ -596,17 +608,18 @@ class Migration(migrations.Migration):
                 'db_table': 'plate_location',
             },
         ),
-        migrations.CreateModel(
-            name='PlateUpdateActivity',
-            fields=[
-                ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
-                ('plate_id', models.IntegerField()),
-                ('update_activity_id', models.IntegerField(unique=True)),
-            ],
-            options={
-                'db_table': 'plate_update_activity',
-            },
-        ),
+# Dropped 20180919
+#         migrations.CreateModel(
+#             name='PlateUpdateActivity',
+#             fields=[
+#                 ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
+#                 ('plate_id', models.IntegerField()),
+#                 ('update_activity_id', models.IntegerField(unique=True)),
+#             ],
+#             options={
+#                 'db_table': 'plate_update_activity',
+#             },
+#         ),
         migrations.CreateModel(
             name='Publication',
             fields=[
@@ -668,17 +681,17 @@ class Migration(migrations.Migration):
                 'db_table': 'result_value',
             },
         ),
-        migrations.CreateModel(
-            name='SchemaHistory',
-            fields=[
-                ('screensaver_revision', models.IntegerField(serialize=False, primary_key=True)),
-                ('date_updated', models.DateTimeField(null=True)),
-                ('comment', models.TextField()),
-            ],
-            options={
-                'db_table': 'schema_history',
-            },
-        ),
+#         migrations.CreateModel(
+#             name='SchemaHistory',
+#             fields=[
+#                 ('screensaver_revision', models.IntegerField(serialize=False, primary_key=True)),
+#                 ('date_updated', models.DateTimeField(null=True)),
+#                 ('comment', models.TextField()),
+#             ],
+#             options={
+#                 'db_table': 'schema_history',
+#             },
+#         ),
         migrations.CreateModel(
             name='Screen',
             fields=[
@@ -798,16 +811,17 @@ class Migration(migrations.Migration):
 #                 'db_table': 'screen_funding_supports',
 #             },
 #         ),
-        migrations.CreateModel(
-            name='ScreeningRoomUserFacilityUsageRole',
-            fields=[
-                ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
-                ('facility_usage_role', models.TextField()),
-            ],
-            options={
-                'db_table': 'screening_room_user_facility_usage_role',
-            },
-        ),
+# Dropped 20180919
+#         migrations.CreateModel(
+#             name='ScreeningRoomUserFacilityUsageRole',
+#             fields=[
+#                 ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
+#                 ('facility_usage_role', models.TextField()),
+#             ],
+#             options={
+#                 'db_table': 'screening_room_user_facility_usage_role',
+#             },
+#         ),
         migrations.CreateModel(
             name='ScreenKeyword',
             fields=[
@@ -846,16 +860,18 @@ class Migration(migrations.Migration):
                 'db_table': 'screen_result',
             },
         ),
-        migrations.CreateModel(
-            name='ScreenResultUpdateActivity',
-            fields=[
-                ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
-                ('screen_result', models.ForeignKey(to='db.ScreenResult')),
-            ],
-            options={
-                'db_table': 'screen_result_update_activity',
-            },
-        ),
+
+# Dropped 20180919
+#         migrations.CreateModel(
+#             name='ScreenResultUpdateActivity',
+#             fields=[
+#                 ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
+#                 ('screen_result', models.ForeignKey(to='db.ScreenResult')),
+#             ],
+#             options={
+#                 'db_table': 'screen_result_update_activity',
+#             },
+#         ),
         migrations.CreateModel(
             name='ScreensaverUser',
             fields=[
@@ -893,15 +909,17 @@ class Migration(migrations.Migration):
                 'db_table': 'screensaver_user_role',
             },
         ),
-        migrations.CreateModel(
-            name='ScreensaverUserUpdateActivity',
-            fields=[
-                ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
-            ],
-            options={
-                'db_table': 'screensaver_user_update_activity',
-            },
-        ),
+        
+# Dropped 20180919
+#         migrations.CreateModel(
+#             name='ScreensaverUserUpdateActivity',
+#             fields=[
+#                 ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
+#             ],
+#             options={
+#                 'db_table': 'screensaver_user_update_activity',
+#             },
+#         ),
         migrations.CreateModel(
             name='ScreenStatusItem',
             fields=[
@@ -914,16 +932,17 @@ class Migration(migrations.Migration):
                 'db_table': 'screen_status_item',
             },
         ),
-        migrations.CreateModel(
-            name='ScreenUpdateActivity',
-            fields=[
-                ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
-                ('screen', models.ForeignKey(to='db.Screen')),
-            ],
-            options={
-                'db_table': 'screen_update_activity',
-            },
-        ),
+# Dropped 20180919
+#         migrations.CreateModel(
+#             name='ScreenUpdateActivity',
+#             fields=[
+#                 ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
+#                 ('screen', models.ForeignKey(to='db.Screen')),
+#             ],
+#             options={
+#                 'db_table': 'screen_update_activity',
+#             },
+#         ),
         migrations.CreateModel(
             name='SmallMoleculeChembankId',
             fields=[
@@ -992,19 +1011,20 @@ class Migration(migrations.Migration):
                 'db_table': 'transfection_agent',
             },
         ),
-        migrations.CreateModel(
-            name='UserChecklistItem',
-            fields=[
-                ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
-                ('item_group', models.TextField()),
-                ('item_name', models.TextField()),
-                ('status', models.TextField()),
-                ('status_date', models.DateField()),
-            ],
-            options={
-                'db_table': 'user_checklist_item',
-            },
-        ),
+# Dropped 20180919
+#         migrations.CreateModel(
+#             name='UserChecklistItem',
+#             fields=[
+#                 ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
+#                 ('item_group', models.TextField()),
+#                 ('item_name', models.TextField()),
+#                 ('status', models.TextField()),
+#                 ('status_date', models.DateField()),
+#             ],
+#             options={
+#                 'db_table': 'user_checklist_item',
+#             },
+#         ),
         migrations.CreateModel(
             name='Well',
             fields=[
@@ -1023,20 +1043,22 @@ class Migration(migrations.Migration):
                 'db_table': 'well',
             },
         ),
-        migrations.CreateModel(
-            name='WellVolumeAdjustment',
-            fields=[
-                ('well_volume_adjustment_id', models.AutoField(serialize=False, primary_key=True)),
-                ('version', models.IntegerField()),
-                ('volume', models.DecimalField(null=True, max_digits=10, decimal_places=9)),
-                ('copy', models.ForeignKey(to='db.Copy')),
-                ('lab_cherry_pick', models.ForeignKey(to='db.LabCherryPick', null=True)),
-                ('well', models.ForeignKey(to='db.Well')),
-            ],
-            options={
-                'db_table': 'well_volume_adjustment',
-            },
-        ),
+# Dropped 20180919
+#         migrations.CreateModel(
+#             name='WellVolumeAdjustment',
+#             fields=[
+#                 ('well_volume_adjustment_id', models.AutoField(serialize=False, primary_key=True)),
+#                 ('version', models.IntegerField()),
+#                 ('volume', models.DecimalField(null=True, max_digits=10, decimal_places=9)),
+#                 ('copy', models.ForeignKey(to='db.Copy')),
+#                 ('lab_cherry_pick', models.ForeignKey(to='db.LabCherryPick', null=True,
+#                     on_delete=models.deletion.CASCADE)),
+#                 ('well', models.ForeignKey(to='db.Well')),
+#             ],
+#             options={
+#                 'db_table': 'well_volume_adjustment',
+#             },
+#         ),
         migrations.CreateModel(
             name='AdministrativeActivity',
             fields=[
@@ -1109,12 +1131,13 @@ class Migration(migrations.Migration):
                     primary_key=True, parent_link=True, db_column='activity_id', 
                     serialize=False, to='db.Activity')),
                 ('service_activity_type', models.TextField()),
-#                 ('activity', models.OneToOneField(primary_key=True, 
-#                     serialize=False, to='db.Activity')),
-#                 ('funding_support', models.TextField(null=True)),
-                ('funding_support_link', models.ForeignKey(
-                    db_column='funding_support_id', to='db.FundingSupport', 
-                    null=True)),
+# Dropped 20180919 - preserve SA fields needed for migration only
+# #                 ('activity', models.OneToOneField(primary_key=True, 
+# #                     serialize=False, to='db.Activity')),
+# #                 ('funding_support', models.TextField(null=True)),
+#                 ('funding_support_link', models.ForeignKey(
+#                     db_column='funding_support_id', to='db.FundingSupport', 
+#                     null=True)),
             ],
             options={
                 'db_table': 'service_activity',
@@ -1243,11 +1266,12 @@ class Migration(migrations.Migration):
             name='reagent',
             field=models.ForeignKey(to='db.Reagent'),
         ),
-        migrations.AddField(
-            model_name='screensaveruserupdateactivity',
-            name='screensaver_user',
-            field=models.ForeignKey(to='db.ScreensaverUser'),
-        ),
+# Dropped 20180919
+#         migrations.AddField(
+#             model_name='screensaveruserupdateactivity',
+#             name='screensaver_user',
+#             field=models.ForeignKey(to='db.ScreensaverUser'),
+#         ),
         migrations.AddField(
             model_name='screensaveruserrole',
             name='screensaver_user',
@@ -1257,17 +1281,19 @@ class Migration(migrations.Migration):
             model_name='screensaveruser',
             name='created_by',
             field=models.ForeignKey(to='db.ScreensaverUser', 
-                null=True, related_name='created_user'),
+                null=True, related_name='created_user',
+                on_delete=models.deletion.SET_NULL),
         ),
 #         migrations.AddField(
 #             model_name='screensaveruser',
 #             name='user',
-#             field=models.ForeignKey(on_delete=django.db.models.deletion.SET_NULL, to='reports.UserProfile', null=True),
+#             field=models.ForeignKey(on_delete=models.deletion.SET_NULL, to='reports.UserProfile', null=True),
 #         ),
         migrations.AddField(
             model_name='screenresult',
             name='created_by',
-            field=models.ForeignKey(to='db.ScreensaverUser', null=True),
+            field=models.ForeignKey(to='db.ScreensaverUser', null=True,
+                on_delete=models.deletion.PROTECT),
         ),
         migrations.AddField(
             model_name='screenresult',
@@ -1333,17 +1359,20 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='plate',
             name='created_by',
-            field=models.ForeignKey(to='db.ScreensaverUser', null=True),
+            field=models.ForeignKey(to='db.ScreensaverUser', null=True,
+                on_delete=models.deletion.SET_NULL),
         ),
         migrations.AddField(
             model_name='plate',
             name='plate_location',
-            field=models.ForeignKey(to='db.PlateLocation', null=True),
+            field=models.ForeignKey(to='db.PlateLocation', null=True,
+                on_delete=models.deletion.SET_NULL),
         ),
         migrations.AddField(
             model_name='library',
             name='created_by',
-            field=models.ForeignKey(to='db.ScreensaverUser', null=True),
+            field=models.ForeignKey(to='db.ScreensaverUser', null=True,
+                on_delete=models.deletion.SET_NULL),
         ),
 #         migrations.AddField(
 #             model_name='library',
@@ -1384,7 +1413,8 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='copy',
             name='created_by',
-            field=models.ForeignKey(to='db.ScreensaverUser', null=True),
+            field=models.ForeignKey(to='db.ScreensaverUser', null=True,
+                on_delete=models.deletion.PROTECT),
         ),
         migrations.AddField(
             model_name='copy',
@@ -1396,16 +1426,18 @@ class Migration(migrations.Migration):
 #             name='screen',
 #             field=models.ForeignKey(to='db.Screen'),
 #         ),
-        migrations.AddField(
-            model_name='cherrypickrequestupdateactivity',
-            name='cherry_pick_request',
-            field=models.ForeignKey(to='db.CherryPickRequest'),
-        ),
-        migrations.AddField(
-            model_name='cherrypickrequestemptywell',
-            name='cherry_pick_request',
-            field=models.ForeignKey(to='db.CherryPickRequest'),
-        ),
+
+# Dropped 20180919
+#         migrations.AddField(
+#             model_name='cherrypickrequestupdateactivity',
+#             name='cherry_pick_request',
+#             field=models.ForeignKey(to='db.CherryPickRequest'),
+#         ),
+#         migrations.AddField(
+#             model_name='cherrypickrequestemptywell',
+#             name='cherry_pick_request',
+#             field=models.ForeignKey(to='db.CherryPickRequest'),
+#         ),
         migrations.AddField(
             model_name='cherrypickrequest',
             name='created_by',
@@ -1432,7 +1464,9 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='attachedfile',
             name='created_by',
-            field=models.ForeignKey(related_name='attachedfilecreated', to='db.ScreensaverUser', null=True),
+            field=models.ForeignKey(related_name='attachedfilecreated', 
+                to='db.ScreensaverUser', null=True,
+                on_delete=models.deletion.SET_NULL),
         ),
         migrations.AddField(
             model_name='attachedfile',
@@ -1489,11 +1523,12 @@ class Migration(migrations.Migration):
             name='study',
             field=models.ForeignKey(to='db.Screen'),
         ),
-        migrations.AddField(
-            model_name='activityupdateactivity',
-            name='activity',
-            field=models.ForeignKey(to='db.Activity'),
-        ),
+# Dropped 20180919
+#         migrations.AddField(
+#             model_name='activityupdateactivity',
+#             name='activity',
+#             field=models.ForeignKey(to='db.Activity'),
+#         ),
         migrations.AddField(
             model_name='activity',
             name='created_by',
@@ -1553,15 +1588,16 @@ class Migration(migrations.Migration):
                 'db_table': 'screening',
             },
         ),
-        migrations.CreateModel(
-            name='WellVolumeCorrectionActivity',
-            fields=[
-                ('activity', models.OneToOneField(primary_key=True, serialize=False, to='db.AdministrativeActivity')),
-            ],
-            options={
-                'db_table': 'well_volume_correction_activity',
-            },
-        ),
+# Dropped 20180919
+#         migrations.CreateModel(
+#             name='WellVolumeCorrectionActivity',
+#             fields=[
+#                 ('activity', models.OneToOneField(primary_key=True, serialize=False, to='db.AdministrativeActivity')),
+#             ],
+#             options={
+#                 'db_table': 'well_volume_correction_activity',
+#             },
+#         ),
         migrations.AddField(
             model_name='well',
             name='deprecation_admin_activity',
@@ -1586,40 +1622,44 @@ class Migration(migrations.Migration):
 #             name='vendor_gene',
 #             field=models.ForeignKey(related_name='vendor_reagent', null=True, to='db.Gene', unique=True),
 #         ),
-        migrations.AddField(
-            model_name='serviceactivity',
-            name='serviced_screen',
-            field=models.ForeignKey(to='db.Screen', null=True),
-        ),
-        migrations.AddField(
-            model_name='serviceactivity',
-            name='serviced_user',
-            field=models.ForeignKey(to='db.ScreensaverUser'),
-        ),
-        migrations.AddField(
-            model_name='screenupdateactivity',
-            name='update_activity',
-            field=models.ForeignKey(to='db.AdministrativeActivity'),
-        ),
+        
+#         migrations.AddField(
+#             model_name='serviceactivity',
+#             name='serviced_screen',
+#             field=models.ForeignKey(
+#                 to='db.Screen', null=True),
+#         ),
+#         migrations.AddField(
+#             model_name='serviceactivity',
+#             name='serviced_user',
+#             field=models.ForeignKey(
+#                 to='db.ScreensaverUser', related_name='users_servicing'),
+#         ),
+#         migrations.AddField(
+#             model_name='screenupdateactivity',
+#             name='update_activity',
+#             field=models.ForeignKey(to='db.AdministrativeActivity'),
+#         ),
         migrations.AlterIndexTogether(
             name='screenstatusitem',
             index_together=set([('screen', 'status', 'status_date')]),
         ),
-        migrations.AddField(
-            model_name='screensaveruserupdateactivity',
-            name='update_activity',
-            field=models.ForeignKey(to='db.AdministrativeActivity'),
-        ),
-        migrations.AddField(
-            model_name='screenresultupdateactivity',
-            name='update_activity',
-            field=models.ForeignKey(to='db.AdministrativeActivity'),
-        ),
-        migrations.AddField(
-            model_name='screeningroomuserfacilityusagerole',
-            name='screening_room_user',
-            field=models.ForeignKey(to='db.ScreeningRoomUser'),
-        ),
+# Dropped 20180919
+#         migrations.AddField(
+#             model_name='screensaveruserupdateactivity',
+#             name='update_activity',
+#             field=models.ForeignKey(to='db.AdministrativeActivity'),
+#         ),
+#         migrations.AddField(
+#             model_name='screenresultupdateactivity',
+#             name='update_activity',
+#             field=models.ForeignKey(to='db.AdministrativeActivity'),
+#         ),
+#         migrations.AddField(
+#             model_name='screeningroomuserfacilityusagerole',
+#             name='screening_room_user',
+#             field=models.ForeignKey(to='db.ScreeningRoomUser'),
+#         ),
         migrations.AddField(
             model_name='screeningroomuser',
             name='last_notified_rnaiua_checklist_item_event',
@@ -1638,7 +1678,8 @@ class Migration(migrations.Migration):
             model_name='screen',
             name='lead_screener',
             field=models.ForeignKey(to='db.ScreensaverUser', 
-                null=True, related_name='led_screen'),
+                null=True, related_name='led_screen',
+                on_delete=models.deletion.PROTECT),
         ),
         migrations.AddField(
             model_name='screen',
@@ -1646,26 +1687,28 @@ class Migration(migrations.Migration):
             field=models.ForeignKey(to='db.Activity', null=True,
                 related_name='pin_transfer_approved_screen'),
         ),
-        migrations.AddField(
-            model_name='libraryupdateactivity',
-            name='update_activity',
-            field=models.ForeignKey(to='db.AdministrativeActivity'),
-        ),
-        migrations.AddField(
-            model_name='librarycontentsversion',
-            name='library_contents_loading_activity',
-            field=models.ForeignKey(related_name='lcv_load', to='db.AdministrativeActivity'),
-        ),
-        migrations.AddField(
-            model_name='librarycontentsversion',
-            name='library_contents_release_activity',
-            field=models.ForeignKey(related_name='lcv_release', to='db.AdministrativeActivity', null=True),
-        ),
+# Dropped 20180919
+#         migrations.AddField(
+#             model_name='libraryupdateactivity',
+#             name='update_activity',
+#             field=models.ForeignKey(to='db.AdministrativeActivity'),
+#         ),
+#         migrations.AddField(
+#             model_name='librarycontentsversion',
+#             name='library_contents_loading_activity',
+#             field=models.ForeignKey(related_name='lcv_load', to='db.AdministrativeActivity'),
+#         ),
+#         migrations.AddField(
+#             model_name='librarycontentsversion',
+#             name='library_contents_release_activity',
+#             field=models.ForeignKey(related_name='lcv_release', to='db.AdministrativeActivity', null=True),
+#         ),
         migrations.AddField(
             model_name='library',
             name='owner_screener',
             field=models.ForeignKey(to='db.ScreensaverUser', 
-                null=True, related_name='owned_library'),
+                null=True, related_name='owned_library',
+                on_delete=models.deletion.SET_NULL),
         ),
         migrations.AddField(
             model_name='labactivity',
@@ -1685,11 +1728,12 @@ class Migration(migrations.Migration):
             unique_together=set([('screen', 'keyword')]),
         ),
         
-        migrations.AddField(
-            model_name='equipmentused',
-            name='lab_activity',
-            field=models.ForeignKey(to='db.LabActivity'),
-        ),
+# Dropped 20180919
+#         migrations.AddField(
+#             model_name='equipmentused',
+#             name='lab_activity',
+#             field=models.ForeignKey(to='db.LabActivity'),
+#         ),
 #         migrations.AddField(
 #             model_name='collaboratorlink',
 #             name='collaborator',
@@ -1704,11 +1748,12 @@ class Migration(migrations.Migration):
                 related_name='collaborating_screens'),
         ),
         
-        migrations.AddField(
-            model_name='cherrypickrequestupdateactivity',
-            name='update_activity',
-            field=models.OneToOneField(to='db.AdministrativeActivity', unique=True),
-        ),
+# Dropped 20180919
+#         migrations.AddField(
+#             model_name='cherrypickrequestupdateactivity',
+#             name='update_activity',
+#             field=models.OneToOneField(to='db.AdministrativeActivity', unique=True),
+#         ),
         migrations.AddField(
             model_name='cherrypickrequest',
             name='requested_by',
@@ -1719,33 +1764,37 @@ class Migration(migrations.Migration):
             model_name='cherrypickrequest',
             name='volume_approved_by',
             field=models.ForeignKey(to='db.AdministratorUser', 
-                null=True, related_name='approved_cherry_pick'),
+                null=True, related_name='approved_cherry_pick',
+                on_delete=models.deletion.SET_NULL),
         ),
-        migrations.AddField(
-            model_name='checklistitemeventupdateactivity',
-            name='update_activity',
-            field=models.ForeignKey(to='db.AdministrativeActivity'),
-        ),
+# Dropped 20180919
+#         migrations.AddField(
+#             model_name='checklistitemeventupdateactivity',
+#             name='update_activity',
+#             field=models.ForeignKey(to='db.AdministrativeActivity'),
+#         ),
         migrations.AddField(
             model_name='checklistitemevent',
             name='screening_room_user',
             field=models.ForeignKey(to='db.ScreeningRoomUser'),
         ),
-        migrations.AddField(
-            model_name='attachedfileupdateactivity',
-            name='update_activity',
-            field=models.ForeignKey(to='db.AdministrativeActivity'),
-        ),
-        migrations.AddField(
-            model_name='assayplate',
-            name='screen_result_data_loading',
-            field=models.ForeignKey(to='db.AdministrativeActivity', null=True),
-        ),
-        migrations.AddField(
-            model_name='activityupdateactivity',
-            name='update_activity',
-            field=models.ForeignKey(to='db.AdministrativeActivity'),
-        ),
+# Dropped 20180919
+#         migrations.AddField(
+#             model_name='attachedfileupdateactivity',
+#             name='update_activity',
+#             field=models.ForeignKey(to='db.AdministrativeActivity'),
+#         ),
+#         migrations.AddField(
+#             model_name='assayplate',
+#             name='screen_result_data_loading',
+#             field=models.ForeignKey(to='db.AdministrativeActivity', null=True,
+#                 on_delete=models.deletion.SET_NULL),
+#         ),
+#         migrations.AddField(
+#             model_name='activityupdateactivity',
+#             name='update_activity',
+#             field=models.ForeignKey(to='db.AdministrativeActivity'),
+#         ),
         migrations.CreateModel(
             name='CherryPickScreening',
             fields=[
@@ -1774,11 +1823,11 @@ class Migration(migrations.Migration):
                 'db_table': 'library_screening',
             },
         ),
-        migrations.AddField(
-            model_name='wellvolumeadjustment',
-            name='well_volume_correction_activity',
-            field=models.ForeignKey(to='db.WellVolumeCorrectionActivity', null=True),
-        ),
+#         migrations.AddField(
+#             model_name='wellvolumeadjustment',
+#             name='well_volume_correction_activity',
+#             field=models.ForeignKey(to='db.WellVolumeCorrectionActivity', null=True),
+#         ),
         migrations.AddField(
             model_name='screeningroomuser',
             name='lab_head',
@@ -1788,18 +1837,20 @@ class Migration(migrations.Migration):
             model_name='screen',
             name='lab_head',
             field=models.ForeignKey(to='db.ScreensaverUser', 
-                related_name='lab_head_screen', null=True),
+                related_name='lab_head_screen', null=True,
+                on_delete=models.deletion.PROTECT),
         ),
         migrations.AddField(
             model_name='cherrypickassayplate',
             name='cherry_pick_liquid_transfer',
-            field=models.ForeignKey(to='db.CherryPickLiquidTransfer', null=True),
+            field=models.ForeignKey(to='db.CherryPickLiquidTransfer', 
+                null=True, on_delete=models.deletion.SET_NULL),
         ),
-        migrations.AddField(
-            model_name='cherrypickassayplatescreeninglink',
-            name='cherry_pick_screening',
-            field=models.ForeignKey(to='db.CherryPickScreening'),
-        ),
+#         migrations.AddField(
+#             model_name='cherrypickassayplatescreeninglink',
+#             name='cherry_pick_screening',
+#             field=models.ForeignKey(to='db.CherryPickScreening'),
+#         ),
         migrations.AlterUniqueTogether(
             name='cherrypickassayplate',
             unique_together=set([('cherry_pick_request', 'plate_ordinal', 'attempt_ordinal')]),

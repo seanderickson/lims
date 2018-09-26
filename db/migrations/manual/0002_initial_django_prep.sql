@@ -365,23 +365,12 @@ ALTER TABLE attached_file ADD COLUMN contents bytea;
 
 UPDATE attached_file SET contents = loread(lo_open(file_contents, 262144), 10000000) 
   WHERE attached_file.file_contents IS NOT NULL;
+
+ALTER TABLE attached_file DROP COLUMN file_contents;
+SELECT lo_unlink(l.oid) FROM pg_largeobject_metadata l;
+
 COMMIT;
 BEGIN;
-  
-ALTER TABLE attached_file ALTER COLUMN file_contents DROP NOT NULL;
-
-/**
-  TODO:
-  use "\lo_list"
-  and
-  "\lo_unlink" to drop largeobjects
-
- *** TODO: cannot do following:
- *** pg_largeobject is owned by user "postgres" on orchestra and cannot 
- *** be deleted.
-DELETE FROM pg_largeobject USING attached_file WHERE loid=file_contents;
-ALTER TABLE attached_file DROP COLUMN file_contents;
-**/
 
 /**
   Create a foreignkey for the publication.reagent field, then

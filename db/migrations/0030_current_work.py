@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('db', '0021_library_is_released'),
+        ('db', '0022_activity_refactor'),
     ]
 
     operations = [

@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-    
 from __future__ import unicode_literals
 
-# from datetime import datetime, time, date, timedelta
 import datetime
 import json
 import logging
@@ -12,10 +11,8 @@ from django.db.utils import IntegrityError
 from pytz import timezone
 import pytz
 
+from db.migrations import create_log_time, times_seen
 from reports.utils import default_converter
-from reports.models import ApiLog
-
-from db.migrations import create_log_time
 
 
 logger = logging.getLogger(__name__)
@@ -26,7 +23,7 @@ def make_log(
     apps, input_date, ref_resource_name, key, 
     diffs=None, comment=None, user_id=None, username=None):
 
-    apilog_model = apps.get_model('reports','apilog')
+    ApiLog = apps.get_model('reports','apilog')
     collision_counter=0
 
     if diffs is None:
@@ -47,7 +44,7 @@ def make_log(
         with transaction.atomic():
             log.save()
     except IntegrityError as e:
-        q = apilog_model.objects.filter(
+        q = ApiLog.objects.filter(
                 ref_resource_name=ref_resource_name,
                 key = key).order_by('-date_time')        
         if q.exists():    
@@ -67,7 +64,7 @@ def make_log(
 def migrate_pin_transfer_approval(apps, schema_editor):
     '''
     Migrate the pin_transfer_approval activities to the
-    "pin_transfer_approved_by" field, and recored the date and comment
+    "pin_transfer_approved_by" field, and record the date and comment
     '''
     Screen = apps.get_model('db', 'Screen')
     AdministrativeActivityModel = apps.get_model('db', 'AdministrativeActivity')
@@ -97,7 +94,12 @@ def migrate_pin_transfer_approval(apps, schema_editor):
             user_id=activity.created_by.screensaver_user_id,
             username=activity.created_by.username)
         count = count + 1
-    
+        
+        s.pin_transfer_approved_by = activity.created_by
+        s.pin_transfer_approval_date = activity.date_of_activity
+        s.pin_transfer_approval_comment = activity.comments
+        s.save()
+        
     logger.info('migrated %d pin_transfer_admin_activity logs', count)
 
 def migrate_screen_status(apps,schema_editor):
@@ -190,39 +192,45 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        
         migrations.RunPython(migrate_screen_status),
+        
+        migrations.AddField(
+            model_name='screen',
+            name='pin_transfer_approved_by',
+            field=models.ForeignKey('ScreensaverUser', null=True, 
+                on_delete=models.SET_NULL, 
+                related_name='pin_transfer_approved_screen', )),
+        migrations.AddField(
+            model_name='screen',
+            name='pin_transfer_date_approved',
+            field=models.DateField(null=True)),
+        migrations.AddField(
+            model_name='screen',
+            name='pin_transfer_comments',
+            field=models.TextField(null=True)),
+         
         migrations.RunPython(migrate_pin_transfer_approval),
+        
+        migrations.RunSQL('''
+            delete from activity where exists(select null 
+            from screen where pin_transfer_admin_activity = activity_id);
+        '''),
+         
+        migrations.RemoveField(
+            model_name='screen',
+            name='pin_transfer_admin_activity',
+        ),
+         
         migrations.RunPython(migrate_screen_project_phase),
         
-        # TODO: reinstate for final migration; leaving fields in the db for 
-        # now - 20170607
-        # migrations.RemoveField(
-        #     model_name='screen',
-        #     name='project_id',
-        # ),
-        # migrations.RemoveField(
-        #     model_name='screen',
-        #     name='project_phase',
-        # ),
+# Moved to final migration        
 #         migrations.RemoveField(
 #             model_name='screen',
-#             name='transfection_agent',
-#         ),
-#         migrations.RenameField(
-#             model_name='screen', 
-#             old_name='transfection_agent_text', 
-#             new_name='transfection_agent'
-#         ),
-        
-#         migrations.AlterField(
-#             model_name='screen', name='project_phase', 
-#             field=models.TextField(null=True),
-#         ),
-#         migrations.AlterField(
-#             model_name='screen',
 #             name='project_id',
-#             field=models.TextField(null=True),
+#         ),
+#         migrations.RemoveField(
+#             model_name='screen',
+#             name='project_phase',
 #         ),
         
 

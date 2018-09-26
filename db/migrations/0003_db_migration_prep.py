@@ -99,13 +99,10 @@ def create_simple_vocabularies(apps):
         vocab_writer = csv.writer(_file)
         header = ['key', 'scope', 'ordinal', 'title'] 
         vocab_writer.writerow(header)
-        # Run it twice for service activities, so that they can be separated
-        # from the vanilla activities; 
-        create_serviceactivity_vocab(
-            vocab_writer, 'service_activity_type', 'serviceactivity.type',
-            apps.get_model('db', 'ServiceActivity').objects.all())
         
         input_args = [
+                ['service_activity_type', 'activity.type',
+                    apps.get_model('db', 'ServiceActivity').objects.all()],
                 ['species', 'screen.species',
                     apps.get_model('db', 'Screen').objects.all()],
                 ['assay_type', 'screen.assay_type',
@@ -116,8 +113,6 @@ def create_simple_vocabularies(apps):
                     apps.get_model('db', 'DataColumn').objects.all()],
                 ['value', 'funding_support',
                     apps.get_model('db', 'FundingSupport').objects.all()],
-                ['service_activity_type', 'activity.type',
-                    apps.get_model('db', 'ServiceActivity').objects.all()],
                 # dep: 0020(provisional) -> moves to 0002: move classification column
                 ['classification', 'user.classification',
                     apps.get_model('db', 'ScreensaverUser').objects.all()],
@@ -293,29 +288,29 @@ def create_vocabularies(apps, schema_editor):
     create_checklist_vocabularies(apps)
     
 
-def update_facility_usage_roles(apps, schema_editor):
-    UserFacilityUsageRole = apps.get_model('db', 'UserFacilityUsageRole')
-    
-    role_updates = (
-#         ('smallMoleculeScreener', 'small_molecule_screener'),
-#         ('rnaiScreener', 'rnai_screener'),
-        ('iccblProjectUser', 'iccbl_project_user'),
-        ('analyticalChemistryUser', 'analytical_chemistry_user'),
-        ('nonScreeningUser', 'non_screening_user'),
-        ('mouseImagerUser', 'mouse_image_user'),
-        ('qpcrUser', 'qpcr_user'),
-        ('medicinalChemistUser', 'medicinal_chemist_user'),
-    )
-    
-    for ru in role_updates:
-        (UserFacilityUsageRole.objects.all()
-            .filter(facility_usage_role=ru[0])
-            .update(facility_usage_role=ru[1]))
-
-    UserFacilityUsageRole.objects.all()\
-        .filter(facility_usage_role='smallMoleculeScreener').delete()
-    UserFacilityUsageRole.objects.all()\
-        .filter(facility_usage_role='rnaiScreener').delete()
+# def update_facility_usage_roles(apps, schema_editor):
+#     UserFacilityUsageRole = apps.get_model('db', 'UserFacilityUsageRole')
+#     
+#     role_updates = (
+# #         ('smallMoleculeScreener', 'small_molecule_screener'),
+# #         ('rnaiScreener', 'rnai_screener'),
+#         ('iccblProjectUser', 'iccbl_project_user'),
+#         ('analyticalChemistryUser', 'analytical_chemistry_user'),
+#         ('nonScreeningUser', 'non_screening_user'),
+#         ('mouseImagerUser', 'mouse_image_user'),
+#         ('qpcrUser', 'qpcr_user'),
+#         ('medicinalChemistUser', 'medicinal_chemist_user'),
+#     )
+#     
+#     for ru in role_updates:
+#         (UserFacilityUsageRole.objects.all()
+#             .filter(facility_usage_role=ru[0])
+#             .update(facility_usage_role=ru[1]))
+# 
+#     UserFacilityUsageRole.objects.all()\
+#         .filter(facility_usage_role='smallMoleculeScreener').delete()
+#     UserFacilityUsageRole.objects.all()\
+#         .filter(facility_usage_role='rnaiScreener').delete()
 
 class Migration(migrations.Migration):
 
@@ -335,15 +330,16 @@ class Migration(migrations.Migration):
               order by screen.screen_id,value
               );
         '''.strip()),
-        migrations.RunSQL('delete from user_facility_usage_role;'),
-        migrations.RunSQL('''
-            insert into user_facility_usage_role (id,screensaver_user_id,facility_usage_role) (
-              select nextval('user_facility_usage_role_id_seq'), su.screensaver_user_id, facility_usage_role
-              from screening_room_user su
-              join screening_room_user_facility_usage_role roles on(su.screensaver_user_id=roles.screening_room_user_id)
-              order by su.screensaver_user_id,roles.facility_usage_role
-              );
-        '''.strip()),
+        # TODO: 20180920 - no longer needed (JAS)
+#         migrations.RunSQL('delete from user_facility_usage_role;'),
+#         migrations.RunSQL('''
+#             insert into user_facility_usage_role (id,screensaver_user_id,facility_usage_role) (
+#               select nextval('user_facility_usage_role_id_seq'), su.screensaver_user_id, facility_usage_role
+#               from screening_room_user su
+#               join screening_room_user_facility_usage_role roles on(su.screensaver_user_id=roles.screening_room_user_id)
+#               order by su.screensaver_user_id,roles.facility_usage_role
+#               );
+#         '''.strip()),
         # Transfer the cell_line vocab from the "screen_cell_line" table to the 
         # "screen_cell_lines" vocab table
         migrations.RunSQL('delete from screen_cell_lines;'),
@@ -364,15 +360,6 @@ class Migration(migrations.Migration):
             where ta.transfection_agent_id=screen.transfection_agent_id;
         '''.strip()),
            
-#         migrations.RemoveField(
-#             model_name='screen',
-#             name='transfection_agent',
-#         ),
-#         migrations.RenameField(
-#             model_name='screen', 
-#             old_name='transfection_agent_text', 
-#             new_name='transfection_agent'
-#         ),
         
         # Lab affiliation migration prep: data migration in 0007
         migrations.RenameField(
@@ -386,17 +373,6 @@ class Migration(migrations.Migration):
             new_name='name',
         ),
         
-#         migrations.AddField(
-#             model_name='screensaveruser',
-#             name='rnai_data_sharing_level',
-#             field=models.IntegerField(null=True),
-#         ),
-#         migrations.AddField(
-#             model_name='screensaveruser',
-#             name='sm_data_sharing_level',
-#             field=models.IntegerField(null=True),
-#         ),
-
-
-        migrations.RunPython(update_facility_usage_roles),
+        # Removed: 20180920 - per JAS no longer needed
+        # migrations.RunPython(update_facility_usage_roles),
     ]

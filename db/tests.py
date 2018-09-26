@@ -47,9 +47,9 @@ from db.api import API_MSG_SCREENING_PLATES_UPDATED, \
     API_PARAM_SHOW_RETIRED_COPY_WELlS, API_PARAM_VOLUME_OVERRIDE, \
     WellResource
 import db.api
-from db.models import Reagent, Substance, Library, ScreensaverUser, \
-    UserChecklist, AttachedFile, ServiceActivity, Screen, Well, Publication, \
-    PlateLocation, LibraryScreening, LabAffiliation
+from db.models import Reagent, Library, ScreensaverUser, \
+    UserChecklist, AttachedFile, Screen, Well, Publication, \
+    PlateLocation, LibraryScreening, LabAffiliation, Activity
 import db.models
 from db.schema import VOCAB
 import db.schema as SCHEMA
@@ -1159,7 +1159,7 @@ class LibraryResource(DBResourceTestCase):
         index = 0
         platesize = 384
         plate = 1535        
-        substance_ids = set()
+        # substance_ids = set()
         # Examine wells - first plate only for speed
         for j in range(384):
             well_name = lims_utils.well_name_from_index(j, platesize)
@@ -1238,7 +1238,7 @@ class LibraryResource(DBResourceTestCase):
         index = 0
         platesize = 384
         plate = 1535        
-        substance_ids = set()
+        # substance_ids = set()
         # Examine wells - first plate only for speed
         for j in range(384):
             well_name = lims_utils.well_name_from_index(j, platesize)
@@ -5957,6 +5957,7 @@ class ScreenResource(DBResourceTestCase):
         # 10.b Inspect the returned library screening
         for k,v in library_screening_input.items():
             v2 = library_screening_output[k]
+            logger.debug('k: %r, v: %r, v2: %r', k, v, v2)
             self.assertTrue(equivocal(v,v2),
                 'test key: %r:%r != %r' % (k, v, v2))
 
@@ -6325,6 +6326,7 @@ class ScreenResource(DBResourceTestCase):
             if k == 'library_plates_screened':
                 continue # see next test, below
             v2 = library_screening_output4[k]
+            logger.debug('k: %r, v: %r, v2: %r', k, v, v2)
             self.assertTrue(equivocal(v,v2),
                 'test key: %r:%r != %r' % (k, v, v2))
         logger.info('created library screening, with single-plate range: %r',
@@ -6374,7 +6376,7 @@ class ScreenResource(DBResourceTestCase):
         # self.assertTrue(find_in_dict(key2, errors), 
         #     'test: %s, not in errors: %r' %(key2,errors))
 
-        
+        logger.info('test2_create_library_screening - done')
         
     def test3_create_publication(self):
 
@@ -6649,13 +6651,14 @@ class ScreenResource(DBResourceTestCase):
         service_activity_post = {
             'screen_facility_id': screen_item['facility_id'],
             'type': "image_analysis",
+            'classification': SCHEMA.VOCAB.activity.classification.OTHER,
             'comments': "test",
             'date_of_activity': "2015-10-27",
             'funding_support': "clardy_grants",
             'performed_by_user_id': performed_by_user['screensaver_user_id'],
         }
         
-        resource_uri = BASE_URI_DB + '/serviceactivity'
+        resource_uri = BASE_URI_DB + '/activity'
         resp = self.api_client.post(
             resource_uri, 
             format='json', 
@@ -6682,14 +6685,14 @@ class ScreenResource(DBResourceTestCase):
         resource_uri = BASE_REPORTS_URI + '/apilog'
         data_for_get={ 
             'limit': 0, 
-            'ref_resource_name': 'serviceactivity', 
+            'ref_resource_name': 'activity', 
         }
         apilogs = self.get_list_resource(
             resource_uri, data_for_get=data_for_get )
         self.assertTrue(
             len(apilogs) == 1, 'too many apilogs found: %r' % apilogs)
         apilog = apilogs[0]
-        logger.debug('serviceactivity log: %r', apilog)
+        logger.debug('activity log: %r', apilog)
         self.assertTrue(apilog['api_action'] == 'CREATE')
         
                 
@@ -9775,7 +9778,7 @@ class ScreensaverUserResource(DBResourceTestCase):
         logger.info('delete resources')
         UserChecklist.objects.all().delete()
         AttachedFile.objects.all().delete()
-        ServiceActivity.objects.all().delete()
+        Activity.objects.all().delete()
         logger.info('delete users, including: %r', self.username)
         Screen.objects.all().delete()
         ScreensaverUser.objects.all().exclude(username=self.username).delete()
@@ -11029,8 +11032,9 @@ class ScreensaverUserResource(DBResourceTestCase):
         performed_by_user2 = self.create_staff_user(
             { 'username': 'service_activity_performer2'})
 
-        service_activity_post = {
+        activity_post = {
             'serviced_user_id': serviced_user['screensaver_user_id'],
+            'classification': SCHEMA.VOCAB.activity.classification.OTHER,
             'type': "image_analysis",
             'comments': "test",
             'date_of_activity': "2015-10-27",
@@ -11039,11 +11043,11 @@ class ScreensaverUserResource(DBResourceTestCase):
         }
 
         # 1. Create        
-        resource_uri = BASE_URI_DB + '/serviceactivity'
+        resource_uri = BASE_URI_DB + '/activity'
         resp = self.api_client.post(
             resource_uri, 
             format='json', 
-            data=service_activity_post, 
+            data=activity_post, 
             authentication=self.get_credentials())
         self.assertTrue(
             resp.status_code in [200,201,202], 
@@ -11058,43 +11062,43 @@ class ScreensaverUserResource(DBResourceTestCase):
             resp.status_code in [200], 
             (resp.status_code, self.get_content(resp)))
         new_obj = self.deserialize(resp)
-        logger.info('new service activity result: %r', new_obj)
+        logger.info('new (service) activity result: %r', new_obj)
         self.assertTrue(API_RESULT_DATA in new_obj)
         new_obj = new_obj[API_RESULT_DATA][0]
         result,msgs = assert_obj1_to_obj2(
-            service_activity_post, new_obj)
+            activity_post, new_obj)
         self.assertTrue(result,msgs)
 
         # 1a. Test apilog
         resource_uri = BASE_REPORTS_URI + '/apilog'
         data_for_get={ 
             'limit': 0, 
-            'ref_resource_name': 'serviceactivity', 
+            'ref_resource_name': 'activity', 
         }
         apilogs = self.get_list_resource(
             resource_uri, data_for_get=data_for_get )
         self.assertTrue(
             len(apilogs) == 1, 'too many apilogs found: %r' % apilogs)
         apilog = apilogs[0]
-        logger.debug('serviceactivity log: %r', apilog)
+        logger.debug('activity log: %r', apilog)
         self.assertTrue(apilog['api_action'] == 'CREATE')
         self.assertEquals(
             apilog['uri'], 
-            'screensaveruser/{serviced_user_id}/serviceactivity/{activity_id}'
+            'screensaveruser/{serviced_user_id}/activity/{activity_id}'
                 .format(**new_obj))
         
         # TODO: test with a serviced screen
         
         # 2. patch
-        service_activity_post = {
+        activity_post = {
             'activity_id': new_obj['activity_id'],
             'performed_by_user_id': performed_by_user2['screensaver_user_id']}
 
-        resource_uri = BASE_URI_DB + '/serviceactivity'
+        resource_uri = BASE_URI_DB + '/activity'
         resp = self.api_client.patch(
             resource_uri, 
             format='json', 
-            data=service_activity_post, 
+            data=activity_post, 
             authentication=self.get_credentials())
         self.assertTrue(
             resp.status_code in [200,201,202], 
@@ -11109,19 +11113,19 @@ class ScreensaverUserResource(DBResourceTestCase):
             resp.status_code in [200], 
             (resp.status_code, self.get_content(resp)))
         new_obj = self.deserialize(resp)
-        logger.info('new service activity result: %r', new_obj)
+        logger.info('new (service) activity result: %r', new_obj)
         self.assertTrue(API_RESULT_DATA in new_obj)
         self.assertEquals(1, len(new_obj[API_RESULT_DATA]))
         new_obj = new_obj[API_RESULT_DATA][0]
         result,msgs = assert_obj1_to_obj2(
-            service_activity_post, new_obj)
+            activity_post, new_obj)
         self.assertTrue(result,msgs)
         
         # 2.a Test apilog
         resource_uri = BASE_REPORTS_URI + '/apilog'
         data_for_get={ 
             'limit': 0, 
-            'ref_resource_name': 'serviceactivity',
+            'ref_resource_name': 'activity',
             'diff_keys': 'performed_by_user_id' 
         }
         apilogs = self.get_list_resource(
@@ -11129,17 +11133,17 @@ class ScreensaverUserResource(DBResourceTestCase):
         self.assertEqual(len(apilogs),1, 
             'wrong number of apilogs found: %r' % apilogs)
         apilog = apilogs[0]
-        logger.info('serviceactivity log: %r', apilog)
+        logger.info('activity log: %r', apilog)
         self.assertTrue(apilog['api_action'] == 'PATCH')
         self.assertEquals(
             apilog['uri'], 
-            'screensaveruser/{serviced_user_id}/serviceactivity/{activity_id}'
+            'screensaveruser/{serviced_user_id}/activity/{activity_id}'
                 .format(**new_obj))
         
-        # 3 delete serviceactivity
-        logger.info('Delete service activity...')
+        # 3 delete activity
+        logger.info('Delete (service) activity...')
         resource_uri = '/'.join([
-            BASE_URI_DB,'serviceactivity',str(new_obj['activity_id'])])
+            BASE_URI_DB,'activity',str(new_obj['activity_id'])])
         resp = self.api_client.delete(
             resource_uri, authentication=self.get_credentials())
         self.assertTrue(
@@ -11158,7 +11162,7 @@ class ScreensaverUserResource(DBResourceTestCase):
         resource_uri = BASE_REPORTS_URI + '/apilog'
         data_for_get={ 
             'limit': 0, 
-            'ref_resource_name': 'serviceactivity',
+            'ref_resource_name': 'activity',
             'api_action': 'DELETE'
         }
         apilogs = self.get_list_resource(
@@ -11166,11 +11170,11 @@ class ScreensaverUserResource(DBResourceTestCase):
         self.assertTrue(
             len(apilogs) == 1, 'too many apilogs found: %r' % apilogs)
         apilog = apilogs[0]
-        logger.info('serviceactivity log: %r', apilog)
+        logger.info('activity log: %r', apilog)
         self.assertTrue(apilog['api_action'] == 'DELETE')
         self.assertEquals(
             apilog['uri'], 
-            'screensaveruser/{serviced_user_id}/serviceactivity/{activity_id}'
+            'screensaveruser/{serviced_user_id}/activity/{activity_id}'
                 .format(**new_obj))
 
 

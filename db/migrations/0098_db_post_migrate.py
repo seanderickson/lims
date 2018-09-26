@@ -10,6 +10,9 @@ from django.db import migrations, models
 
 logger = logging.getLogger(__name__)
 
+def temp_migrate_breaker(apps,schema_editor):
+    raise Exception('xxx stop migration xxx')
+
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -17,20 +20,6 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        
-        migrations.CreateModel(
-            name='WellQueryIndex',
-            fields=[
-                ('id', models.AutoField(
-                    verbose_name='ID', serialize=False, auto_created=True, 
-                    primary_key=True)),
-                ('query', models.ForeignKey(to='db.CachedQuery')),
-                ('well', models.ForeignKey(to='db.Well')),
-            ],
-            options={
-                'db_table': 'well_query_index',
-            },
-        ),
         
         migrations.AlterField(
             model_name='attachedfile',
@@ -52,13 +41,9 @@ class Migration(migrations.Migration):
         migrations.DeleteModel(
             name='ScreenFundingSupportLink',
         ),
-        migrations.RemoveField(
-            model_name='serviceactivity',
-            name='funding_support_link',
-        ),
-        # Note: funding_support_link is an alias for funding_support_id
-        # migrations.RunSQL(
-        #     'ALTER TABLE service_activity DROP COLUMN funding_support_id; '),
+
+        migrations.RunSQL(
+            'ALTER TABLE service_activity DROP COLUMN funding_support_id; '),
         migrations.DeleteModel(
             name='FundingSupport',
         ),
@@ -83,18 +68,6 @@ class Migration(migrations.Migration):
 
         migrations.DeleteModel(
             name='AttachedFileType',
-        ),
-
-        migrations.RemoveField(
-            model_name='datacolumnderivedfromlink',
-            name='derived_data_column',
-        ),
-        migrations.RemoveField(
-            model_name='datacolumnderivedfromlink',
-            name='derived_from_data_column',
-        ),
-        migrations.DeleteModel(
-            name='DataColumnDerivedFromLink',
         ),
 
         # Operations already handled in migration 0002
@@ -141,6 +114,14 @@ class Migration(migrations.Migration):
             model_name='plate',
             name='retired_activity_id',
         ),
+#         migrations.RunPython(temp_migrate_breaker),
+
+# NOTE: 20180926 does not work, presumably because the fk for this has been altered in 0002
+#         migrations.RemoveField(
+#             model_name='screen',
+#             name='pin_transfer_admin_activity',
+#         ),
+        
 
 #         migrations.RemoveField(
 #             model_name='screenresult',

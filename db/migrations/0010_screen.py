@@ -195,6 +195,15 @@ class Migration(migrations.Migration):
         migrations.RunPython(migrate_screen_status),
         
         migrations.RunPython(migrate_pin_transfer_approval),
+
+        # Moved to 0022 activity_refactor
+        # migrations.RemoveField(
+        #     model_name='screen',
+        #     name='pin_transfer_admin_activity',
+        # ),
+        migrations.RunSQL('''
+            update screen set pin_transfer_admin_activity_id = null;
+        '''),
         
         migrations.RunPython(migrate_screen_project_phase),
         

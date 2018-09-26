@@ -403,17 +403,17 @@ class Migration(migrations.Migration):
                 'db_table': 'data_column',
             },
         ),
-        migrations.CreateModel(
-            name='DataColumnDerivedFromLink',
-            fields=[
-                ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
-                ('derived_data_column', models.ForeignKey(to='db.DataColumn')),
-                ('derived_from_data_column', models.ForeignKey(related_name='derived_from', to='db.DataColumn')),
-            ],
-            options={
-                'db_table': 'data_column_derived_from_link',
-            },
-        ),
+#         migrations.CreateModel(
+#             name='DataColumnDerivedFromLink',
+#             fields=[
+#                 ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
+#                 ('derived_data_column', models.ForeignKey(to='db.DataColumn')),
+#                 ('derived_from_data_column', models.ForeignKey(related_name='derived_from', to='db.DataColumn')),
+#             ],
+#             options={
+#                 'db_table': 'data_column_derived_from_link',
+#             },
+#         ),
 # Dropped 20180919
 #         migrations.CreateModel(
 #             name='EquipmentUsed',
@@ -1693,16 +1693,16 @@ class Migration(migrations.Migration):
 #             name='update_activity',
 #             field=models.ForeignKey(to='db.AdministrativeActivity'),
 #         ),
-#         migrations.AddField(
-#             model_name='librarycontentsversion',
-#             name='library_contents_loading_activity',
-#             field=models.ForeignKey(related_name='lcv_load', to='db.AdministrativeActivity'),
-#         ),
-#         migrations.AddField(
-#             model_name='librarycontentsversion',
-#             name='library_contents_release_activity',
-#             field=models.ForeignKey(related_name='lcv_release', to='db.AdministrativeActivity', null=True),
-#         ),
+        migrations.AddField(
+            model_name='librarycontentsversion',
+            name='library_contents_loading_activity',
+            field=models.ForeignKey(related_name='lcv_load', to='db.AdministrativeActivity'),
+        ),
+        migrations.AddField(
+            model_name='librarycontentsversion',
+            name='library_contents_release_activity',
+            field=models.ForeignKey(related_name='lcv_release', to='db.AdministrativeActivity', null=True),
+        ),
         migrations.AddField(
             model_name='library',
             name='owner_screener',

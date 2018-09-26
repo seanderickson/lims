@@ -18,15 +18,11 @@ logger = logging.getLogger(__name__)
 
 base_uri = '/db/api/v1'
 cpap_resource_name = 'cherrypickassayplate'
+cpap_uri = '/db/api/v1/' + cpap_resource_name
 cpr_resource_name = 'cherrypickrequest'
 plate_resource_name = 'librarycopyplate'
 copywell_resource_name = 'copywell'
-screen_resource_name = 'screen'
-cpap_uri = '/db/api/v1/' + cpap_resource_name
-
-copywell_resource_name = 'copywell'
 copywell_uri = '/db/api/v1/' + copywell_resource_name
-librarycopyplate_resource_name = 'librarycopyplate'
 library_screening_resource_name = 'libraryscreening'
 
 
@@ -157,18 +153,14 @@ def _create_ls_log(
 
 def _create_plate_activity_log(activity_dict):
     log = ApiLog()
-    log.ref_resource_name = librarycopyplate_resource_name
+    log.ref_resource_name = plate_resource_name
     log.api_action = 'PATCH'
     log.key = '/'.join([
         activity_dict['library_short_name'],activity_dict['copy_name'],
         str(int(activity_dict['plate_number']))])
-#         str(int(activity_dict['plate_number'])).zfill(5)])
     log.uri = '/'.join([base_uri,log.ref_resource_name,log.key])
     log.comment = activity_dict['comments']
     log.date_time = create_log_time(log.key,activity_dict['date_of_activity'])
-#     if log.date_time in extant_plate_logs[log.key]:
-#         log.date_time = create_log_time(log.key,log.date_time)
-#     extant_plate_logs[log.key].add(log.date_time)    
     log.username = activity_dict['username']
     if log.username is None:
         log.username = activity_dict['email']
@@ -341,6 +333,9 @@ def create_plate_plated_and_retired_logs(apps, schema_editor):
 def create_library_screening_logs(apps, schema_editor):
 
     LibraryScreening = apps.get_model('db', 'LibraryScreening')
+    Screening = apps.get_model('db', 'Screening')
+    LabActivity = apps.get_model('db', 'LabActivity')
+    Activity = apps.get_model('db','Activity')
 
     ls_cols = [
         'activity_id',
@@ -417,13 +412,11 @@ def create_library_screening_logs(apps, schema_editor):
             # Create plate log
             cp_log = _child_log_from(ls_log)
             cp_log.comment = None
-            cp_log.ref_resource_name = librarycopyplate_resource_name 
+            cp_log.ref_resource_name = plate_resource_name 
             cp_log.key = '/'.join([
                 ls['library_short_name'], ls['copy_name'], 
                 str(ls['plate_number'])])
-#                 str(ls['plate_number']).zfill(5)])
             cp_log.uri = '/'.join([base_uri,cp_log.ref_resource_name,cp_log.key])
-#             if cp_log.date_time in extant_plate_logs[cp_log.key]:
             cp_log.date_time = create_log_time(cp_log.key,cp_log.date_time)
             extant_plate_logs[cp_log.key].add(cp_log.date_time)    
             previous_screening_count = copyplate_to_screening_count.get(
@@ -476,8 +469,9 @@ def create_library_screening_logs(apps, schema_editor):
         .order_by('screeninglink__labactivitylink__activitylink__date_of_activity')):
         if not screening.assayplate_set.exists():
             continue
-        lab_activity = screening.screeninglink.labactivitylink
-        activity = lab_activity.activitylink
+        # lab_activity = screening.screeninglink.labactivitylink
+        # activity = lab_activity.activitylink
+        activity = Activity.objects.get(activity_id=screening.screeninglink_id)
          
         if activity.activity_id not in library_screening_to_log:
             raise Exception(
@@ -502,6 +496,7 @@ def create_well_volume_adjustment_logs(apps, schema_editor):
     - TODO: Cherry Pick Assay Plate created logs? (TODO for API also)
     2. For manual well volume correction activities
     '''
+    logger.info('create_well_volume_adjustment_logs...')
 
     # Strategy:
     # build hash cpr-> plates
@@ -830,6 +825,7 @@ def create_well_volume_adjustment_logs(apps, schema_editor):
             _row = c.fetchone()
         logger.info('cw_reserve_count %d', cw_reserve_count)
         logger.info('wvac_count %d', wvac_count)
+    logger.info('create_well_volume_adjustment_logs Done')
                 
 def create_cherry_pick_plating_logs(apps, schema_editor):
     '''
@@ -838,16 +834,24 @@ def create_cherry_pick_plating_logs(apps, schema_editor):
         last_plating_activity_date
     - child logs: for each Cherry Pick Assay Plate
     NOTE: keep CherryPickLiquidTransfer entries -> LabActivity (for now)
-   '''
+    '''
+    logger.info('create_cherry_pick_plating_logs...')
+    
     i = 0
     CherryPickLiquidTransfer = apps.get_model('db', 'CherryPickLiquidTransfer')
-    
-    liquid_transfers = CherryPickLiquidTransfer.objects.all().order_by()
+    LabActivity = apps.get_model('db', 'LabActivity')
+    Activity = apps.get_model('db','Activity')
+
+    liquid_transfers = CherryPickLiquidTransfer.objects.all().order_by('labactivitylink_id')
     logger.info('create logs for %d liquid_transfers', len(liquid_transfers))
     cpr_parent_logs = {}
     for cplt in liquid_transfers:
-        lab_activity = cplt.labactivitylink
-        activity = lab_activity.activitylink
+        # NOTE: 20180925: breaking change: the activity classes that are being
+        # built by migrations do not work the same way as described by the models.py:
+        # It is not possible to access cplt.labactivitylink
+        # lab_activity = cplt.labactivitylink
+        lab_activity = LabActivity.objects.get(activitylink_id=cplt.labactivitylink_id)
+        activity = Activity.objects.get(activity_id=lab_activity.activitylink_id)
         cpr = cplt.cherrypickassayplate_set.all()[0].cherry_pick_request
         screen_facility_id = lab_activity.screen.facility_id
         # NOTE: CherryPickPlating: use "activity.created_by" for the log user,
@@ -941,7 +945,6 @@ def create_cherry_pick_plating_logs(apps, schema_editor):
                        screensaver_user_legacy_performed_by.username))
             cpap_log.diffs = { 
                 'plating_date': [None, activity.date_of_activity],
-#                 'liquid_transfer_status': [None, cplt.status],
                 'plated_by_username': [None, screensaver_user_admin.username],
                 'plated_by_name': [
                     None, '%s %s' 
@@ -971,7 +974,9 @@ def create_cherry_pick_screening_logs(apps, schema_editor):
    '''
     CherryPickScreening = apps.get_model('db', 'CherryPickScreening')
     CherryPickAssayPlate = apps.get_model('db', 'CherryPickAssayPlate')
-
+    Screening = apps.get_model('db', 'Screening')
+    LabActivity = apps.get_model('db', 'LabActivity')
+    Activity = apps.get_model('db','Activity')
     
     cpap_to_cps_sql = '''
         select cherry_pick_assay_plate_id
@@ -981,13 +986,15 @@ def create_cherry_pick_screening_logs(apps, schema_editor):
     cursor = schema_editor.connection.cursor()
     
     i = 0
-    cp_screenings = CherryPickScreening.objects.all().order_by()
+    cp_screenings = CherryPickScreening.objects.all().order_by('screeninglink_id')
     logger.info('create logs for %d CherryPickScreening', len(cp_screenings))
     cpr_parent_logs = {}
     for cp_screening in cp_screenings:
         
-        lab_activity = cp_screening.screeninglink.labactivitylink
-        activity = lab_activity.activitylink
+        # lab_activity = cp_screening.screeninglink.labactivitylink
+        lab_activity = LabActivity.objects.get(activitylink_id=cp_screening.screeninglink_id)
+        # activity = lab_activity.activitylink
+        activity = Activity.objects.get(activity_id=lab_activity.activitylink_id)
         cpr = cp_screening.cherry_pick_request
         screen_facility_id = lab_activity.screen.facility_id
         screensaver_user = activity.performed_by
@@ -1069,7 +1076,6 @@ def create_cherry_pick_screening_logs(apps, schema_editor):
         
         for cpap in CherryPickAssayPlate.objects.all().filter(
             cherry_pick_assay_plate_id__in=cpap_ids):
-        # for cpap in cp_screening.cherrypickassayplatescreeninglink_set.all():  
             cpap_log = _child_log_from(cpr_parent_log)
             cpap_log.ref_resource_name = cpap_resource_name
             cpap_log.key = '/'.join(str(x) for x in [
@@ -1107,13 +1113,13 @@ class Migration(migrations.Migration):
         migrations.RunPython(create_well_volume_adjustment_logs),
         migrations.RunPython(create_cherry_pick_plating_logs),
         migrations.RunPython(create_cherry_pick_screening_logs),
-
+ 
         migrations.RunPython(find_extant_plate_logs),
         migrations.RunPython(find_extant_cpr_logs),
         migrations.RunPython(create_library_screening_logs),
         migrations.RunPython(create_plate_plated_and_retired_logs),
         migrations.RunPython(create_plate_generic_logs),
-        
+         
         migrations.RunSQL('''
             alter table cherry_pick_liquid_transfer alter COLUMN status drop not null;
         ''')

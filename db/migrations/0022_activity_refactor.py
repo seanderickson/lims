@@ -8,25 +8,8 @@ logger = logging.getLogger(__name__)
 
 DB_API_URI = '/db/api/v1'
 
-# def migrate_activities(apps,schema_editor):
-#     
-#     ServiceActivity = apps.get_model('db','ServiceActivity')
-#     LabActivity = apps.get_model('db','LabActivity')
-#     for sa in ServiceActivity.objects.all():
-#         
-#         activity = sa.activity;
-#         
-#         activity.screen = sa.serviced_screen
-#         activity.serviced_user = sa.serviced_user
-#         activity.classification = 'service_activity'
-#         activity.type = sa.service_activity_type
-#         activity.funding_support = sa.funding_support
-#         activity.save()
-#     
-#     for la in LabActivity.objects.all():
-#         
-#         la.activity.screen = la.screen
-#         la.activity.save()
+def temp_migrate_breaker(apps,schema_editor):
+    raise Exception('xxx stop migration xxx')
         
 class Migration(migrations.Migration):
 
@@ -35,40 +18,16 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.RemoveField(
-            model_name='AssayPlate',
-            name='screen_result_data_loading',
-        ),
         migrations.RunSQL('''
+            ALTER TABLE assay_plate DROP COLUMN screen_result_data_loading_id;
             DROP TABLE cherry_pick_request_update_activity;
-        '''),
-        migrations.RunSQL('''
             DROP TABLE attached_file_update_activity;
-        '''),
-        migrations.RunSQL('''
             DROP TABLE screensaver_user_update_activity;
-        '''),
-        migrations.RunSQL('''
             DROP TABLE activity_update_activity;
-        '''),
-        migrations.RunSQL('''
             DROP TABLE checklist_item_event_update_activity;
-        '''),
-        migrations.RemoveField(
-            model_name='well',
-            name='deprecation_admin_activity'
-        ),
-        
-        migrations.RunSQL('''
             DROP TABLE screen_result_update_activity;
-        '''),
-        migrations.RunSQL('''
             DROP TABLE screen_update_activity;
-        '''),
-        migrations.RunSQL('''
             DROP TABLE library_update_activity;
-        '''),
-        migrations.RunSQL('''
             DROP TABLE well_volume_adjustment;
             DROP TABLE well_volume_correction_activity;
         '''),
@@ -95,16 +54,12 @@ class Migration(migrations.Migration):
         migrations.DeleteModel(
             name='AdministrativeActivity',
         ),
-        migrations.RunSQL('''
-            delete from activity where exists(select null 
-            from screen where pin_transfer_admin_activity_id = activity_id);
-        '''),
+#         migrations.RunSQL('''
+#             update screen set pin_transfer_admin_activity_id = null;
+#         '''),
          
-        migrations.RemoveField(
-            model_name='screen',
-            name='pin_transfer_admin_activity',
-        ),
-         
+#         migrations.RunPython(temp_migrate_breaker),
+        
         migrations.RunSQL('''
             create table archived_activities as select * from activity where 
                 not (
@@ -115,9 +70,9 @@ class Migration(migrations.Migration):
                    exists(select null from service_activity where activity_id = activity.activity_id)
                 or exists(select null from lab_activity where activity_id = activity.activity_id));
          '''),
-        
+         
         # Move ServiceActivity fields to Activity
-        
+         
         migrations.AddField(
             model_name='activity',
             name='screen',
@@ -141,7 +96,7 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='activity', name='type',
             field=models.TextField(null=True)),
-            
+             
         migrations.RunSQL('''
             update activity set classification = 'training' 
                 where exists(select null from service_activity 
@@ -156,14 +111,14 @@ class Migration(migrations.Migration):
                     where activity_id = activity.activity_id
                     and service_activity_type not ilike 'automation%'
                     and service_activity_type not ilike 'training%');
-                    
+                     
             update activity set classification = 'screening' 
                 where exists(select null from lab_activity 
                     where activity_id = activity.activity_id);
             update activity 
                 set screen_id = sa.serviced_screen_id, 
                     serviced_user_id = sa.serviced_user_id, 
-                    type = sa.service_activity_type, 
+                    type = sa.service_activity_type 
                 from service_activity sa where sa.activity_id=activity.activity_id;
             update activity 
                 set funding_support = fs.value
@@ -192,14 +147,14 @@ class Migration(migrations.Migration):
                 where exists (select null from cherry_pick_screening cps 
                     where cps.activity_id=activity.activity_id);
         '''),
-         
+          
         migrations.AlterField(
             model_name='activity', name='classification',
             field=models.TextField(null=False)),
         migrations.AlterField(
             model_name='activity', name='type',
             field=models.TextField(null=False)),
-         
+          
         # Reinstate; for final migration
 #         migrations.RemoveField(
 #             model_name='LabActivity',

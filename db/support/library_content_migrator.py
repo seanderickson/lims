@@ -10,8 +10,6 @@ from django.db.models import Count
 from django.forms.models import model_to_dict
 from django.utils import timezone
 
-from db.api import SmallMoleculeReagentResource, WellResource, \
-    SilencingReagentResource, NaturalProductReagentResource, LibraryResource
 from reports.api import compare_dicts, is_empty_diff
 from reports.models import ApiLog
 from db.migrations import create_log_time
@@ -20,15 +18,10 @@ from db.migrations import create_log_time
 logger = logging.getLogger(__name__)
 
 class Migrator:
+
     '''
     purpose: support class for the library content version migrations
     '''
-
-    smrResource = SmallMoleculeReagentResource()
-    silencingReagentResource = SilencingReagentResource()
-    naturalProductResource = NaturalProductReagentResource()
-    wellResource = WellResource()
-    libraryResource = LibraryResource()
 
     rnai_keys = [
                 'well_id', 'vendor_identifier', 'vendor_name', 'vendor_batch_id',
@@ -156,7 +149,7 @@ where r.library_contents_version_id=%s order by well_id;
                         activity.performed_by.user, 'id', log.username)
                 if not log.user_id:
                     log.user_id = 1
-                log.ref_resource_name = self.libraryResource._meta.resource_name
+                log.ref_resource_name = 'library'
                 log.api_action = 'PATCH'
                 log.json_field = {
                     'migration': 'Library (contents)',
@@ -287,7 +280,7 @@ where r.library_contents_version_id=%s order by well_id;
         
             log.date_time = activity.date_of_activity
 
-        log.ref_resource_name = self.wellResource._meta.resource_name
+        log.ref_resource_name = 'well'
         log.api_action = 'PATCH'
         log.key = prev_dict['well_id']
         log.uri = '/db/api/v1/well/'+log.key 

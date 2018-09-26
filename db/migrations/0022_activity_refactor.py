@@ -156,8 +156,12 @@ class Migration(migrations.Migration):
                 set screen_id = sa.serviced_screen_id, 
                     serviced_user_id = sa.serviced_user_id, 
                     type = sa.service_activity_type, 
-                    funding_support = sa.funding_support 
                 from service_activity sa where sa.activity_id=activity.activity_id;
+            update activity 
+                set funding_support = fs.value
+                from service_activity sa 
+                join funding_support fs using(funding_support_id)
+                where sa.activity_id=activity.activity_id;
             update activity 
                 set screen_id = la.screen_id 
                 from lab_activity la where la.activity_id=activity.activity_id;

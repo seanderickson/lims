@@ -175,13 +175,15 @@ def create_simple_vocabularies(apps):
             writer.writerow(new_row)
         else:
             logger.info('api_init entry for row already created: %r' % row)
-
-    # update the new service_activity.funding_support
-    # see below for manual sql for screen funding supports
-    for fs in apps.get_model('db', 'FundingSupport').objects.all():
-        apps.get_model('db', 'ServiceActivity').objects.all().filter(
-            funding_support_link=fs).update(funding_support=fs.value)
-    
+# 
+#     
+#     
+#     # update the new service_activity.funding_support
+#     # see below for manual sql for screen funding supports
+#     for fs in apps.get_model('db', 'FundingSupport').objects.all():
+#         apps.get_model('db', 'ServiceActivity').objects.all().filter(
+#             funding_support_link=fs).update(funding_support=fs.value)
+#     
     
 def create_attached_file_type_vocab(apps):
     

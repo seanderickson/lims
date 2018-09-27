@@ -6650,8 +6650,8 @@ class ScreenResource(DBResourceTestCase):
 
         service_activity_post = {
             'screen_facility_id': screen_item['facility_id'],
-            'type': "image_analysis",
-            'classification': SCHEMA.VOCAB.activity.classification.OTHER,
+            'type': "training_acumen",
+            'classification': SCHEMA.VOCAB.activity.classification.TRAINING,
             'comments': "test",
             'date_of_activity': "2015-10-27",
             'funding_support': "clardy_grants",

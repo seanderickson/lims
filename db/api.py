@@ -4401,7 +4401,7 @@ class ScreenResultResource(DbApiResource):
                 library_cte,_aw.c.plate_number==text('library_cte.plate_number'))
             
             for fi in base_fields:
-                if fi['table'] == 'library':
+                if fi.get('table') == 'library':
                     base_custom_columns[fi['key']] = \
                         literal_column('library_cte.%s' % fi['key'])
         
@@ -13570,6 +13570,20 @@ class ActivityResource(DbApiResource):
         for key, val in initializer_dict.items():
             setattr(activity, key, val)
 
+        # Final Validation:
+        # TODO: use specific vocab for the activity.classification
+        vocab_scope = schema['fields']['type']['vocabulary_scope_ref']
+        vocab_scope = vocab_scope.replace('*', activity.classification)
+        type_vocab = self.get_vocab_resource()._get_vocabularies_by_scope(vocab_scope)
+        if not type_vocab:
+            logger.warn('no vocabulary found for scope: %r, field: %r', 
+                vocab_scope, 'activity.type')
+        if activity.type not in type_vocab:
+            logger.error('activity.type %r not found in vocab: %r',
+                activity.type, type_vocab.keys())
+            raise ValidationError(
+                key='type',
+                msg='choices: (%s)' % ', '.join(type_vocab.keys()))
         activity.save()
         logger.info('saved activity: %r', activity)
         return { API_RESULT_OBJ: activity }

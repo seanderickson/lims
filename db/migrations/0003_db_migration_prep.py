@@ -5,13 +5,13 @@ import logging
 import os
 import re
 
+from django.conf import settings
 from django.db import migrations, models
-
-from reports.utils import default_converter
-import lims
-from lims.base_settings import PROJECT_ROOT
-import unicodecsv as csv
 import six
+
+import lims
+from reports.utils import default_converter
+import unicodecsv as csv
 
 
 logger = logging.getLogger(__name__)
@@ -67,31 +67,12 @@ def create_vocab(vocab_writer, attr, scope, query, write_to_file=True):
             vocab_writer.writerow(row)
         logger.info('updated vocab: %r' % row)
 
-def create_serviceactivity_vocab(vocab_writer, attr, scope, query):
-    logger.info('create simple vocab: %s, %s', attr,scope)
-    vocabs = []
-    for ordinal, attr_value in (enumerate(
-        query.values_list(attr, flat=True)
-            .distinct(attr).order_by(attr))):
-        if not attr_value: continue
-        key = default_converter(attr_value)
-        title = attr_value
-        vocabs.append([key, scope, ordinal, title])
-    for row in vocabs:
-        title = row[3]
-        key = row[0]
-        # NOTE: do not run update; this is the second run of the service activity
-        #         query.filter(**{ '%s__exact' % attr: title }).update(**{ attr: key })
-        vocab_writer.writerow(row)
-        logger.info('updated vocab: %r' % row)
-
-
 def create_simple_vocabularies(apps):
 
     # simple vocab cases: update without linked tables
     
     vocab_file = os.path.join(
-        PROJECT_ROOT, 'db', 'static', 'api_init', 'vocabulary_data_generated.csv')
+        settings.PROJECT_ROOT, 'db', 'static', 'api_init', 'vocabulary_data_generated.csv')
 
     logger.info('write vocabularies to %s' % vocab_file)
     
@@ -101,8 +82,8 @@ def create_simple_vocabularies(apps):
         vocab_writer.writerow(header)
         
         input_args = [
-                ['service_activity_type', 'activity.type',
-                    apps.get_model('db', 'ServiceActivity').objects.all()],
+#                 ['service_activity_type', 'activity.type',
+#                     apps.get_model('db', 'ServiceActivity').objects.all()],
                 ['species', 'screen.species',
                     apps.get_model('db', 'Screen').objects.all()],
                 ['assay_type', 'screen.assay_type',
@@ -160,7 +141,7 @@ def create_simple_vocabularies(apps):
             create_vocab(vocab_writer, *arg_list)
 
     api_init_actions_file = os.path.join(
-        PROJECT_ROOT, 'db', 'static', 'api_init', 'api_init_actions.csv')
+        settings.PROJECT_ROOT, 'db', 'static', 'api_init', 'api_init_actions.csv')
     logger.info('write %s entry to %s' % (vocab_file, api_init_actions_file))
     with open(api_init_actions_file, 'a+') as _file:
         new_row = ['patch', 'vocabulary', os.path.basename(vocab_file)]
@@ -188,7 +169,7 @@ def create_simple_vocabularies(apps):
 def create_attached_file_type_vocab(apps):
     
     vocab_file = os.path.join(
-        PROJECT_ROOT, 'db', 'static', 'api_init', 
+        settings.PROJECT_ROOT, 'db', 'static', 'api_init', 
         'vocabulary_attachedfiletype_data.csv')
     logger.info('write vocabularies to %s' % vocab_file)
 
@@ -239,7 +220,7 @@ def create_attached_file_type_vocab(apps):
                 .filter(attached_file_type=obj).update(type=key))
 
     api_init_actions_file = os.path.join(
-        PROJECT_ROOT,'db', 'static', 'api_init', 'api_init_actions.csv')
+        settings.PROJECT_ROOT,'db', 'static', 'api_init', 'api_init_actions.csv')
     logger.info('write %s entry to %s' % (vocab_file, api_init_actions_file))
     with open(api_init_actions_file, 'a+') as _file:
         new_row = ['patch', 'vocabulary', os.path.basename(vocab_file)]
@@ -261,7 +242,7 @@ def create_attached_file_type_vocab(apps):
 def create_checklist_vocabularies(apps):
     
     vocab_file = os.path.join(
-        PROJECT_ROOT,'db', 'static', 'api_init', 
+        settings.PROJECT_ROOT,'db', 'static', 'api_init', 
         'vocabulary_checklists_data.csv')
     logger.info('write vocabularies to %s' % vocab_file)
     with open(vocab_file, 'w') as _file:
@@ -282,13 +263,60 @@ def create_checklist_vocabularies(apps):
             vocab_writer.writerow(row)
             logger.info('created: %r', row)
     
-    
+def create_serviceactivity_vocab(apps):
+    logger.info('create_serviceactivity_vocab...')
+        
+    vocab_file = os.path.join(
+        settings.PROJECT_ROOT,'db', 'static', 'api_init', 
+        'vocabulary_activity_data.csv')
+    logger.info('write vocabularies to %s' % vocab_file)
+    with open(vocab_file, 'w') as _file:
+        vocab_writer = csv.writer(_file)
+        header = ['key', 'scope', 'ordinal', 'title','comment'] 
+        vocab_writer.writerow(header)
+
+        attr = 'service_activity_type'
+        scope_nested = 'activity.type.%s'
+        scope_searches = [
+            [re.compile(r'^training', re.IGNORECASE), scope_nested%'training'],
+            [re.compile(r'^automation', re.IGNORECASE), scope_nested%'automation'],
+        ]
+        scope_other = scope_nested % 'other'
+        query = apps.get_model('db', 'ServiceActivity').objects.all()
+        vocabs = []
+        for ordinal, attr_value in (
+                enumerate(query.values_list(attr, flat=True)
+                    .distinct(attr).order_by(attr))):
+            if isinstance(attr_value, six.string_types):
+                attr_value = attr_value.strip()
+            if not attr_value: continue
+            
+            title = attr_value
+            key = default_converter(title)
+            scope = None
+            for scope_pattern,new_scope in scope_searches:
+                if scope_pattern.match(attr_value):
+                    scope = new_scope
+                    break
+            if not scope:
+                scope = scope_other
+                
+            query.filter(**{ '%s__exact' % attr: attr_value }).update(**{ attr: key })
+            
+            vocabs.append([key, scope, ordinal, title])
+
+        for row in vocabs:
+            vocab_writer.writerow(row)
+            logger.info('updated vocab: %r' % row)
+
+    logger.info('create_serviceactivity_vocab - Done')
+
 def create_vocabularies(apps, schema_editor):
     
     create_simple_vocabularies(apps)
     create_attached_file_type_vocab(apps)
     create_checklist_vocabularies(apps)
-    
+    create_serviceactivity_vocab(apps)
 
 # def update_facility_usage_roles(apps, schema_editor):
 #     UserFacilityUsageRole = apps.get_model('db', 'UserFacilityUsageRole')

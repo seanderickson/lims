@@ -156,10 +156,11 @@ class Migration(migrations.Migration):
             field=models.TextField(null=False)),
           
         # Reinstate; for final migration
-#         migrations.RemoveField(
-#             model_name='LabActivity',
-#             name='screen',
-#         ),
+        migrations.AlterField(
+            model_name='LabActivity',
+            name='screen',
+            field=models.ForeignKey(to='db.Screen', null=True),
+        ),
 #         migrations.DeleteModel('ServiceActivity')
         
         

@@ -13235,7 +13235,13 @@ class ActivityResource(DbApiResource):
 
         super(ActivityResource, self).__init__(**kwargs)
         self.su_resource = None
-
+        self.screen_resource = None
+        
+    def get_screen_resource(self):
+        if self.screen_resource is None:
+            self.screen_resource = ScreenResource()
+        return self.screen_resource
+    
     def get_su_resource(self):
         if self.su_resource is None:
             self.su_resource = ScreensaverUserResource()
@@ -13405,7 +13411,7 @@ class ActivityResource(DbApiResource):
         manual_field_includes = set(param_hash.get('includes', []))
         # for join to screen query (TODO: only include if screen fields rqst'd)
         manual_field_includes.add('screen_id')
-        manual_field_includes.add('activity_class')
+        manual_field_includes.add('classification')
         # for join to cherrypickrequest (TODO: req'd to complete activity id link)
         manual_field_includes.add('cherry_pick_request_id')
         param_hash['includes'] = list(manual_field_includes)
@@ -14354,19 +14360,23 @@ class LibraryScreeningResource(ActivityResource):
     MIN_WELL_VOL_SMALL_MOLECULE = Decimal('0.0000069') # 6.9 uL
     MIN_WELL_VOL_RNAI = Decimal(0)
     
-    ALLOWED_LIBRARY_SCREENING_STATUS = ('allowed',)
+    ALLOWED_LIBRARY_SCREENING_STATUS = (SCHEMA.VOCAB.library.screening_status.ALLOWED,)
     WARN_LIBRARY_SCREENING_STATUS = (
-        'requires_permission','not_recommended','retired',)
+        SCHEMA.VOCAB.library.screening_status.REQUIRES_PERMISSION,
+        SCHEMA.VOCAB.library.screening_status.NOT_RECOMMENDED,
+        SCHEMA.VOCAB.library.screening_status.RETIRED,)
     # NOTE: all other library screening status are error statuses
     # ERROR_LIBRARY_SCREENING_STATUS = (
     #     'not_allowed','discarded',)
-    ALLOWED_PLATE_STATUS = ('available', 'retired',)
-    WARN_PLATE_STATUS = ('retired',)
+    ALLOWED_PLATE_STATUS = (
+        SCHEMA.VOCAB.plate.status.AVAILABLE,
+        SCHEMA.VOCAB.plate.status.RETIRED,)
+    WARN_PLATE_STATUS = (SCHEMA.VOCAB.plate.status.RETIRED,)
     # NOTE: all other status are error statuses:
     # ERROR_PLATE_STATUS = [
     #     'discarded', 'given_away','not_specified', 'not_available', 
     #     'not_created', 'discarded_volume_transferred', 'lost']
-    ALLOWED_COPY_USAGE_TYPE = ('library_screening_plates',)
+    ALLOWED_COPY_USAGE_TYPE = (SCHEMA.VOCAB.copy.usage_type.LIBRARY_SCREENING_PLATES,)
     # NOTE: all other copy usage types are errors
     SCREENING_COUNT_THRESHOLD = 12
 
@@ -14381,7 +14391,6 @@ class LibraryScreeningResource(ActivityResource):
     MSG_LIBRARY_SCREENING_STATUS = 'Library screening status'
     MSG_LIBRARY_SCREENING_TYPE = 'Library screening type'
 
-    
     class Meta:
 
         queryset = LibraryScreening.objects.all()
@@ -15491,6 +15500,7 @@ class LibraryScreeningResource(ActivityResource):
     @transaction.atomic
     def patch_obj(self, request, deserialized, **kwargs):
 
+        logger.info('patch library screening: %r', deserialized)
         schema = kwargs.pop('schema', None)
         if schema is None:
             raise Exception('schema not initialized')
@@ -15590,33 +15600,36 @@ class LibraryScreeningResource(ActivityResource):
             library_screening.type = SCHEMA.VOCAB.activity.type.LIBRARY_SCREENING
             
         library_screening.save()
-        library_plates_screened = deserialized.get(
-            'library_plates_screened', None)
-        if not library_plates_screened and not patch:
-            raise ValidationError(
-                key='library_plates_screened', 
-                msg='required')
-        # override_param = parse_val(
-        #     param_hash.get(API_PARAM_OVERRIDE, False),
-        #         API_PARAM_OVERRIDE, 'boolean')
-        # override_vol_param = parse_val(
-        #     param_hash.get(API_PARAM_VOLUME_OVERRIDE, False),
-        #         API_PARAM_VOLUME_OVERRIDE, 'boolean')
         
         plate_meta = {}
-        if library_plates_screened is not None:
-            logger.debug('save library screening, set assay plates: %r', 
-                         library_screening)
-            plate_meta = self._set_assay_plates(
-                request, schema, 
-                library_screening, library_plates_screened, ls_log) 
-            logger.info('save library screening, assay plates set: %r', 
-                        library_screening)
-        
-            ls_log.json_field = json.dumps(plate_meta)
-            logger.info('parent_log: %r', ls_log)
-        self.create_screen_screening_statistics(library_screening.screen)
-        self.create_screened_experimental_well_count(library_screening)
+        if library_screening.is_for_external_library_plates is not True:
+            library_plates_screened = deserialized.get(
+                'library_plates_screened', None)
+            if not library_plates_screened and not patch:
+                raise ValidationError(
+                    key='library_plates_screened', 
+                    msg='required')
+                
+            # override_param = parse_val(
+            #     param_hash.get(API_PARAM_OVERRIDE, False),
+            #         API_PARAM_OVERRIDE, 'boolean')
+            # override_vol_param = parse_val(
+            #     param_hash.get(API_PARAM_VOLUME_OVERRIDE, False),
+            #         API_PARAM_VOLUME_OVERRIDE, 'boolean')
+            
+            if library_plates_screened is not None:
+                logger.debug('save library screening, set assay plates: %r', 
+                             library_screening)
+                plate_meta = self._set_assay_plates(
+                    request, schema, 
+                    library_screening, library_plates_screened, ls_log) 
+                logger.info('save library screening, assay plates set: %r', 
+                            library_screening)
+            
+                ls_log.json_field = json.dumps(plate_meta)
+                logger.info('parent_log: %r', ls_log)
+            self.create_screen_screening_statistics(library_screening.screen)
+            self.create_screened_experimental_well_count(library_screening)
         
         return { API_RESULT_OBJ: library_screening, API_RESULT_META: plate_meta}
         

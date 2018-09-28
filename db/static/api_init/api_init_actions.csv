@@ -28,7 +28,6 @@ patch,field,metahash_fields_attachedfile.csv
 patch,field,metahash_fields_activity.csv
 patch,field,metahash_fields_libraryscreening.csv
 patch,field,metahash_fields_cherrypickscreening.csv
-patch,field,metahash_fields_cplt.csv
 patch,field,metahash_fields_publication.csv
 patch,field,metahash_fields_platelocation.csv
 patch,field,metahash_fields_screenercherrypick.csv

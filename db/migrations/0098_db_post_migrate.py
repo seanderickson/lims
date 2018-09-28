@@ -156,6 +156,10 @@ class Migration(migrations.Migration):
         #     DROP TABLE screening_room_user_facility_usage_role;
         # '''),
 
+        migrations.RemoveField(
+            model_name='LabActivity',
+            name='screen',
+        ),
         
         # FIXME: not working on orchestra: moved to manual migration 0002
         # Keep here to convince makemigrations that this is done

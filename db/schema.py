@@ -163,7 +163,7 @@ class ACTIVITY(schema_obj):
     
     ACTIVITY_ID = 'activity_id'
     DATE_OF_ACTIVITY = 'date_of_activity'
-    ACTVITY_CLASS = 'activity_class'
+    CLASSIFICATION = 'classification'
     TYPE = 'type'
     SCREEN_FACILITY_ID = 'screen_facility_id'
     SERVICED_USER_ID = 'serviced_user_id'

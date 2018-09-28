@@ -99,17 +99,22 @@ def create_roles(apps, schema_editor):
         if 'readEverythingAdmin' in roles or su.classification == 'staff':
             auth_user.is_staff = True
         
-        if 'screensaverUser' in roles:
+        # NOTE: no staff users activated here:
+        # See lims/static/production_data/screensaver_users-prod-patch.csv
+        if 'screensaverUser' in roles and su.classification != 'staff':
             logger.info('setting user to active: %r', su.username )
             auth_user.is_active = True
             active_user_count += 1
         
-        for ss_role_name in roles:
-            if ss_role_name in role_group_map:
-                ug = role_group_map[ss_role_name]
-                ug.users.add(up)
-                ug.save()
-                roles_assigned += 1
+        # 20180927 - turn off auto assignment of old roles:
+        # See lims/static/production_data/screensaver_users-prod-patch.csv
+        # for new role assignments
+        # for ss_role_name in roles:
+        #     if ss_role_name in role_group_map:
+        #         ug = role_group_map[ss_role_name]
+        #         ug.users.add(up)
+        #         ug.save()
+        #         roles_assigned += 1
         
         auth_user.save()
         su.save()

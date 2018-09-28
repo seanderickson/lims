@@ -11021,7 +11021,6 @@ class ScreensaverUserResource(DBResourceTestCase):
     def test12_service_activity(self):
         
         logger.info('test5_service_activity...')
-#         self.test0_create_user();
         # Create a lab head, as all users must either be a lab head or have one
         serviced_user = self.create_lab_head()
         
@@ -11036,7 +11035,7 @@ class ScreensaverUserResource(DBResourceTestCase):
             'serviced_user_id': serviced_user['screensaver_user_id'],
             'classification': SCHEMA.VOCAB.activity.classification.OTHER,
             'type': "image_analysis",
-            'comments': "test",
+            'comments': "test 12 comments user service",
             'date_of_activity': "2015-10-27",
             'funding_support': "clardy_grants",
             'performed_by_user_id': performed_by_user['screensaver_user_id'],

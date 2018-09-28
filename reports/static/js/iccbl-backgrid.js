@@ -4518,7 +4518,7 @@ var SelectorFormFilter = CriteriumFormFilter.extend({
       "</form>"].join('')),
 
    altFieldTemplate: _.template([
-      '<div class="form-group" style="margin-bottom: 0px;" >',
+      '<div class="form-group" id="form-group-<%= key %>" style="margin-bottom: 0px;" >',
       '    <div class="checkbox" style="text-align: left; ',
       '       min-height: 0px; padding-top: 0px;" > ',
       '      <label for="<%= editorId %>">',
@@ -4540,15 +4540,10 @@ var SelectorFormFilter = CriteriumFormFilter.extend({
     // 2. override with fieldinformation.vocabulary:
     // 2.a from fieldinformation.vocabulary, if available
     // 2.b fetch and add vocabulary from server
+    
+    this.retiredFields = [];
     var choiceHash = {}
     var vocabulary;
-//    if(_.isUndefined(this.fieldinformation.choices)){
-//      if (Iccbl.appModel.DEBUG)
-//        console.log([
-//            'Warn: fieldinformation for a selection field type must define a ',
-//            '"choices" list: field key: ' + this.column.get('name')].join(''));
-//      this.fieldinformation.choices = [];
-//    }
     if(!_.isEmpty(this.fieldinformation.vocabulary)){
       // TODO: vocabulary is using the titles as the key, 
       // because of how Backgrid.SelectCell initializes
@@ -4561,6 +4556,9 @@ var SelectorFormFilter = CriteriumFormFilter.extend({
           this.fieldinformation.vocabulary_scope_ref);
         console.log('got vocab', this.fieldinformation.vocabulary_scope_ref, vocabulary);
         _.each(_.keys(vocabulary),function(choice){
+          if (vocabulary[choice].is_retired === true){
+            self.retiredFields.push(choice);
+          }
           choiceHash[choice] = vocabulary[choice].title;
         });
       }catch(e){
@@ -4576,7 +4574,12 @@ var SelectorFormFilter = CriteriumFormFilter.extend({
           title: choiceHash[choice],
           key:  choice, 
           type: 'Checkbox',
-          template: self.altFieldTemplate };
+          template: self.altFieldTemplate 
+      };
+      if (_.contains(self.retiredFields, choice)){
+        formSchema[choice].title = formSchema[choice].title + ' (r)';
+      }
+      
     });
 
     formSchema['lower_criteria'] = {
@@ -4587,6 +4590,7 @@ var SelectorFormFilter = CriteriumFormFilter.extend({
       template: _.template(self.criteriaTemplate),
       editorClass: 'form-control'
     };
+    
     formSchema['invert_field'] = {
         title: 'invert',
         help: 'select this to invert the criteria',
@@ -4594,18 +4598,39 @@ var SelectorFormFilter = CriteriumFormFilter.extend({
         template: self.checkboxTemplate,
         editorClass: ''
     };    
+    
+    if (!_.isEmpty(this.retiredFields)){
+      formSchema['show_retired'] = {
+          title: 'show retired vocabularies',
+          help: 'show the retired vocabularies',
+          type: 'Checkbox',
+          template: self.checkboxTemplate,
+          editorClass: ''
+      };    
+    }
+    
     var FormFields = Backbone.Model.extend({
-      schema: formSchema,
-      validate: function(attrs) {
-        var errs = {};
-        if(!_.isEmpty(errs)) return errs;
-      }
+      schema: formSchema
     });
     this.model = new FormFields();
-    
-    SelectorFormFilter.__super__.initialize.apply(this, arguments);
 
-    this.listenTo(this, "change", function(e){
+    SelectorFormFilter.__super__.initialize.apply(this, arguments );
+    
+    this.listenTo(this, "show_retired:change", function(){
+      
+      var show_retired = self.getValue('show_retired');
+      if (show_retired === true){
+        _.each(self.retiredFields, function(key){
+          self.$el.find('[data-fields]').find('#form-group-'+ key).show();
+        });
+      } else {
+        _.each(self.retiredFields, function(key){
+          self.$el.find('[data-fields]').find('#form-group-'+ key).hide();
+        });
+      }
+    });
+    
+    this.listenTo(this, "lower_criteria:change", function(){
       var criteria = self.getValue('lower_criteria');
       console.log('criteria: ' + criteria);
       if(criteria == 'blank'){
@@ -4618,7 +4643,7 @@ var SelectorFormFilter = CriteriumFormFilter.extend({
     });
     
   },
-      
+  
   clear: function(){
     SelectorFormFilter.__super__.clear.apply(this, arguments);
     this.$el.find('[data-fields]').find('input').prop('disabled', false);
@@ -4644,7 +4669,7 @@ var SelectorFormFilter = CriteriumFormFilter.extend({
       searchHash[searchKey]=searchVal;
     }else{
       var selected = _.filter(_.keys(values), function(key){ 
-        if(key !== 'invert_field') return values[key]; 
+        if(key !== 'invert_field' && key !== 'show_retired') return values[key]; 
         return false;
       });
       searchHash[name +'__in'] = selected.join(',');
@@ -4717,6 +4742,15 @@ var SelectorFormFilter = CriteriumFormFilter.extend({
     possibleSearches.push(this.columnName)
     return possibleSearches;
   },
+  
+  render: function(){
+    var self = this;
+    var el = SelectorFormFilter.__super__.render.apply(this, arguments);
+    _.each(self.retiredFields, function(key){
+      self.$el.find('[data-fields]').find('#form-group-'+ key).hide();
+    });
+    return this;
+  }
 });
 
 var NumberFormFilter = CriteriumFormFilter.extend({

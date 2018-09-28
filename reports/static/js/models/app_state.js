@@ -396,7 +396,6 @@ define([
         if (callBack) callBack(options);
         else return options;
       }
-//      return options;
     },
 
     getPlateLocationTree: function(callBack, options){
@@ -433,7 +432,6 @@ define([
         if (callBack) callBack(locationHash);
         else return locationHash;
       }
-//      return locationHash;
     },
 
     getScreenOptions: function(callBack){
@@ -455,7 +453,6 @@ define([
         if (callBack) callBack(options);
         else return options;
       }
-//      return options;
     },
 
     getScreeningLibraryOptions: function(screen_type, callBack){
@@ -628,7 +625,6 @@ define([
         if (callBack) callBack(options);
         else return options;
       }
-//      return options;
     },
     
     getUserOptions: function(callBack){
@@ -709,11 +705,11 @@ define([
     },
     
     getUserIdsInGroupOptions: function(usergroup, callBack){
-      return this.getUserInGroupOptions(usergroup, 'screensaver_user_id', 'name', callBack );
+      return this.getUserInGroupOptions(usergroup, 'screensaver_user_id', '{name} ({screensaver_user_id})', callBack );
     },
     
     getUsernamesInGroupOptions: function(usergroup, callBack){
-      return this.getUserInGroupOptions(usergroup, 'username', 'name', callBack );
+      return this.getUserInGroupOptions(usergroup, 'username', '{name} ({username})', callBack );
     },
     
     getUserInGroupOptions: function(usergroup, val_prop, label_prop, callBack){
@@ -724,7 +720,7 @@ define([
         this.getUsersInGroup(usergroup, function(users){
           var options = [{ val:'',label:'' }];
           users.each(function(user){
-            options.push({ val: user.get(val_prop), label: user.get(label_prop) });
+            options.push({ val: user.get(val_prop), label: Iccbl.formatString(label_prop, user) });
           });
           self.set(prop,options);
           self.userProps[prop] = new Date();
@@ -1359,7 +1355,7 @@ define([
       members[screenModel.get('lab_head_id')] = 
         screenModel.get('lab_head_name');
       members = _.map(_.pairs(members), function(pair){
-        return { 'val': pair[0], 'label': pair[1] + ': ' + pair[0] };
+        return { 'val': pair[0], 'label': pair[1] + ' (' + pair[0] + ')'};
       });
       return members;
     },

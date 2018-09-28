@@ -134,7 +134,7 @@ class Migration(migrations.Migration):
                     where ls.activity_id=activity.activity_id 
                     and ls.is_for_external_library_plates is not true);
             update activity
-                set type = 'ext_library'
+                set type = 'ext_library_screening'
                 where exists (select null from library_screening ls 
                     where ls.activity_id=activity.activity_id 
                     and ls.is_for_external_library_plates is true);

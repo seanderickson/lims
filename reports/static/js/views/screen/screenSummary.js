@@ -397,7 +397,8 @@ define([
       var self = this;
       var defaults = {
         screen_facility_id: self.model.get('facility_id'),
-        screen_type: self.model.get('screen_type')
+        screen_type: self.model.get('screen_type'),
+        classification: 'screening'
       };
       var newModel = appModel.createNewModel('libraryscreening', defaults);
 
@@ -420,6 +421,7 @@ define([
     },
     
     setScreenings: function(delegateStack) {
+      console.log('setScreenings', delegateStack);
       var self = this;
       var lsResource = appModel.getResource('libraryscreening'); 
       
@@ -465,8 +467,8 @@ define([
           $addLibraryScreeningButton.click(self.addLibraryScreening);
           extraControls.push($addLibraryScreeningButton);
         }
-        lsResource.fields['activity_class']['visibility'] = ['l','d'];
-        lsResource.fields['type']['visibility'] = [];
+        lsResource.fields['classification']['visibility'] = [];
+//        lsResource.fields['type']['visibility'] = [];
         
         _.each(_.values(lsResource.fields), function(fi){
           if (_.result(fi.display_options, 'optgroup')=='screen'){

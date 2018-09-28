@@ -793,11 +793,25 @@ define([
             var fields = self.model.resource.fields;
             fields['performed_by_user_id'].choiceHash = 
               appModel._get_screen_member_choices(self.screen);
-            
+            fields['performed_by_username']['editability'] = [];
+            fields['serviced_user_id']['editability'] = [];
+            fields['serviced_username']['editability'] = [];
             fields['screen_facility_id']['editability'] = [];
             fields['library_plates_screened'].display_options = _.extend(
               {}, fields['library_plates_screened'].display_options, 
               {widthClass: 'col-sm-8'});
+            fields['library_plates_screened'].validators = [
+              function checkPlates(value, formValues) {
+                if (formValues['is_for_external_library_plates'] !== true ){
+                  if (! value){
+                    return {
+                      type: 'Required',
+                      message: 'Required'
+                    }
+                  }
+                }
+              }];
+
             if (!self.model.isNew()){
               // allow the library_plates_screened to be unset
               fields['library_plates_screened'].required = false;
@@ -828,6 +842,13 @@ define([
         
       });
       
+      if (this.model.get('is_for_external_library_plates') === true){
+        _.each(['library_plates_screened','screened_experimental_well_count',
+            'libraries_screened_count','library_plates_screened_count'] ,
+          function(key){
+            self.model.resource.fields[key]['visibility']=[];
+        });
+      }
       
       // FIXME: 20170519, pick needed values only from the args 
       view = new DetailLayoutLS(_.extend(self.args, { 

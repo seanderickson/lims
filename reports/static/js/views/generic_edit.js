@@ -882,7 +882,8 @@ define([
          };
       
       function create_title(fi){
-        if (fi.vocabulary_scope_ref){
+        if (Iccbl.appModel.getCurrentUser().is_superuser
+            && fi.vocabulary_scope_ref){
           return Iccbl.formatString(
             '<a href="#vocabulary/search/scope__exact={vocabulary_scope_ref}" '
             + ' target=_blank >{title}</a>',fi);

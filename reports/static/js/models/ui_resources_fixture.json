@@ -63,7 +63,9 @@
     "url_root": "/db/api/v1",
     "description": "View user information",
     "options": { 
-      "search": {"is_staff__exact": "True"} }
+      "search": {"is_staff__exact": "True"},
+      "includes": ["is_superuser","username","-classification"]
+    }
   },
   "libraryscreening": {
     "detailView": "LibraryScreeningView",
@@ -170,7 +172,6 @@
     "url_root": "/db/api/v1",
     "description": "View Studies",
     "options": { 
-      "search": { "study_type__is_null": false },
       "order": ["facility_id"]
     }
   },
@@ -501,7 +502,7 @@
     "api_resource": "activity",
     "options": {
       "search": {
-        "-activity_class" : "serviceactivity"
+        "classification" : "screening"
       },
       "order": []  
     }
@@ -514,12 +515,13 @@
     "api_resource": "activity",
     "options": { 
       "search": {
-        "activity_class" : "serviceactivity"
+        "-classification" : "screening"
       },
       "order": []  
     }
   },
   "activity_all": {
+    "title": "All Activities",
     "detailView": "ActivityView",
     "listView": "ActivityListView",
     "api_resource": "activity",

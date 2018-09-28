@@ -511,22 +511,22 @@ define([
         
         var show_positives_control = $([
           '<label class="checkbox-inline pull-left" ',
-          '   title="Show positive columns only" >',
-          '  <input type="checkbox">positives',
+          '   title="Show positive indicator columns only" >',
+          '  <input type="checkbox">positive indicator columns</input>',
           '</label>'
           ].join(''));
         
         var show_mutual_screens_control = $([
           '<label class="checkbox-inline pull-left" ',
-          '   title="Show mutual screens having overlapping positives" >',
-          '  <input type="checkbox">mutual screens',
+          '   title="Show columns for mutual screens having overlapping positives" >',
+          '  <input type="checkbox">mutual screen columns</input>',
           '</label>'
           ].join(''));
         
         var show_studies_control = $([
           '<label class="checkbox-inline pull-left" ',
-          '   title="Show study annotations" >',
-          '  <input type="checkbox">show studies',
+          '   title="Show study annotation columns only" >',
+          '  <input type="checkbox">study columns</input>',
           '</label>'
           ].join(''));
         

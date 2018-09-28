@@ -23,7 +23,6 @@ define([
   'utils/tabbedController',
   'templates/generic-detail-stickit.html',
   'templates/generic-detail-stickit-one-column.html'
-//  'templates/generic-detail-screen.html'
 ], function($, _, Backbone, Backgrid, Iccbl, layoutmanager, appModel, 
             ScreenSummaryView, ScreenDataView, CherryPickRequestView, 
             ActivityListView, ServiceActivityView, LibraryScreeningView, 
@@ -291,14 +290,12 @@ define([
         var model = updateModel || self.model;
         var fields = model.resource.fields;
         
-        appModel.initializeAdminMode(function() {
-          
+        function setupEdit() {
           // FIXME: if "edit" page is reloaded, option lists here may not be loaded
           // - caused by search_box dynamic form ajax request contention
           // - result is that the choices are not populated here
           // - fix lazy load search box options; or force showEdit to block 
           // until loaded
-          
           var userOptions = appModel.getUserOptions();
           fields['collaborator_ids'].choiceHash = userOptions;
           fields['lead_screener_id'].choiceHash = (
@@ -306,8 +303,8 @@ define([
           fields['lab_head_id'].choiceHash = (
               appModel.getPrincipalInvestigatorOptions() );
           if (_.has(fields,'pin_transfer_approved_by_username')){
-            fields['pin_transfer_approved_by_username'].choiceHash = (
-                appModel.getAdminUserOptions() );
+            fields['pin_transfer_approved_by_username'].choiceHash = 
+              appModel.getUsernamesInGroupOptions('serviceActivityPerformers');
           }
           
           // pick just the non-billing fields: prevent backbone save from sending
@@ -336,9 +333,17 @@ define([
           view.setView("#detail_content", editViewInstance).render();
           appModel.setPagePending();
           return editViewInstance;
-        });  
+        };  
+        $(this).queue([
+          appModel.getPrincipalInvestigatorOptions,
+          appModel.getUserOptions,
+          function(callback){
+            appModel.getUsernamesInGroupOptions(
+              'pinTransferApprovers', callback);
+          }, 
+          setupEdit
+        ]);
       };
-
       
       var view = this.tabViews[key];
       if (view) {
@@ -495,7 +500,7 @@ define([
             '<tr>',
             '<td class="dl-title ">Activity Type</td>', 
             '<td class="dl-data ">',
-            appModel.getVocabularyTitle('activity.type',activity.get('type')),
+            appModel.getVocabularyTitle('activity.type.*',activity.get('type')),
             '</td>',
             '</tr>',
             '<tr>',
@@ -1367,10 +1372,9 @@ define([
     setActivities: function(delegateStack) {
       console.log('set activities');
       var self = this;
-      var resource = appModel.getResource('activity');
-      var saResource = Iccbl.appModel.getResource('serviceactivity');
+      var activityResource = appModel.getResource('activity');
       
-      _.each(_.values(resource.fields), function(field){
+      _.each(_.values(activityResource.fields), function(field){
         if(_.result(field.display_options,'optgroup')=='screen'){
           field['visibility'] = [];
         }
@@ -1378,26 +1382,19 @@ define([
       
       if (!_.isEmpty(delegateStack) && delegateStack[0]=='+add') {
           self.addServiceActivity();
-
-//        // Do not allow return to +add screen
-//        delegateStack.shift();
-//        self.setActivities(delegateStack);
-//        return;
       }
       else if(!_.isEmpty(delegateStack) && !_.isEmpty(delegateStack[0]) &&
           !_.contains(appModel.LIST_ARGS, delegateStack[0]) ){
         // Detail View
         
-        // Only service activities are viewed; lab activities link to visits & cprs
-        // ServiceActivity for a screen; turn of edit for screen field and funding
-        saResource.fields['screen_facility_id'].editability = [];
-        saResource.fields['funding_support']['editability'] = [];
-        saResource.fields['funding_support']['visibility'] = [];
+        activityResource.fields['screen_facility_id'].editability = [];
+        activityResource.fields['funding_support']['editability'] = [];
+        activityResource.fields['funding_support']['visibility'] = [];
         
         var activity_id = delegateStack.shift();
         self.consumedStack.push(activity_id);
         var _key = activity_id
-        appModel.getModelFromResource(saResource, _key, function(model){
+        appModel.getModelFromResource(activityResource, _key, function(model){
           view = new ServiceActivityView({
             model: model, 
             screen: self.model,
@@ -1421,7 +1418,7 @@ define([
             'Add Service Activity</a>'
           ].join(''));
         addServiceActivityButton.click(self.addServiceActivity);
-        if(appModel.hasPermission(saResource.key, 'edit')){
+        if(appModel.hasPermission(activityResource.key, 'edit')){
           extraControls.unshift(addServiceActivityButton);
         }
         var addLibraryScreeningButton = $([
@@ -1433,10 +1430,12 @@ define([
         if (appModel.hasPermission('libraryscreening','write')) {
           extraControls.unshift(addLibraryScreeningButton);
         }
+
+        activityResource.fields['screen_facility_id'].visibility = [];
         
         var view = new ActivityListView({ 
           uriStack: _.clone(delegateStack),
-          resource: resource,
+          resource: activityResource,
           url: url,
           extraControls: extraControls,
           screen: self.model
@@ -1456,16 +1455,28 @@ define([
       }
 
       var self = this;
-      var saResource = Iccbl.appModel.getResource('serviceactivity');
+      var activityResource = appModel.getResource('activity');
       var defaults = {
         screen_facility_id: self.model.get('facility_id')
       };
       
-      saResource.fields['serviced_user']['visibility'] = [];
-      saResource.fields['screen_facility_id']['editability'] = [];
+      activityResource.fields['serviced_user']['visibility'] = [];
+      activityResource.fields['serviced_user_id'].choiceHash = 
+        appModel._get_screen_member_choices(self.model);
+        
+      activityResource.fields['serviced_username']['editability'] = [];
+      activityResource.fields['screen_facility_id']['editability'] = [];
       // 20170605 - JAS - no funding support if attached to a screen
-      saResource.fields['funding_support']['editability'] = [];
-      saResource.fields['funding_support']['visibility'] = [];
+      activityResource.fields['funding_support']['editability'] = [];
+      activityResource.fields['funding_support']['visibility'] = [];
+
+      var vocab_scope_ref = 
+        activityResource.fields['classification']['vocabulary_scope_ref'];
+      var vocab_classification = Iccbl.appModel.getVocabularySelectOptions(vocab_scope_ref);
+      vocab_type = _.reject(vocab_classification, function(obj){
+        return obj.val == 'screening';
+      });
+      activityResource.fields['classification'].choiceHash = vocab_type;
       
       // NOTE: funding support removed from screen.service_activities: redundant
       //
@@ -1492,7 +1503,7 @@ define([
       //  }
       //}
       
-      var newModel = appModel.newModelFromResource(saResource, defaults);
+      var newModel = appModel.newModelFromResource(activityResource, defaults);
       var view = new ServiceActivityView({
         model: newModel,
         screen: self.model,

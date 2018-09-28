@@ -55,6 +55,21 @@
         }
       }
     },
+    "activity":{
+      "view": "",
+      "expanded": false,
+      "submenus": {
+        "activity_service": {
+          "view": "list"
+        },
+        "activity_lab": {
+          "view": "list"
+        },
+        "activity_all": {
+          "view": "list"
+        }
+      }          
+    },
     "reports": {
       "expanded": false,
       "view": "",
@@ -118,21 +133,6 @@
         },
         "labaffiliation": {
           "view": "list"
-        },
-        "activity":{
-          "view": "",
-          "expanded": false,
-          "submenus": {
-            "activity_service": {
-              "view": "list"
-            },
-            "activity_lab": {
-              "view": "list"
-            },
-            "activity_all": {
-              "view": "list"
-            }
-          }          
         },
         "attachedfile":{
           "view": "list"

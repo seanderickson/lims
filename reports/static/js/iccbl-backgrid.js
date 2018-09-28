@@ -3898,24 +3898,24 @@ var CriteriumFormFilter = Iccbl.CriteriumFormFilter = BackgridFormFilter.extend(
     return possibleSearches;
   },
   
-//  /**
-//   * Determine if the form has been set with any values.
-//   */
-//  isSet: function(){
-//    var values = this.getValue();
-//    if (_.isEmpty(values['lower_criteria'])){
-//      return false;
-//    }
-//    var found = _.find(_.keys(values), function(key){
-//      if(key == 'lower_criteria' ){
-//        if(values[key] == 'blank' || values[key] == 'not blank') return true;
-//        return false;
-//      }
-//      // signal isSet for any field value set
-//      return values[key]>0 || !_.isEmpty(values[key]);
-//    });
-//    return !_.isEmpty(found);
-//  },
+  //  /**
+  //   * Determine if the form has been set with any values.
+  //   */
+  //  isSet: function(){
+  //    var values = this.getValue();
+  //    if (_.isEmpty(values['lower_criteria'])){
+  //      return false;
+  //    }
+  //    var found = _.find(_.keys(values), function(key){
+  //      if(key == 'lower_criteria' ){
+  //        if(values[key] == 'blank' || values[key] == 'not blank') return true;
+  //        return false;
+  //      }
+  //      // signal isSet for any field value set
+  //      return values[key]>0 || !_.isEmpty(values[key]);
+  //    });
+  //    return !_.isEmpty(found);
+  //  },
   
   clear: function(){
     var self = this;
@@ -4542,13 +4542,13 @@ var SelectorFormFilter = CriteriumFormFilter.extend({
     // 2.b fetch and add vocabulary from server
     var choiceHash = {}
     var vocabulary;
-    if(_.isUndefined(this.fieldinformation.choices)){
-      if (Iccbl.appModel.DEBUG)
-        console.log([
-            'Warn: fieldinformation for a selection field type must define a ',
-            '"choices" list: field key: ' + this.column.get('name')].join(''));
-      this.fieldinformation.choices = [];
-    }
+//    if(_.isUndefined(this.fieldinformation.choices)){
+//      if (Iccbl.appModel.DEBUG)
+//        console.log([
+//            'Warn: fieldinformation for a selection field type must define a ',
+//            '"choices" list: field key: ' + this.column.get('name')].join(''));
+//      this.fieldinformation.choices = [];
+//    }
     if(!_.isEmpty(this.fieldinformation.vocabulary)){
       // TODO: vocabulary is using the titles as the key, 
       // because of how Backgrid.SelectCell initializes
@@ -4559,6 +4559,7 @@ var SelectorFormFilter = CriteriumFormFilter.extend({
       try{
         vocabulary = Iccbl.appModel.getVocabulary(
           this.fieldinformation.vocabulary_scope_ref);
+        console.log('got vocab', this.fieldinformation.vocabulary_scope_ref, vocabulary);
         _.each(_.keys(vocabulary),function(choice){
           choiceHash[choice] = vocabulary[choice].title;
         });
@@ -4570,20 +4571,6 @@ var SelectorFormFilter = CriteriumFormFilter.extend({
     }
 
     var formSchema = this.schema = {};  
-
-    if(_.isUndefined(this.fieldinformation.choices)){
-      if (Iccbl.appModel.DEBUG)
-        console.log([
-            'Warn: fieldinformation for a selection field type must define a ',
-            '"choices" list: field key: ' + this.column.get('name')].join(''));
-      this.fieldinformation.choices = [];
-    }
-
-    // Set BackboneForms selectedFields variable:
-    // Check which fields will be included (defaults to all)
-    // - for SelectorFormFilter, add all choices, to create a checkbox for each
-    var selectedFields = _.clone(this.fieldinformation.choices);
-    
     _.each(_.keys(choiceHash), function(choice){
       formSchema[choice] = { 
           title: choiceHash[choice],
@@ -4600,8 +4587,6 @@ var SelectorFormFilter = CriteriumFormFilter.extend({
       template: _.template(self.criteriaTemplate),
       editorClass: 'form-control'
     };
-    selectedFields.push('lower_criteria');
-    
     formSchema['invert_field'] = {
         title: 'invert',
         help: 'select this to invert the criteria',
@@ -4609,8 +4594,6 @@ var SelectorFormFilter = CriteriumFormFilter.extend({
         template: self.checkboxTemplate,
         editorClass: ''
     };    
-    selectedFields.push('invert_field');
-    
     var FormFields = Backbone.Model.extend({
       schema: formSchema,
       validate: function(attrs) {
@@ -4619,7 +4602,6 @@ var SelectorFormFilter = CriteriumFormFilter.extend({
       }
     });
     this.model = new FormFields();
-    this.selectedFields = selectedFields; 
     
     SelectorFormFilter.__super__.initialize.apply(this, arguments);
 

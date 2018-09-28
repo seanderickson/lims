@@ -1251,10 +1251,8 @@ define([
       // - performed by == user
       
       var self = this;
-      var saResource = appModel.getResource('serviceactivity');
       var activityResource = appModel.getResource('activity');
-      saResource.fields['serviced_user_id']['editability'] = [];
-      saResource.fields['activity_class']['visibility'] = [];
+      activityResource.fields['serviced_user_id']['editability'] = [];
 
       if (!_.isEmpty(delegateStack) && delegateStack[0]=='+add') {
           self.addServiceActivity();
@@ -1264,7 +1262,7 @@ define([
         var activity_id = delegateStack.shift();
         self.consumedStack.push(activity_id);
         var _key = activity_id
-        appModel.getModelFromResource(saResource, _key, function(model){
+        appModel.getModelFromResource(activityResource, _key, function(model){
           view = new ServiceActivityView({
             model: model, 
             user: self.model,
@@ -1304,7 +1302,7 @@ define([
           e.preventDefault();
           var newUriStack = ['apilog','order','-date_time', appModel.URI_PATH_SEARCH];
           var search = {};
-          search['ref_resource_name'] = 'serviceactivity';
+          search['ref_resource_name'] = 'activity';
           search['uri__contains'] = 'screensaveruser/' + self.model.get('screensaver_user_id');
           newUriStack.push(appModel.createSearchString(search));
           var route = newUriStack.join('/');
@@ -1312,10 +1310,8 @@ define([
           appModel.router.navigate(route, {trigger: true});
           self.remove();
         });
-        if(appModel.hasPermission(saResource.key, 'edit')){
+        if(appModel.hasPermission(activityResource.key, 'edit')){
           extraControls.unshift(addServiceActivityButton);
-        }
-        if(appModel.hasPermission(saResource.key, 'edit')){
           extraControls.unshift(showDeleteButton);
         }
         extraControls.unshift(showHistoryButton);
@@ -1339,7 +1335,7 @@ define([
               sortable: false,
               cell: Iccbl.DeleteCell.extend({
                 render: function(){
-                  if (this.model.get('activity_class') == 'serviceactivity'){
+                  if (this.model.get('classification') == 'activity'){
                     Iccbl.DeleteCell.prototype.render.apply(this, arguments);
                   }
                   return this;
@@ -1355,20 +1351,31 @@ define([
     },
     
     addServiceActivity: function(e) {
+      console.log('addServiceActivity...');
+      
       if (e){
         e.preventDefault();
       }
       var self = this;
       
-      var saResource = Iccbl.appModel.getResource('serviceactivity');
-      saResource.fields['serviced_user_id']['editability'] = [];
+      var activityResource = appModel.getResource('activity');
+      activityResource.fields['serviced_user_id']['editability'] = [];
+      activityResource.fields['serviced_username']['editability'] = [];
+      activityResource.fields['serviced_user']['visibility'] = ['l','d','e'];
+      
+      var vocab_scope_ref = 
+        activityResource.fields['classification']['vocabulary_scope_ref'];
+      var vocab_classification = Iccbl.appModel.getVocabularySelectOptions(vocab_scope_ref);
+      vocab_type = _.reject(vocab_classification, function(obj){
+        return obj.val == 'screening';
+      });
+      activityResource.fields['classification'].choiceHash = vocab_type;
       
       var defaults = {
         serviced_user_id: self.model.get('screensaver_user_id'),
         serviced_user: self.model.get('name'),
-//        performed_by_user_id: appModel.getCurrentUser().screensaver_user_id
       };
-      var newModel = appModel.newModelFromResource(saResource, defaults);
+      var newModel = appModel.newModelFromResource(activityResource, defaults);
       var view = new ServiceActivityView({
         model: newModel,
         user: self.model,

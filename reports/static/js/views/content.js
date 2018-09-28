@@ -218,19 +218,19 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       // FIXME: not all types can have an "add"
       //if (appModel.hasPermission(resource.key, 'write')){
       
-      if (_.contains(resource.visibility, 'c')){
-        var showAddButton = $([
-          '<a class="btn btn-default btn-sm pull-down" ',
-            'role="button" id="add_resource" href="#">',
-            'Add</a>'
-          ].join(''));   
-        showAddButton.click(function(e){
-          e.preventDefault();
-          var route = resource.key + '/+add';
-          appModel.router.navigate(route, {trigger: true});
-        });
-        extraControls.push(showAddButton);
-      }
+      //if (_.contains(resource.visibility, 'c')){
+      //  var showAddButton = $([
+      //    '<a class="btn btn-default btn-sm pull-down" ',
+      //      'role="button" id="add_resource" href="#">',
+      //      'Add</a>'
+      //    ].join(''));   
+      //  showAddButton.click(function(e){
+      //    e.preventDefault();
+      //    var route = resource.key + '/+add';
+      //    appModel.router.navigate(route, {trigger: true});
+      //  });
+      //  extraControls.push(showAddButton);
+      //}
       if (_.contains(resource.visibility, 'e')){
         if (resource.key in ['reagent','well','copywell',
                              'librarycopy','librarycopyplate']){

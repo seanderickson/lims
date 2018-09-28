@@ -26,31 +26,36 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView) {
           this.$el.empty();
           var formattedValue = this.formatter.fromRaw(this.model.get(this.column.get("name")));
           var hrefTemplate = this.hrefTemplate;
-          var activityType = this.model.get('activity_class');
-          if (_.contains(['libraryscreening','externallibraryscreening'],activityType)){
-            hrefTemplate = '#screen/{screen_facility_id}' + 
-              '/summary/libraryscreening/{activity_id}';
-          }else if (_.contains(['cplt','cherrypickscreening'],activityType)){
-            hrefTemplate = '#screen/{screen_facility_id}' + 
-              '/cherrypickrequest/{cherry_pick_request_id}/cherrypickplates';
-          }
-          else {
+          var classification = this.model.get('classification');
+          if (classification == 'screening'){
+            var activity_type = this.model.get('type');
+            if (_.contains(['library_screening','ext_library_screening'], activity_type)){
+              hrefTemplate = '#screen/{screen_facility_id}' + 
+                '/summary/libraryscreening/{activity_id}';
+            }else if (_.contains(['cp_transfer','cp_screening'], activity_type)){
+              hrefTemplate = '#screen/{screen_facility_id}' + 
+                '/cherrypickrequest/{cherry_pick_request_id}/cherrypickplates';
+            }else{
+              console.log('unknown activity_type for classifcation', 
+                activity_type, classification, this.model);
+            }
+          }else{
             if (self.screen){
               hrefTemplate = '#screen/{screen_facility_id}/activities/{activity_id}';
             }
             else if (self.user){
               hrefTemplate = '#screensaveruser/{serviced_user_id}/activity/{activity_id}';
             } else {
-              if (!_.isEmpty(this.model.get('serviced_user_id'))){
+              if (this.model.has('serviced_user_id')){
                 hrefTemplate = '#screensaveruser/{serviced_user_id}/activity/{activity_id}';
               } 
-              else if (!_.isEmpty(this.model.get('screen_facility_id'))){
+              else if (this.model.has('screen_facility_id')){
                 hrefTemplate = '#screen/{screen_facility_id}/activities/{activity_id}';
               } else {
                 console.log('Activity does not have a serviced user or screen!', this.model)
               }
             }
-          }
+          } 
           var interpolatedVal = Iccbl.formatString(hrefTemplate,this.model);
           this.$el.append($('<a>', {
             tabIndex : -1,

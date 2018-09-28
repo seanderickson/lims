@@ -706,20 +706,25 @@ define([
         if (callBack) callBack(options);
         else return options;
       }
-//      return options;
     },
     
     getUserIdsInGroupOptions: function(usergroup, callBack){
+      return this.getUserInGroupOptions(usergroup, 'screensaver_user_id', 'name', callBack );
+    },
+    
+    getUsernamesInGroupOptions: function(usergroup, callBack){
+      return this.getUserInGroupOptions(usergroup, 'username', 'name', callBack );
+    },
+    
+    getUserInGroupOptions: function(usergroup, val_prop, label_prop, callBack){
       var self = this;
-      var prop = 'usergroup_' + usergroup + '_Options';
+      var prop = ['usergroup', usergroup, val_prop, label_prop, 'options'].join('_');
       var options = this.get(prop);
       if(!options){
         this.getUsersInGroup(usergroup, function(users){
           var options = [{ val:'',label:'' }];
           users.each(function(user){
-            var user_id = user.get('screensaver_user_id');
-            var name = user.get('name');
-            options.push({ val: user_id, label: name });
+            options.push({ val: user.get(val_prop), label: user.get(label_prop) });
           });
           self.set(prop,options);
           self.userProps[prop] = new Date();

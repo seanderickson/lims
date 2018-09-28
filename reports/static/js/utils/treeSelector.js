@@ -399,8 +399,16 @@ function($, _, Backgrid, Backbone, Iccbl, appModel,
         $toggleExpanded.empty();
         $toggleExpanded.append('Collapse');
 
-        if (!_.isEmpty(searchedModels)){
-          $selectSearchHitsButton.show();
+        // NOTE: 20180926 - limit "select all" availability for performance:
+        // TODO: improve tree selector performance: note, however, that 
+        // selecting too many columns may also make the query non-performant.
+        // A better solution may be to pass in a "max selections" setting, that
+        // is based on the capabilities for the query servicing the list view.
+        var MAX_SELECTIONS = 40;
+        if (!_.isEmpty(searchedModels) ){
+          if (_.size(searchedModels) < MAX_SELECTIONS ){
+            $selectSearchHitsButton.show();
+          }
           $unselectSearchHitsButton.show();
         } else {
           $selectSearchHitsButton.hide();

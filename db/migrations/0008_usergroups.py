@@ -76,6 +76,11 @@ def create_roles(apps, schema_editor):
         roles = set(
             su.screensaveruserrole_set.all()
                 .values_list('screensaver_user_role', flat=True))
+        
+        screener_roles = set([
+            'rnaiDsl1MutualScreens','rnaiDsl2MutualPositives', 'rnaiDsl3SharedScreens',
+            'smDsl1MutualScreens','smDsl2MutualPositives','smDsl3SharedScreens'            
+            ])
         logger.info('user: %r, roles: %r', su.username, roles)
 #         if 'rnaiDsl1MutualScreens' in roles:
 #             logger.info('set rnai dsl 1')
@@ -101,7 +106,7 @@ def create_roles(apps, schema_editor):
         
         # NOTE: no staff users activated here:
         # See lims/static/production_data/screensaver_users-prod-patch.csv
-        if 'screensaverUser' in roles and su.classification != 'staff':
+        if (roles & screener_roles) and su.classification != 'staff':
             logger.info('setting user to active: %r', su.username )
             auth_user.is_active = True
             active_user_count += 1

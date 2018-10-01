@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 DEBUG_AUTHENTICATION = False
 
 USER_PROXY_LOGIN_PATTERN = re.compile(r'(\w+)\:(\w+)')
-USER_PROXY_ADMIN_GROUP = 'screensaverUserAdmin'
+USER_PROXY_ADMIN_GROUP = 'userView'
 
 class CustomAuthenticationBackend():
     """
@@ -42,7 +42,7 @@ class CustomAuthenticationBackend():
             logged_in_as = matchObject.group(2)
             s_user = self._inner_authenticate(superuser, password)
             if s_user:
-                is_allowed = s_user.is_superuser
+                is_allowed = s_user.is_staff
                 if not is_allowed:
                     try:
                         is_allowed = (

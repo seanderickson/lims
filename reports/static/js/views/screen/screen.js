@@ -55,6 +55,9 @@ define([
         this.tabbed_resources['cherrypickrequest'] = this.screen_tabbed_resources['cherrypickrequest'];
         this.tabbed_resources['activities'] = this.screen_tabbed_resources['activities'];
       }
+      if (access_level >= 2 && self.model.get('has_screen_result') == 1){
+        this.tabbed_resources['data'] = this.screen_tabbed_resources['data'];
+      }
       _.bindAll(this, 'addLibraryScreening','addServiceActivity');
       
     },
@@ -1306,7 +1309,8 @@ define([
                 return;
               }
             }));
-        
+        cpResource.fields['screen_facility_id']['visibility'] = [];
+        cpResource.fields['screen_type']['visibility'] = [];
         view = new ListView({ 
           uriStack: _.clone(delegateStack),
           resource: cpResource,

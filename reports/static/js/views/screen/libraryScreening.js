@@ -842,6 +842,8 @@ define([
         
       });
       
+      self.model.resource.fields['screen_facility_id']['visibility'] = [];
+      
       if (this.model.get('is_for_external_library_plates') === true){
         _.each(['library_plates_screened','screened_experimental_well_count',
             'libraries_screened_count','library_plates_screened_count'] ,

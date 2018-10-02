@@ -86,7 +86,6 @@ define([
 
     setLabHeadFieldVisibility: function(classification, originalClassification){
       var self = this;
-      console.log('classification:' + classification)
       if(classification == appModel.VOCAB_USER_CLASSIFICATION_PI){
         self.$el.find('[key="form-group-lab_affiliation_id"]').show();
         self.$el.find('[key="form-group-lab_member_ids"]').show();
@@ -106,8 +105,6 @@ define([
     
     setDetail: function(delegateStack){
       
-      console.log('setDetail: ', delegateStack);
-
       var key = 'detail';
       var self,outerSelf;
       outerSelf = self = this;
@@ -185,9 +182,10 @@ define([
       var editView = EditView.extend({
         save_success: function(data, textStatus, jqXHR){
           EditView.prototype.save_success.apply(this,arguments);
-          console.log('user saved. unset users...');
+          if (appModel.DEBUG){
+            console.log('user saved. unset users...');
+          }
           appModel.unset('users');
-          console.log('unset done');
           appModel.getUsers();
         },
         
@@ -224,7 +222,6 @@ define([
               self.setValue('lab_affiliation_id','');
               self.setValue('lab_member_ids','');
               if (originalClassification == appModel.VOCAB_USER_CLASSIFICATION_PI){
-                console.log('unset lab head id');
                 self.setValue('lab_head_id','');
                 self.$el.find('[key="lab_head_id"]')
                   .find('.chosen-select').trigger("chosen:updated");
@@ -338,7 +335,6 @@ define([
     
     showUserAgreements: function(){
       var self = this;
-      console.log('showUserAgreements, ', self.model.key, self.model);
       if (!appModel.hasPermission('useragreement')){
         console.log('user does not have permission to query "useragreement"');
         return;
@@ -362,7 +358,6 @@ define([
       }).fail(function() { Iccbl.appModel.jqXHRfail.apply(this,arguments); });      
       
       function build_table(collection) {
-        console.log('build user agreement table', collection);
         if (collection.isEmpty()) {
           return;
         }
@@ -503,7 +498,6 @@ define([
                         
                         newUriStack.push(appModel.createSearchString(search));
                         var route = newUriStack.join('/');
-                        console.log('history route: ' + route);
                         appModel.router.navigate(route, {trigger: true});
                       })
                     );
@@ -671,7 +665,6 @@ define([
       var FormFields = Backbone.Model.extend({
         schema: formSchema,
         validate: function(attrs){
-          console.log('form validate', attrs);
           var errs = {};
           
           var dateVal = new Date(attrs['date_active']);
@@ -680,7 +673,6 @@ define([
           var currentDate = new Date();
           currentDate = new Date(
             currentDate.getFullYear(),currentDate.getMonth(),currentDate.getDate());
-          console.log('dateVal', dateVal, 'current', currentDate);
           if (dateVal > currentDate){
             errs['date_active'] = 'May not be in the future';
           }
@@ -775,7 +767,6 @@ define([
           form.$el.find('#filechosen').html(label);
         });
         form.listenTo(form, "deactivate:change", function(e){
-          console.log('change');
           var value = form.getValue('deactivate');
           if(value == true){
             form.$el.find('input').not('[name="deactivate"]').prop('disabled', true);
@@ -788,7 +779,6 @@ define([
           }
         });
         form.listenTo(form, "expire:change", function(e){
-          console.log('change');
           var value = form.getValue('expire');
           if(value == true){
             form.$el.find('input').not('[name="expire"]').prop('disabled', true);
@@ -810,7 +800,6 @@ define([
             $('#general_error').remove();
             var errors = form.commit({ validate: true }); // runs schema and model validation
             if(!_.isEmpty(errors) ){
-              console.log('form errors, abort submit: ',errors);
               _.each(_.keys(errors), function(key){
                 $('[name="'+key +'"]').parents('.form-group').addClass('has-error');
               });
@@ -833,7 +822,6 @@ define([
                 return 
               }
               else if (_.result(values,'deactivate')){
-                console.log('deactivate...')
                 var httpType = 'PATCH';
                 var contentType = 'application/json';
                 var data = JSON.stringify({ 
@@ -863,7 +851,6 @@ define([
                   Iccbl.appModel.jqXHRfail.apply(this,arguments); 
                 }).done(function(model, resp){
                     // TODO: done replaces success as of jq 1.8
-                    console.log('done: ' + arguments);
                 });
                 return true;
               }
@@ -921,7 +908,6 @@ define([
               } else {
                 _.each(_.keys(values), function(key){
                   if (_.contains(mutableFields,key)){
-                    console.log('set key', key)
                     data[key] = values[key];
                   }
                 });
@@ -943,21 +929,29 @@ define([
                   self.model.fetch({ reset: true }).done(function(){
                     self.buildMessages();
                   });
-                  var msg = 'data sharing level: ' + values['data_sharing_level'];
+                  
+                  var messages = {};
+                  messages['data_sharing_level'] =  values['data_sharing_level'];
                   if (file){
-                    msg += '<br>file: ' + file.name + ' ';
+                    messages['filename'] = file.name;
                   }
-                  appModel.showModalMessage({
-                    title: formTitle + ' - complete',
-                    okText: 'ok',
-                    body: msg
+                  var meta = _.result(data, 'meta', null);
+                  if (meta) {
+                    _.extend(messages, meta);
+                  }
+                  appModel.showJsonMessages(messages, {
+                    title: 'Update Success'
                   });
+//                  appModel.showModalMessage({
+//                    title: formTitle + ' - complete',
+//                    okText: 'ok',
+//                    body: msg
+//                  });
                 }
               }).fail(function(){ 
                 Iccbl.appModel.jqXHRfail.apply(this,arguments); 
               }).done(function(model, resp){
                   // TODO: done replaces success as of jq 1.8
-                  console.log('done: ' + arguments);
               });
               return true;
             }
@@ -976,9 +970,7 @@ define([
       try{
         vocabulary = Iccbl.appModel.getVocabulary(vocabulary_scope_ref);
           _.each(_.keys(vocabulary),function(choice){
-            if (vocabulary[choice].is_retired) {
-              console.log('skipping retired vocab: ',choice,vocabulary[choice].title );
-            } else {
+            if (vocabulary[choice].is_retired !== true ) {
               choiceHash[choice] = vocabulary[choice].title;
             }
           });
@@ -1009,7 +1001,6 @@ define([
       var FormFields = Backbone.Model.extend({
         schema: formSchema,
         validate: function(attrs){
-          console.log('form validate', attrs);
           var errs = {};
             if(_.has(currentAffiliationNames,attrs['name'])){
               errs['name'] = '"'+ attrs['name'] + '" is already used';
@@ -1032,7 +1023,6 @@ define([
           e.preventDefault();
           var errors = form.commit({ validate: true }); // runs schema and model validation
           if(!_.isEmpty(errors) ){
-            console.log('form errors, abort submit: ',errors);
             _.each(_.keys(errors), function(key){
               $('[name="'+key +'"').parents('.form-group').addClass('has-error');
             });
@@ -1079,7 +1069,6 @@ define([
               },
               done: function(model, resp){
                 // TODO: done replaces success as of jq 1.8
-                console.log('done');
               }
             }).fail(function(){ Iccbl.appModel.jqXHRfail.apply(this,arguments); });
           
@@ -1091,7 +1080,6 @@ define([
     
     addScreen: function(extra_defaults){
       var self = this;
-      console.log('add screen for ls: ', self.model.get('screensaver_user_id'));
       var defaults = _.extend({
         lead_screener_id: self.model.get('screensaver_user_id'),
         lab_head_id: self.model.get('lab_head_id')
@@ -1114,7 +1102,9 @@ define([
       var self = this;
       self.$('ul.nav-tabs > li').addClass('disabled');
 
-      console.log('add lab member for lab head: ', self.model.get('screensaver_user_id'));
+      if (appModel.DEBUG){
+        console.log('add lab member for lab head: ', self.model.get('screensaver_user_id'));
+      }
       var defaults = _.extend({
         lab_head_id: self.model.get('lab_head_id'),
         lab_name: self.model.get('lab_name')
@@ -1197,7 +1187,6 @@ define([
       _.each(_.values(resource.fields), function(field){
         if (_.contains(visibleFields, field.key)){
           if (!_.contains(field['visibility'],'l')){
-            console.log('add', field.key);
             extraIncludes.push(field.key);
           }
         } else {
@@ -1280,8 +1269,9 @@ define([
         var extraControls = [];
         var addServiceActivityButton = $([
           '<a class="btn btn-default btn-sm pull-down" ',
-            'role="button" id="add_button" href="#">',
-            'Add</a>'
+            'role="button" id="add_button" href="#" ',
+            'title="Add a service activity for the user" > ',
+            'Add Service Activity</a>'
           ].join(''));
         var showDeleteButton = $([
           '<a class="btn btn-default btn-sm pull-down" ',
@@ -1306,7 +1296,6 @@ define([
           search['uri__contains'] = 'screensaveruser/' + self.model.get('screensaver_user_id');
           newUriStack.push(appModel.createSearchString(search));
           var route = newUriStack.join('/');
-          console.log('history route: ' + route);
           appModel.router.navigate(route, {trigger: true});
           self.remove();
         });
@@ -1315,7 +1304,6 @@ define([
           extraControls.unshift(showDeleteButton);
         }
         extraControls.unshift(showHistoryButton);
-        console.log('extraControls',extraControls);
         url = [self.model.resource.apiUri, 
                    self.model.key,
                    'activities'].join('/');
@@ -1351,7 +1339,6 @@ define([
     },
     
     addServiceActivity: function(e) {
-      console.log('addServiceActivity...');
       
       if (e){
         e.preventDefault();
@@ -1467,7 +1454,6 @@ define([
         search['key__contains'] = self.model.get('screensaver_user_id') + '/';
         newUriStack.push(appModel.createSearchString(search));
         var route = newUriStack.join('/');
-        console.log('history route: ' + route);
         appModel.router.navigate(route, {trigger: true});
         self.remove();
       });
@@ -1623,7 +1609,6 @@ define([
         showSaveButton.click(function(e){
           
           e.preventDefault();
-          console.log('changed collection', changedCollection,changedCollection.url);
           
           if(changedCollection.isEmpty()){
             appModel.showModalError('No changes to save');
@@ -1642,11 +1627,9 @@ define([
                 fetchCollection.fetch({ reset: true });
               },
               success: function(){
-                console.log('success');
                 fetchCollection.fetch();
               },
               done: function(){
-                console.log('done');
               }
             }
           );
@@ -1699,7 +1682,6 @@ define([
           view.$el.find('td').removeClass('edited');
         });
         collection.on('sync', function(){
-          console.log('synced');
           view.$el.find('td').removeClass('edited');
           appModel.clearPagePending();
         });
@@ -1724,15 +1706,12 @@ define([
     buildMessages: function() {
       var self = this;
       
-      console.log('build user messages...');
-
       if (!appModel.hasGroup('readEverythingAdmin')){
         return;
       }
    
       $('#content_title_message').find('#user_status_message').remove();
       var screens = self.getUserScreens();
-      console.log('build user messages', screens);
       if (_.isEmpty(screens)) {
         return;
       }

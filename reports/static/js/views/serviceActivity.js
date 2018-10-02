@@ -32,8 +32,8 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
           if (appModel.hasPermission('activity', 'write')){
             var add_another_button = $([
               '<button class="btn btn-default btn-sm " role="button" ',
-              'id="add_another_sa_button" title="Add another Activity" >',
-              'Add another Activity',
+              'id="add_another_sa_button" title="Add another Service Activity" >',
+              'Add another Service Activity',
               '</button>'
               ].join(''));
             $('#generic-detail-buttonpanel-left').append(add_another_button);

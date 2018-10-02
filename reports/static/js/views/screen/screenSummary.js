@@ -468,7 +468,7 @@ define([
           extraControls.push($addLibraryScreeningButton);
         }
         lsResource.fields['classification']['visibility'] = [];
-//        lsResource.fields['type']['visibility'] = [];
+        lsResource.fields['screen_facility_id']['visibility'] = [];
         
         _.each(_.values(lsResource.fields), function(fi){
           if (_.result(fi.display_options, 'optgroup')=='screen'){

@@ -419,6 +419,10 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
         self.clear_cache(request, **kwargs)
         return self.build_response(request, 'ok', **kwargs)
 
+    def dispatch_clear_all_caches(self, request, **kwargs):
+        self.clear_cache(request, all=True)
+        return self.build_response(request, 'ok', **kwargs)
+
     def prepend_urls(self):
         '''
         A hook for adding your own URLs or matching before the default URLs.
@@ -438,6 +442,9 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
             url(r'^(?P<resource_name>%s)/clear_cache%s$' 
                 % (self._meta.resource_name, TRAILING_SLASH), 
                 self.wrap_view('dispatch_clear_cache'), name='api_clear_cache'),
+            url(r'^(?P<resource_name>%s)/clear_all_caches%s$' 
+                % (self._meta.resource_name, TRAILING_SLASH), 
+                self.wrap_view('dispatch_clear_all_caches'), name='api_clear_cache'),
         ]
         urls += self.prepend_urls()
         urls += self.base_urls()

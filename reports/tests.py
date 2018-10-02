@@ -1197,7 +1197,17 @@ class IResourceTestCase(unittest.TestCase):
         
         self._run_api_init_actions(
             input_actions_file, reinit_pattern=reinit_pattern)
+    
+    def _clear_server_caches(self):
         
+        resource_uri = '/'.join([BASE_URI,'resource/clear_all_caches'])
+        resp = self.api_client.get(
+            resource_uri, format='json', 
+            authentication=self.get_credentials())
+        self.assertTrue(
+            resp.status_code in [200,201], 
+            ('clear cache failed', resp.status_code,self.get_content(resp)))
+    
     def create_basic(self, username, password):
         """
         Creates & returns the HTTP ``Authorization`` header for use with BASIC
@@ -1617,6 +1627,10 @@ def setUpModule():
     else:
         print 'skip database metahash initialization when using keepdb'
 
+    logger.info('=== trigger clear_all_caches on the server...')
+    testContext = IResourceTestCase(methodName='_clear_server_caches')
+    testContext.setUp()
+    testContext._clear_server_caches()
 
     logger.info('=== setup Module done')
 

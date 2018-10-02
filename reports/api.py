@@ -609,11 +609,16 @@ class ApiResource(SqlAlchemyResource):
         
         self.request_factory = RequestFactory()
         
-    def clear_cache(self, request, **kwargs):
-        logger.debug('clearing the cache from resource: %s' 
-            % self._meta.resource_name)
+    def clear_cache(self, request, all=False, **kwargs):
+        if DEBUG_RESOURCES or logger.isEnabledFor(logging.DEBUG):
+            logger.info('clearing the cache from resource: %s, all: %r',
+                self._meta.resource_name, all)
         ApiResource.get_cache(self).clear()
-    
+        if all is True:
+            logger.info('clear all caches: %r', caches.all())
+            for name in ['reports_cache', 'resource_cache','screen_cache','db_cache']:
+                logger.info('clearing cache: %r', name)
+                caches[name].clear()
     def get_cache(self):
         return caches['reports_cache']
 
@@ -990,7 +995,10 @@ class ApiResource(SqlAlchemyResource):
             fields = schema[RESOURCE.FIELDS]
             mutable_fields = {}
             for key,field in fields.items():
-                editability = field.get('editability', None)
+                editability = field.get('editability')
+                if DEBUG_PARSE:
+                    logger.info('scope: %r, field: %r, editability: %r, field: %r',
+                        field['scope'], key, editability, field)
                 if editability and (
                     'u' in editability or (create and 'c' in editability )):
                     mutable_fields[key] = field
@@ -3116,7 +3124,7 @@ class FieldResource(ApiResource):
                 scopes = ['fields.field',]
 
         scopes = set(scopes)
-        logger.info('build_fields for scopes: %r', scopes)
+        logger.info('internal build_fields for scopes: %r', scopes)
 
         fields = {}
         field_key = '{scope}/{key}'
@@ -3142,16 +3150,17 @@ class FieldResource(ApiResource):
         recursion_test = list()
         def fill_field_refs(key):
             if DEBUG_RESOURCES:
-                logger.info('fill field for %r', key)
+                logger.info('fill ref field for %r', key)
             
             if key not in fields:
                 logger.debug('key: %r not found in %r', key, fields.keys())
             
             else:
                 field = fields[key]
-                logger.debug('field: %r', key)
                 
-                ref_field_key = field.get('ref', None)
+                ref_field_key = field.get('ref')
+                if DEBUG_RESOURCES: 
+                    logger.info('field: %r, ref: %r', key, ref_field_key)
                 if ref_field_key:
                     if key not in recursion_test:
                         recursion_test.append(key)
@@ -3160,13 +3169,26 @@ class FieldResource(ApiResource):
                             'recursive field ref relationship for: %r, parents: %r'
                             % (key, recursion_test))
                     ref_field = fill_field_refs(ref_field_key)
-                    logger.debug('ref_key: %r found ref field: %r', 
-                                ref_field_key, ref_field)
+                    if DEBUG_RESOURCES:
+                        logger.info('ref_key: %r found ref field: %r', 
+                            ref_field_key, ref_field)
                     if ref_field:
                         temp = deepcopy(ref_field)
                         for k,v in field.items():
+                            # Overwrite the parent fields if val is set for base field
+                            # NOTE: ref_field values cannot be overwritten with null
+                            if DEBUG_RESOURCES:
+                                logger.info('test ref key, %r, val: %r, base: %r', k, v, temp.get(k))
                             if v is not None and v != '':
-                                temp[k] = v
+                                if isinstance(v, (list,tuple)):
+                                    # NOTE: csv input for null is converted to empty list
+                                    # (overwrite with parent if empty list)
+                                    if v:
+                                        temp[k] = v
+                                else:
+                                    temp[k] = v
+                            if DEBUG_RESOURCES:
+                                logger.info('final: %r, %r', k, temp[k])
                         recursion_test.pop()
                         return temp
                 return field
@@ -3174,7 +3196,6 @@ class FieldResource(ApiResource):
         for key,field in fields.items():
             field['1'] = field['scope']
             field['2'] = field['key']
-             
             fields[key] = fill_field_refs(key)
 # 
 #             vocab_scope_ref = field.get('vocabulary_scope_ref')

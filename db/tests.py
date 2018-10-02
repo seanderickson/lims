@@ -954,8 +954,12 @@ def setUpModule():
         })
         logger.info('admin screensaveruser created')
         DBResourceTestCase.admin_user = new_admin_user
-                
-    
+
+    logger.info('=== trigger clear_all_caches on the server...')
+    testContext = IResourceTestCase(methodName='_clear_server_caches')
+    testContext.setUp()
+    testContext._clear_server_caches()
+
     logger.info('=== setup Module done')
 
 def tearDownModule():
@@ -5866,6 +5870,7 @@ class ScreenResource(DBResourceTestCase):
         logger.info('test %r', msg)
         invalid_input2 = library_screening_input.copy()
         invalid_input2[key] =  value
+        logger.info('library screening data: %r', invalid_input2)
         errors, resp = self._create_resource(
             invalid_input2, resource_uri, resource_test_uri, expect_fail=True)
         self.assertTrue(resp.status_code==400, msg)

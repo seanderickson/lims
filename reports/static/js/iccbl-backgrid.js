@@ -67,7 +67,6 @@ var COPY_NAME_PATTERN = Iccbl.COPY_NAME_PATTERN = /^["']?[A-Za-z]+[\w\- :]*["']?
  * @param i 0 based row index
  */
 var rowToLetter = Iccbl.rowToLetter = function(i){
-//  console.log('rowToLetter: ', i);
   if (i<26){
     return 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'[i];
   } else {
@@ -233,7 +232,9 @@ var dateParse = Iccbl.dateParse = function dateParse(rawData){
       MMDDYYYY[3] * 1 || 0,
       MMDDYYYY[1] * 1 - 1 || 0,
       MMDDYYYY[2] * 1 || 0);
-    console.log('date: raw: ', rawData, 'converted', jsDate);
+    if (Iccbl.appModel.DEBUG) {
+      console.log('date: raw: ', rawData, 'converted', jsDate);
+    }
     return jsDate;
   }else{
     // ISO date format, ignore timezone / time
@@ -391,7 +392,9 @@ var convoluteWells = Iccbl.convoluteWells = function(source_ps, dest_ps, wells){
   _.each(wells, function(wellName){
     convolutedWells = convolutedWells.concat(convoluteWell(source_ps,dest_ps,wellName));
   });
-  console.log('wells convoluted', wells, source_ps,dest_ps, convolutedWells);
+  if (Iccbl.appModel.DEBUG) {
+    console.log('wells convoluted', wells, source_ps,dest_ps, convolutedWells);
+  }
   convolutedWells.sort();
   return convolutedWells;
 };
@@ -419,7 +422,7 @@ var deconvoluteWells = Iccbl.deconvoluteWells = function(source_ps, dest_ps, wel
   var deconvolutedPlateQuadrantWells = {
     0: [], 1:[], 2:[], 3:[]
   };
-  console.log('deconvoluteWells...');
+  if (Iccbl.appModel.DEBUG) console.log('deconvoluteWells...');
   _.each(wells, function(wellName){
     var quadrant_new_well = deconvoluteWell(source_ps,dest_ps, wellName);
     var quadrant = quadrant_new_well[0];
@@ -427,7 +430,9 @@ var deconvoluteWells = Iccbl.deconvoluteWells = function(source_ps, dest_ps, wel
     deconvolutedPlateQuadrantWells[quadrant].push(newWellname);
   });
   
-  console.log('wells deconvoluted', wells, source_ps,dest_ps, deconvolutedPlateQuadrantWells);
+  if (Iccbl.appModel.DEBUG){
+    console.log('wells deconvoluted', wells, source_ps,dest_ps, deconvolutedPlateQuadrantWells);
+  }
   return deconvolutedPlateQuadrantWells;
 };
 
@@ -444,7 +449,9 @@ var deconvoluteWells = Iccbl.deconvoluteWells = function(source_ps, dest_ps, wel
 var parseNamedWellRanges = Iccbl.parseNamedWellRanges = 
   function(rawData, plateSize, errors) {
   
-  console.log('parseNamedWellRanges', rawData, plateSize);
+  if (Iccbl.appModel.DEBUG){
+    console.log('parseNamedWellRanges', rawData, plateSize);
+  }
   var duplicate_wells_error_msg = 'duplicate wells found in ranges: ';
   var namedWellRanges = {};
   
@@ -460,7 +467,7 @@ var parseNamedWellRanges = Iccbl.parseNamedWellRanges =
     range = range.trim();
     if (_.isEmpty(range)) return;
     
-    console.log('parse range', range);
+    if (Iccbl.appModel.DEBUG) console.log('parse range', range);
     
     var rangeToLabel = range.split(/[=]+/);
     var label = '';
@@ -489,7 +496,7 @@ var parseNamedWellRanges = Iccbl.parseNamedWellRanges =
       namedWellRange = namedWellRanges[label];
     }
     var parsedWells = Iccbl.parseWellSelections(unparsed, plateSize, errors);
-    console.log('parsedWells', label, parsedWells);
+    if (Iccbl.appModel.DEBUG) console.log('parsedWells', label, parsedWells);
     namedWellRange['wells'] = namedWellRange['wells'].concat(parsedWells);
   });
 
@@ -503,12 +510,12 @@ var parseNamedWellRanges = Iccbl.parseNamedWellRanges =
   if (!_.isEmpty(duplicates)){
     errors.push(duplicate_wells_error_msg + duplicates.join(', '));
   }
-  console.log('found named well ranges', namedWellRanges);
+  if (Iccbl.appModel.DEBUG) console.log('found named well ranges', namedWellRanges);
   return namedWellRanges;
 };
 
 var find_duplicates = Iccbl.find_duplicates = function(arrays){
-  console.log('find_duplicates in arrays', arrays)
+  if (Iccbl.appModel.DEBUG) console.log('find_duplicates in arrays', arrays)
   var duplicates = [];
   for(var i=0;i<arrays.length;i++){
     var test_array = arrays[i];
@@ -523,7 +530,7 @@ var find_duplicates = Iccbl.find_duplicates = function(arrays){
     }
   }
   duplicates = _.unique(duplicates);
-  console.log('duplicates found', duplicates);
+  if (Iccbl.appModel.DEBUG) console.log('duplicates found', duplicates);
   return duplicates;
 };
 
@@ -544,7 +551,7 @@ var find_duplicates = Iccbl.find_duplicates = function(arrays){
 var parseWellSelections = Iccbl.parseWellSelections = 
   function(rawData, plateSize, errors){
   
-  console.log('parseWellSelections: ', rawData, plateSize);
+  if (Iccbl.appModel.DEBUG) console.log('parseWellSelections: ', rawData, plateSize);
   
   var wells = [];
   rawData = rawData.trim();
@@ -568,12 +575,12 @@ var parseWellSelections = Iccbl.parseWellSelections =
   var rangePartsUnequal = 'Both values of the range must be the same type';
   _.each(inputs, function(input){
     if (_.isEmpty(input)) return;
-    console.log('input', input);
+    if (Iccbl.appModel.DEBUG) console.log('input', input);
     var range = input.split(/\s*-\s*/);
     if (range.length == 2) {
-      console.log('range:', range);
+      if (Iccbl.appModel.DEBUG) console.log('range:', range);
       if (ROW_PATTERN.exec(range[0])){
-        console.log('row: ', range[0]);
+        if (Iccbl.appModel.DEBUG) console.log('row: ', range[0]);
         if (!ROW_PATTERN.exec(range[1])){
           errors.push(rangePartsUnequal + ': ' + input);
           return;
@@ -596,7 +603,7 @@ var parseWellSelections = Iccbl.parseWellSelections =
         }
       }
       else if (COL_PATTERN.exec(range[0])){
-        console.log('col: ', range[0]);
+        if (Iccbl.appModel.DEBUG) console.log('col: ', range[0]);
         if (!COL_PATTERN.exec(range[1])){
           errors.push(rangePartsUnequal + ': ' + input);
           return;
@@ -621,10 +628,10 @@ var parseWellSelections = Iccbl.parseWellSelections =
           errors.push(rangePartsUnequal + ': ' + input);
           return;
         }
-        console.log('well: ', range[0]);
+        if (Iccbl.appModel.DEBUG) console.log('well: ', range[0]);
         var one = WELL_PATTERN.exec(range[0]);
         var two = WELL_PATTERN.exec(range[1]);
-        console.log('one/two', one, two);
+        if (Iccbl.appModel.DEBUG) console.log('one/two', one, two);
         var startRow = Iccbl.letterToRow(one[1]);
         var stopRow = Iccbl.letterToRow(two[1]);
         if (startRow>stopRow) {
@@ -644,7 +651,7 @@ var parseWellSelections = Iccbl.parseWellSelections =
           errors.push('Row is out of range: "' + input + '", max: '+ rowToLetter(numRows-1));
           return;
         }
-        console.log('start stop row/col: ', startRow,stopRow,startCol,stopCol);
+        if (Iccbl.appModel.DEBUG) console.log('start stop row/col: ', startRow,stopRow,startCol,stopCol);
         for(var i=startCol; i<=stopCol; i++) {
           for(var j=startRow; j<=stopRow; j++) {
             wells.push(Iccbl.getWellName(j,i));
@@ -692,7 +699,7 @@ var parseWellSelections = Iccbl.parseWellSelections =
       }
     }
   });
-  console.log('wells', wells);
+  if (Iccbl.appModel.DEBUG) console.log('wells', wells);
   return wells;
 };
 
@@ -714,10 +721,9 @@ var parseWellSelections = Iccbl.parseWellSelections =
 var generateNamedWellBlockString = Iccbl.generateNamedWellBlockString =
   function(namedWellRanges, plateSize) {
   
-  console.log('generateNamedWellBlockString', namedWellRanges);
+  if (Iccbl.appModel.DEBUG) console.log('generateNamedWellBlockString', namedWellRanges);
   var self = this;
   var finalArray = [];
-//  var WELL_PATTERN = self.WELL_PATTERN;
   var nCols = self.getCols(plateSize);
   var nRows = self.getRows(plateSize);
   _.each(namedWellRanges, function(namedRange){
@@ -731,7 +737,7 @@ var generateNamedWellBlockString = Iccbl.generateNamedWellBlockString =
         if (wellBlock.length > 1){
           var lastBlock = wellBlock[wellBlock.length-1];
           var lastEntry = lastBlock[lastBlock.length-1]; 
-          console.log('wellBlock 0', wellBlock[0],wellBlock[0].length, nCols );
+          if (Iccbl.appModel.DEBUG) console.log('wellBlock 0', wellBlock[0],wellBlock[0].length, nCols );
           if (wellBlock[0].length == nRows){
             // assume a col
             var firstCol = parseInt(WELL_PATTERN.exec(firstEntry)[2]);
@@ -773,7 +779,7 @@ var generateNamedWellBlockString = Iccbl.generateNamedWellBlockString =
       }
     }
   });
-  console.log('finalArray', finalArray);
+  if (Iccbl.appModel.DEBUG) console.log('finalArray', finalArray);
   return finalArray.join('\n');
 };
 
@@ -801,7 +807,7 @@ var getWellBlocks = Iccbl.getWellBlocks = function(wells, plateSize){
   function findColBlock(wellName, allWells){
     var colBlock;
     var row_col = Iccbl.getWellRowCol(wellName);
-    console.log('findColBlock: wellName', wellName, row_col);
+    if (Iccbl.appModel.DEBUG) console.log('findColBlock: wellName', wellName, row_col);
     var row = row_col[0];
     var col = row_col[1];
     // first scan down cols
@@ -829,7 +835,7 @@ var getWellBlocks = Iccbl.getWellBlocks = function(wells, plateSize){
       }
     }
     // choose whichever gives biggest block, col blocks first
-    console.log('choose biggest block:', blockByCol, blockByRow);
+    if (Iccbl.appModel.DEBUG) console.log('choose biggest block:', blockByCol, blockByRow);
     if (blockByCol.length >= blockByRow.length){
       colBlock = blockByCol;
     }else{
@@ -850,10 +856,10 @@ var getWellBlocks = Iccbl.getWellBlocks = function(wells, plateSize){
     }
   };
   findColBlocks(wells);
-  console.log('colBlocks', colBlocks);
+  if (Iccbl.appModel.DEBUG) console.log('colBlocks', colBlocks);
   
   function findWellBlock(colBlock, colBlocks){
-    console.log('findWellBlock', colBlock,colBlocks)
+    if (Iccbl.appModel.DEBUG) console.log('findWellBlock', colBlock,colBlocks)
     var wellBlock = [colBlock];
     var test_start = Iccbl.getWellRowCol(colBlock[0]);
     var test_stop = Iccbl.getWellRowCol(colBlock[colBlock.length-1]);
@@ -864,7 +870,7 @@ var getWellBlocks = Iccbl.getWellBlocks = function(wells, plateSize){
         // cols adjacent
         if (test_start[0] == row_col_start[0]
           && test_stop[0] == row_col_stop[0]){
-          console.log('found adjacent col', colBlock, currentBlock);
+          if (Iccbl.appModel.DEBUG) console.log('found adjacent col', colBlock, currentBlock);
           test_start = row_col_start;
           wellBlock.push(currentBlock);
         }
@@ -873,13 +879,13 @@ var getWellBlocks = Iccbl.getWellBlocks = function(wells, plateSize){
         // rows adjacent
         if (test_start[1] == row_col_start[1]
           && test_stop[1] == row_col_stop[1]){
-          //console.log('found adjacent row', colBlock, currentBlock);
+          if (Iccbl.appModel.DEBUG) console.log('found adjacent row', colBlock, currentBlock);
           test_start = row_col_start;
           wellBlock.push(currentBlock);
         }
       }
     });
-    console.log('findWellBlock finds', wellBlock);
+    if (Iccbl.appModel.DEBUG) console.log('findWellBlock finds', wellBlock);
     return wellBlock;
   };
   var wellBlocks = [];
@@ -898,7 +904,7 @@ var getWellBlocks = Iccbl.getWellBlocks = function(wells, plateSize){
   };
   findWellBlocks(colBlocks);
   
-  console.log('final getWellBlocks', wellBlocks);
+  if (Iccbl.appModel.DEBUG) console.log('final getWellBlocks', wellBlocks);
   return wellBlocks;
 };
 
@@ -931,7 +937,7 @@ var parseCompoundVendorIDSearch = Iccbl.parseCompoundVendorIDSearch = function(r
 var parseRawWellSearch = Iccbl.parseRawWellSearch = function(rawData,errors){
 
   if (Iccbl.appModel.DEBUG){
-    console.log('value', rawData);
+    console.log('parseRawWellSearch', rawData);
   }
   var search_array = []
   var or_list = rawData.split(SEARCH_LINE_SPLITTING_PATTERN);
@@ -1121,7 +1127,7 @@ var parseRawPlateSearch = Iccbl.parseRawPlateSearch = function(rawData, errors){
     search_array.push(parts);
   });
   
-  console.log('search_array', search_array);
+  if (Iccbl.appModel.DEBUG) console.log('parseRawPlateSearch: search_array', search_array);
 
   var final_search_array = [];
   _.each(search_array, function(parts){
@@ -1182,7 +1188,7 @@ var parseSIVolume = Iccbl.parseSIVolume = function(rawText){
   if (!volMatch){
     throw volErrMsg;
   }
-//  console.log('parse volMatch', volMatch);
+  if (Iccbl.appModel.DEBUG) console.log('parse volMatch', volMatch);
   var volume = parseFloat(volMatch[1]);
   // Allow for a maximum of 3 digits
   volume = volume.toPrecision(3);
@@ -1230,7 +1236,7 @@ var parseRawScreeningInquiry = Iccbl.parseRawScreeningInquiry = function(rawText
   if (!volMatch){
     var detailMessage = 'vol match fails for pattern: "' + volumePattern.source + '" ' +
       'for the text: "' + rawText + '"';
-    console.log(detailMessage);
+    if (Iccbl.appModel.DEBUG) console.log(detailMessage);
     errors.push(volErrMsg);
     if (Iccbl.appModel.DEBUG){
       errors.push(detailMessage);
@@ -1594,7 +1600,7 @@ var parseComments = Iccbl.parseComments = function(comment_array){
           Iccbl.getDateString(comment_parts[1]) + 
           ': ' + comment_parts[2];
       } else {
-        console.log('unparsed comment:', comment_parts)
+        if (Iccbl.appModel.DEBUG) console.log('unparsed comment:', comment_parts)
         return comment_parts.join(Iccbl.appModel.LIST_DELIMITER_SUB_ARRAY);
       }
     }).join('\n===== end comment =====\n');
@@ -1676,7 +1682,6 @@ var getCollectionOnClient = Iccbl.getCollectionOnClient =
         callback(collection);
       },
       always: function(){
-        console.log('done: ');
       }
     }).fail(function(){ Iccbl.appModel.jqXHRfail.apply(this,arguments); });      
 };
@@ -1790,7 +1795,9 @@ var BooleanCell = Iccbl.BooleanCell = Backgrid.BooleanCell.extend({
   isEdited: function() {
     if (this.isEditable()){
       var val = this.model.get(this.column.get('name'));
-      console.log('isEdited:', this.initialValue, val, val !== this.initialValue);
+      if (Iccbl.appModel.DEBUG){
+        console.log('isEdited:', this.initialValue, val, val !== this.initialValue);
+      }
       return val !== this.initialValue;
     }
     return false;
@@ -2999,7 +3006,7 @@ var CollectionInColumns = Iccbl.CollectionInColumns = Backbone.Collection.extend
    * Override collection parse method: Parse server response data.
    */
   parse : function(response) {
-    console.log('Collection on client, parse called');
+    if (Iccbl.appModel.DEBUG) console.log('Collection on client, parse called');
     var pivoted = {};
     var i = 0;
     _.each(response.objects, function(obj) {
@@ -3018,7 +3025,7 @@ var CollectionInColumns = Iccbl.CollectionInColumns = Backbone.Collection.extend
 var UriContainerView = Iccbl.UriContainerView = Backbone.Layout.extend({
   
   initialize: function(args) {
-    console.log('initialize UriContainerView');
+    if (Iccbl.appModel.DEBUG) console.log('initialize UriContainerView');
     var model = this.model = args.model;
     var targetProperty = args.property || 'uriStack';
     this.listenTo(model, 'change:'+targetProperty , this.uriStackChange );
@@ -3048,7 +3055,7 @@ var UriContainerView = Iccbl.UriContainerView = Backbone.Layout.extend({
    */
   uriStackChange: function(model, val, options) {
     if(options && options.source === this){
-      console.log('UriContainerView: self generated uristack change');
+      if (Iccbl.appModel.DEBUG) console.log('UriContainerView: self generated uristack change');
       return;
     }else{
       var uriStack = _.clone(this.model.get('uriStack'));
@@ -3078,7 +3085,9 @@ var MultiSortBody = Iccbl.MultiSortBody = Backgrid.Body.extend({
   sort: function (column, direction) {
     if (_.isString(column)) column = this.columns.findWhere({name: column});
 
-    console.log('MultiSortBody.sort( ' + column.get('name') + ', ' + direction);
+    if (Iccbl.appModel.DEBUG){
+      console.log('MultiSortBody.sort( ' + column.get('name') + ', ' + direction);
+    }
 
     var collection = this.collection;
     var order;
@@ -3091,7 +3100,7 @@ var MultiSortBody = Iccbl.MultiSortBody = Backgrid.Body.extend({
     collection.fetch({
       reset: true, 
       success: function () {
-        console.log('fetch success, direction: ' + direction);
+        if (Iccbl.appModel.DEBUG) console.log('fetch success, direction: ' + direction);
         collection.trigger("backgrid:sorted", column, direction, collection);
       }
     }).fail(function(){ Iccbl.appModel.jqXHRfail.apply(this,arguments); });      
@@ -3176,7 +3185,6 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
     if(!_.isNumber(state.firstPage)) state.firstPage = 1;
     
     if (Math.ceil(state.totalRecords / state.pageSize) < state.currentPage) {
-      console.log('adjust currentPage');
       state.currentPage = 1;
     }
     return state;
@@ -3272,8 +3280,10 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
    * if options.reset == true, then fetch, otherwise no fetch.
    */ 
   clearSearch: function(searchKeys, options) {
-//    console.log('clearsearch: ' + JSON.stringify(searchKeys) 
-//        + ', options: ' + JSON.stringify(options) );
+    if (Iccbl.appModel.DEBUG){
+      console.log('clearsearch: ' + JSON.stringify(searchKeys) 
+        + ', options: ' + JSON.stringify(options) );
+    }
     var self = this;
     var searchHash = {};
     var found = false;
@@ -3335,8 +3345,10 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
     
     if(!found && newdir !== null) newStack.push(newdir + sortKey);
     
-    console.log('Ordering update: old: ' + JSON.stringify(orderStack) 
+    if (Iccbl.appModel.DEBUG){
+      console.log('Ordering update: old: ' + JSON.stringify(orderStack) 
         + ', new: ' + JSON.stringify(newStack));
+    }
     self.listModel.set('order', newStack);
     
     // Backbone.PageableCollection.prototype.setSorting.call(this, sortKey,
@@ -3447,15 +3459,15 @@ var MultiSortHeaderCell = Iccbl.MultiSortHeaderCell = Backgrid.HeaderCell.extend
     var args = arguments;
     
     var delayedClick = function(){
-      console.log('delayedclick: tempdirection: ' + self.tempdirection);
+      if (Iccbl.appModel.DEBUG) console.log('delayedclick: tempdirection: ' + self.tempdirection);
       if(self.tempdirection !== self.lastExecutedVal){
-        console.log('delayed click: ' + self.tempdirection );
         collection.trigger(
           event, column, self.tempdirection=="none"?null:self.tempdirection);
         self.lastExecutedVal = self.tempdirection;
       }else{
-        console.log(
-          'this.tempdirection == self.lastExecutedVal: ' + self.lastExecutedVal);
+        if (Iccbl.appModel.DEBUG){
+          console.log('this.tempdirection == self.lastExecutedVal: ' + self.lastExecutedVal);
+        }
       }
     };
     _.debounce(delayedClick, 1000)();
@@ -3464,7 +3476,6 @@ var MultiSortHeaderCell = Iccbl.MultiSortHeaderCell = Backgrid.HeaderCell.extend
     // that is they both are working like setTimeout
     // _.throttle(delayedClick, 5000, {leading: false})();
     
-    console.log('onclick exit');
   },   
  
   collectionSorted: function(collection, options){
@@ -3668,7 +3679,6 @@ var FilterHeaderCell = Iccbl.FilterHeaderCell = Iccbl.MultiSortHeaderCell.extend
   
   _submit: function(e){
     var self  = this;
-    console.log('_submit called');
     if (e) e.preventDefault();      
   
     var searchHash = self._serverSideFilter._submit();
@@ -3676,8 +3686,10 @@ var FilterHeaderCell = Iccbl.FilterHeaderCell = Iccbl.MultiSortHeaderCell.extend
       var possibleSearches = self._serverSideFilter.getPossibleSearches();
       self.collection.clearSearch(possibleSearches, {silent: true});
       
-      console.log('server side filter add search: ' + 
-          JSON.stringify(searchHash));
+      if (Iccbl.appModel.DEBUG){
+        console.log('server side filter add search: ' + 
+            JSON.stringify(searchHash));
+      }
       this.collection.addSearch(searchHash,{reset: true});
     }else{
       console.log('nothing submitted');
@@ -4238,7 +4250,7 @@ var DateFormFilter = CriteriumFormFilter.extend({
     
     this.listenTo(this, "change", function(e){
       var criteria = self.getValue('lower_criteria');
-      console.log('change:' + criteria)
+      if (Iccbl.appModel.DEBUG) console.log('change:' + criteria)
       if(criteria == 'between'){
         self.$el.find('[data-fields="lower_value"]')
           .find('input').prop('disabled', false);
@@ -4554,7 +4566,9 @@ var SelectorFormFilter = CriteriumFormFilter.extend({
       try{
         vocabulary = Iccbl.appModel.getVocabulary(
           this.fieldinformation.vocabulary_scope_ref);
-        console.log('got vocab', this.fieldinformation.vocabulary_scope_ref, vocabulary);
+        if (Iccbl.appModel.DEBUG){
+          console.log('got vocab', this.fieldinformation.vocabulary_scope_ref, vocabulary);
+        }
         _.each(_.keys(vocabulary),function(choice){
           if (vocabulary[choice].is_retired === true){
             self.retiredFields.push(choice);
@@ -4632,7 +4646,7 @@ var SelectorFormFilter = CriteriumFormFilter.extend({
     
     this.listenTo(this, "lower_criteria:change", function(){
       var criteria = self.getValue('lower_criteria');
-      console.log('criteria: ' + criteria);
+      if (Iccbl.appModel.DEBUG) console.log('criteria: ' + criteria);
       if(criteria == 'blank'){
         self.$el.find('[data-fields]').find('input').prop('disabled', true);
       }else if(criteria == 'not blank'){
@@ -5145,7 +5159,7 @@ var SIUnitFormFilter = NumberFormFilter.extend({
         searchHash[searchKey] = ''+self._calculate(
             self.multiplier,values['lower_siunit'],values['lower_value']);
       }
-      console.log('SIunit new search value: ' + searchHash[searchKey]);
+      if (Iccbl.appModel.DEBUG) console.log('SIunit new search value: ' + searchHash[searchKey]);
     }
     return searchHash;
   },
@@ -5270,7 +5284,9 @@ var createBackgridColumn = Iccbl.createBackgridColumn =
   }
   
   if (_.has(prop, 'backgridCellType')){
-    console.log('using specified "backgridCellType": ',key, prop.backgridCellType );
+    if (Iccbl.appModel.DEBUG){
+      console.log('using specified "backgridCellType": ',key, prop.backgridCellType );
+    }
     backgridCellType = prop.backgridCellType;
     if(!_.isEmpty(cell_options)){
       cell_options = _.extend({}, cell_options, backgridCellType);

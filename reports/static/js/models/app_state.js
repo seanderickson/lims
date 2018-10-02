@@ -266,7 +266,6 @@ define([
       // 'screensaveruser' is needed for the database app
       this.getModel('screensaveruser', window.user, 
         function(model){
-          console.log('user model:', model);
           // NOTE that Backbone.Model.toJSON returns a shallow copy as a object,
           // not as a JSON string.
           self.currentUser = model.toJSON();
@@ -288,7 +287,7 @@ define([
      * - list views read
      */
     setSearch: function(searchId, search_object){
-      console.log('setSearch', searchId, search_object)
+      if (DEBUG) console.log('setSearch', searchId, search_object)
       localStorage.setItem(''+searchId, JSON.stringify(search_object));
       this.getSearch(searchId);
     },
@@ -355,7 +354,7 @@ define([
     },
     
     getLabAffiliationOptions: function(callBack){
-      console.log('getLabAffiliationOptions...', callBack);
+      if (DEBUG) console.log('getLabAffiliationOptions...', callBack);
       var self = this;
       var prop = 'labAffiliationOptions';
       var options = this.get(prop);
@@ -830,7 +829,6 @@ define([
 
       var collection = this.get(prop);
       if(flush || _.isEmpty(collection)){
-        console.log('get all '+prop+' from the server...');
         var CollectionClass = Iccbl.CollectionOnClient.extend({
           url: url 
         });
@@ -1027,8 +1025,10 @@ define([
         var vocabulary = this.getVocabulary(scope);
         _.each(_.keys(vocabulary),function(choice){
           if(vocabulary[choice].is_retired){
-            console.log(
-              'skipping retired vocab: ',choice,vocabulary[choice].title );
+            if (DEBUG) {
+              console.log(
+                'skipping retired vocab: ',choice,vocabulary[choice].title );
+            }
           }else{
             choiceHash.push({ 
               val: choice, 
@@ -1068,7 +1068,7 @@ define([
         var matchedVocabularies = {};
         _.each(_.keys(vocabularies), function(candidateScope){
           if(candidateScope.match('^' + scope + '$')){
-            if (DEBUG) {
+            if (DEBUG){
                 console.log(
                 'matching: ' + '^' + scope + '$' + ', to: ' + candidateScope );
             }
@@ -1076,7 +1076,9 @@ define([
           }
         });
         if(!_.isEmpty(matchedVocabularies)){
-          console.log('matchedVocabularies', scope, matchedVocabularies );
+          if (DEBUG){
+            console.log('matchedVocabularies', scope, matchedVocabularies );
+          }
           return matchedVocabularies;
         }
         throw "Unknown vocabulary: " + scope;
@@ -1184,7 +1186,7 @@ define([
 
     createNewModel: function(resourceId, defaults) {
 
-      console.log('create new model for: ',resourceId, defaults );
+      if (DEBUG) console.log('create new model for: ',resourceId, defaults );
       var self = this;
       var resource = self.getResource(resourceId);
       return this.newModelFromResource(resource,defaults);
@@ -1340,8 +1342,10 @@ define([
         var options = _.filter(screenOptions, function(option){
           return _.contains(userScreens, option['val']);
         });
-        console.log('found user screens: ' + 
-          userModel.get('screensaver_user_id'), options);
+        if (DEBUG) {
+          console.log('found user screens: ' + 
+            userModel.get('screensaver_user_id'), options);
+        }
         return options;
     },
     
@@ -1377,7 +1381,7 @@ define([
         key = key.join('/');
       }
       var url = options.url || resource.apiUri + '/' + key;
-      console.log('fetch model', url);
+      if (DEBUG) console.log('fetch model', url);
       var ModelClass = Backbone.Model.extend({
         url : url,
         defaults : { },
@@ -1407,7 +1411,7 @@ define([
           }
         }
       }).fail(function(){ 
-        console.log('fail...', failCallback);
+        console.log('instance fetch fail:', arguments);
         if (failCallback){
           failCallback.apply(this,arguments);
         }else{
@@ -1760,7 +1764,7 @@ define([
      */
     showJsonMessages: function(jsonObj, options){
       
-      console.log('showJsonMessages: ', jsonObj);
+      if (DEBUG) console.log('showJsonMessages: ', jsonObj);
       var options = _.extend({
           buttons_on_top: false,
         }, options);
@@ -1794,7 +1798,7 @@ define([
      * Uses stock JSON.stringify to generate display information in a modal dialog.
      */
     showJsonDirect: function(jsonObj, options){
-      console.log('showJsonMessages: ', jsonObj);
+      if (DEBUG) console.log('showJsonDirect: ', jsonObj);
       var options = _.extend({
           buttons_on_top: false,
         }, options);
@@ -2370,8 +2374,8 @@ define([
       }
       
       if(post_data){
-        console.log('post_data found for download', post_data);
-        // create a form for posting
+        if (DEBUG) console.log('post_data found for download', post_data);
+        console.log('create a form for posting...');
         var postform = $("<form />", {
           method: 'POST',
           action: url
@@ -2489,7 +2493,6 @@ define([
       });
       
       form.listenTo(form, "change", function(e){
-        console.log('change');
         
         // NOTE: 20180910 - allow options for sdf as well
         //var content_type = form.getValue('content_type');
@@ -2524,7 +2527,6 @@ define([
           
           var errors = form.commit({ validate: true }); // runs schema and model validation
           if(!_.isEmpty(errors) ){
-            console.log('errors', errors);
             _.each(_.keys(errors), function(key){
               form.$el.find('[name="'+key +'"]')
                 .parents('.form-group,.input-group').addClass('has-error');
@@ -2603,7 +2605,7 @@ define([
       };
       
       var options = _.extend({}, defaultOptions, options);
-      console.log('options', options);
+      if (DEBUG) console.log('showModal options', options);
       
       if (!_.isUndefined(options.view)){
         delete options.body;
@@ -2618,7 +2620,6 @@ define([
                   console.log('cancel button click event, '); 
                   event.preventDefault();
                   $('#modal').modal('hide'); 
-//                  options.cancel();
                   options.cancel(event);
               },
               'click #modal-ok':function(event) {
@@ -2629,7 +2630,6 @@ define([
                     return;
                   }
                   $('#modal').modal('hide');
-//                  $('#modal').modal({show:false})
               }
           },
       });
@@ -2678,18 +2678,15 @@ define([
       }
       $modal.one('shown.bs.modal', function () {
         $('#modal').find('.form').find('input').first().focus();
-//        $modal.css('display','block');
       });
       $modal.modal({
         backdrop: 'static',
         keyboard: false, // prevent the escape key from closing the modal
         show: true
       });
-    $('#modal').one('hidden.bs.modal', '.modal', function () {
-      console.log('hidden.bs.modal', arguments);
-    });
-//      $('#modal').modal({show:true});
-//      $modal.css('display','block');
+      //$('#modal').one('hidden.bs.modal', '.modal', function () {
+      //  console.log('hidden.bs.modal', arguments);
+      //});
       return modalDialog;
     },
     

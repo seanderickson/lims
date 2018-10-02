@@ -2917,7 +2917,7 @@ class UserAgreementResource(DbApiResource):
         kwargs_for_user = {
             'exact_fields': ['screensaver_user_id', 'is_active',
                 'sm_data_sharing_level', 'rnai_data_sharing_level',
-                'lab_head_id'] 
+                'lab_head_id', 'username'] 
         }
         kwargs_for_user['screensaver_user_id'] = screensaver_user_id
         original_user_data = user_resource._get_detail_response_internal(**kwargs_for_user)
@@ -2982,7 +2982,6 @@ class UserAgreementResource(DbApiResource):
                 LimsSerializer.get_content(attached_file_response), JSON_MIMETYPE)
             logger.info('attached_file: %r', af_data)
             user_agreement.file_id = af_data['attached_file_id']
-#             user_agreement.save()
         else:
             error_resp = attached_file_resource._meta.serializer.deserialize(
                 LimsSerializer.get_content(attached_file_response), JSON_MIMETYPE)
@@ -2991,20 +2990,24 @@ class UserAgreementResource(DbApiResource):
             raise Exception('attached file resource error: %r', error_resp)
 
         # === Attached File - Done ===
-
+        meta = {}
         if user_agreement.date_active is not None:
             if user_agreement.date_expired is None:
-
-                logger.info('UserAgreement is active: %r, add login access for user')
-                # NOTE: is_active is a reports.user property and will only be 
-                # set if the user has a ecommonsId or username set
-                user_schema = user_resource.build_schema(request.user)
-                user_patch_data = {
-                    'screensaver_user_id': screensaver_user_id,
-                    'is_active': True }
-                patch_result = user_resource.patch_obj(
-                    request, user_patch_data, schema=user_schema)
-                logger.info('user patch result: %r', patch_result)
+                if not original_user_data.get('username'):
+                    meta['Note'] = \
+                        'Login capability not set: User must have an eCommons ID or password to enable login.'
+                else:
+                    logger.info('UserAgreement is active: %r, add login access for user')
+                    # NOTE: is_active is a reports.user property and will only be 
+                    # set if the user has a ecommonsId or username set
+                    user_schema = user_resource.build_schema(request.user)
+                    user_patch_data = {
+                        'screensaver_user_id': screensaver_user_id,
+                        'is_active': True }
+                    patch_result = user_resource.patch_obj(
+                        request, user_patch_data, schema=user_schema)
+                    meta.update(patch_result.get(API_RESULT_META))
+                    logger.info('user patch result: %r', patch_result)
 
         user_agreement.save()
 
@@ -3019,7 +3022,8 @@ class UserAgreementResource(DbApiResource):
         log.save()
         
         data = { API_RESULT_DATA: [new_data]}
-        
+        if meta:
+            data[API_RESULT_META] = meta 
         if 'test_only' in param_hash:
             logger.info('test_only flag: %r', param_hash.get('test_only'))    
             raise InformationError(
@@ -21067,7 +21071,10 @@ class ScreensaverUserResource(DbApiResource):
         if screensaver_user.username is not None:
             reports_kwargs['username'] = screensaver_user.username
         user = None
-        if reports_kwargs:
+        if not reports_kwargs:
+            messages.append(
+                'Non login user (no username or eCommons ID')
+        else:
             # create/get userprofile
             # NOTE: reports.user patch data must include first/last names
             if 'first_name' not in deserialized or 'last_name' not in deserialized:
@@ -21112,7 +21119,7 @@ class ScreensaverUserResource(DbApiResource):
                         SCHEMA.VOCAB.screensaver_user.classification.STAFF
             
         screensaver_user.save()
-        logger.info('user saved: %r',screensaver_user)
+        logger.info('reports user saved: %r',screensaver_user)
         
         # Validate business rules for user types
         if is_staff != True:
@@ -21257,14 +21264,11 @@ class ScreensaverUserResource(DbApiResource):
         #         ur.save()
 
         logger.info('patch_obj done: %r', screensaver_user)
-        
-        
-        meta = {
-            SCHEMA.API_MSG_RESULT: {
-                'messages': messages
-            },
-        }
-        
+
+        meta = {}        
+        if messages:
+            meta[SCHEMA.API_MSG_RESULT] = messages
+
         return { 
             API_RESULT_OBJ: screensaver_user,
             API_RESULT_META: meta 

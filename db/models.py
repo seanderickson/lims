@@ -872,8 +872,8 @@ class ScreensaverUser(models.Model):
     username = models.TextField(null=True, unique=True)
 
     # FIXME: legacy fields
-    login_id = models.TextField(unique=True, null=True)
-    digested_password = models.TextField(null=True)
+#     login_id = models.TextField(unique=True, null=True)
+#     digested_password = models.TextField(null=True)
     
     user = models.OneToOneField(
         'reports.UserProfile', null=True,on_delete=models.SET_NULL)

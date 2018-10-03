@@ -57,6 +57,17 @@ function($, _, Backgrid, Backbone, Iccbl, appModel,
         
         function makeNodes(dataTree, attrs, i, model){
           var attr = model.get(attrs[i]);
+          
+          if (_.isUndefined(attr)){
+            // TODO: some columns in the collection may not be represented
+            // with all the needed field schema attributes specified by treeAttributes
+            // (this is a bug).
+            // e.g. cherryPickRequest.setCherryPickPlates, the "selected" virtual
+            // column is not meant to be seen in the treeSelector and does not have
+            // all of the field schema fields.
+            return;
+          }
+          
           attr = attr.replace(/\"/g,"'").trim();
           var data_name = _.map(
             attrs.slice(0,i+1), function(key){

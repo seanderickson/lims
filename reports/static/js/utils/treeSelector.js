@@ -22,8 +22,7 @@ function($, _, Backgrid, Backbone, Iccbl, appModel,
    * 
    * @param treeAttributes: object attributes to use for constructing the tree
    *   hierarchy.
-   */
-  /**
+   * 
    * TODO: (performance enhancement) consider rebuilding tree on each action
    * to contain only visible (searched, selected) nodes.
    */
@@ -94,7 +93,6 @@ function($, _, Backgrid, Backbone, Iccbl, appModel,
         collection.each(function(model){
           makeNodes(dataTree, treeAttributes, 0, model);
         });
-        console.log('dataTree created', dataTree);
         
         function makeList(nodes){
           var html = ''
@@ -121,7 +119,6 @@ function($, _, Backgrid, Backbone, Iccbl, appModel,
           return html;
         }
         html = makeList(dataTree);
-        // console.log('html', html);
         return { dataTree: dataTree, html: html };
       }; // buildTree
       self.treeData = buildTree(
@@ -198,7 +195,6 @@ function($, _, Backgrid, Backbone, Iccbl, appModel,
       function toggleExpanded(){
         var state = $toggleExpanded.attr('aria-pressed');
         $toggleExpanded.attr('aria-pressed',!state);
-        console.log('state', state);
         if (state == 'true'){
           bonsai.collapseAll();
           $toggleExpanded.empty();
@@ -336,7 +332,6 @@ function($, _, Backgrid, Backbone, Iccbl, appModel,
         var id = self.collection.modelId(model)
         var li = $treeControl.find('#'+ id)
         var selectedLi = $selectedTreeControl.find('#'+ id)
-        console.log('collection change:'+chKey, id, li, model);
         if (li){
           if (model.get(chKey)===true){
             li.find('input').prop(chKey, true).trigger('change');
@@ -346,7 +341,6 @@ function($, _, Backgrid, Backbone, Iccbl, appModel,
           }
         }
         if (selectedLi){
-          console.log('found selected li', selectedLi);
           if (model.get(chKey)===true){
             selectedLi.show();
             selectedLi.parents().show();
@@ -494,7 +488,6 @@ function($, _, Backgrid, Backbone, Iccbl, appModel,
         return [];
       }
       pattern = pattern.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
-      console.log('search for "' + pattern + '"');
       var reSearch = new RegExp('.*' + pattern + '.*', "i");
       
       searchedModels = collection.filter(

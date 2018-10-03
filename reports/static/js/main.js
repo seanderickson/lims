@@ -164,7 +164,7 @@ function($, _, Backbone, Iccbl, appModel, AppView, AppRouter,
     appView.render();
         
     Backbone.history = Backbone.history || new Backbone.History({});
-    Backbone.history.start({ pushState: false, root: appModel.get('root_url') });
+    Backbone.history.start({ pushState: false, root: '/' });
   });
   
   // Set the document title

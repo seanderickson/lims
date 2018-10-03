@@ -1,17 +1,17 @@
-define(['jquery', 'underscore', 'backbone', 'backgrid','backbone_forms', 
+define(['jquery', 'underscore', 'backbone', 'backgrid','backbone_forms',
         'backgrid_filter', 'backgrid_paginator', 'backgrid_select_all',
         'layoutmanager'],
     function($, _, Backbone, Backgrid, BackboneForms,
              BackgridFilter, BackgridSelectAll, layoutmanager ) {
 
 // NOTE: Webpack 3 patch:
-// Bind the Backbone.Layout object (and Backbone.Form) using the webpack 
-// assetsPluginInstance
+// Bind the Backbone.Layout object (and Backbone.Form) using the webpack
+// ProvidePlugin
 Backbone.Layout = LayoutManager;
 Backbone.Form = BackboneForm;
 
 var root = window;
-  
+
 var Iccbl = root.Iccbl = {
     VERSION : "0.0.1",
     appModel : "This value will be initialized on app start"
@@ -25,17 +25,17 @@ var TIME_RE = Iccbl.TIME_RE = /^(\d{2}):(\d{2}):(\d{2})(\.(\d{3}))?$/;
 var ISO_SPLITTER_RE = Iccbl.ISO_SPLITTER_RE = /T|Z| +/;
 
 
-var SEARCH_LINE_SPLITTING_PATTERN = 
+var SEARCH_LINE_SPLITTING_PATTERN =
   Iccbl.SEARCH_LINE_SPLITTING_PATTERN = /[\n;\|]+/
 /**
  * PLATE_COPY_RANGE_SPLITTING_PATTERN
  * Split a raw plate range input into elements:
- * - separated by space or comma, except, 
+ * - separated by space or comma, except,
  * - numbers separated by (spaces) and dash interpreted as a plate range
  * - quoted strings preserved; to be interpreted as copy names
  * - quoted strings may contain spaces and special chars if quoted
  */
-var PLATE_COPY_RANGE_SPLITTING_PATTERN = Iccbl.PLATE_COPY_RANGE_SPLITTING_PATTERN = 
+var PLATE_COPY_RANGE_SPLITTING_PATTERN = Iccbl.PLATE_COPY_RANGE_SPLITTING_PATTERN =
   /\'.*?\'|\".*?\"|\d+\s*\-\s*\d+|[^\,\s]+/g;
 var PLATE_PATTERN = Iccbl.PLATE_PATTERN = /^(\d{1,5})$/;
 var PLATE_RANGE_PATTERN = Iccbl.PLATE_RANGE_PATTERN = /^(\d+)\s*-\s*(\d+)$/;
@@ -47,12 +47,12 @@ var ROW_PATTERN = Iccbl.ROW_PATTERN = /^(row:)?\s*([a-zA-Z]{1,2})$/i;
 
 var PLATE_RANGE_KEY_SPECIFIER = Iccbl.PLATE_RANGE_KEY_SPECIFIER
   = '{library_short_name}:{copy_name}:{start_plate}-{end_plate}';
-var PLATE_RANGE_KEY_PATTERN = 
+var PLATE_RANGE_KEY_PATTERN =
   Iccbl.PLATE_RANGE_KEY_PATTERN = /^(([^:]*):)?(([^:]+):)?([\d\-]+)$/;
-var SHORT_PLATE_RANGE_KEY_PATTERN = Iccbl.SHORT_PLATE_RANGE_KEY_PATTERN 
+var SHORT_PLATE_RANGE_KEY_PATTERN = Iccbl.SHORT_PLATE_RANGE_KEY_PATTERN
   = /^(([^:]+):)?([\d\-]+)$/;
 var URI_REPLICATE_VOLUME_PATTERN = /((\d+)x)?(([\d\.]+)(\w|\xB5|\x{03BC})L)/i;
-/** 
+/**
  * COPY_NAME_PATTERN:
  * -must start with an alpha char
  * FIXME: does not support embedded commas
@@ -136,21 +136,21 @@ function lpad(str, length, padstr) {
 
 /**
  * String formatting utility
- * 
+ *
  * Format a string with embedded replacement fields.
- * 
- * "replacment fields" are surrounded by braces '{}'. 
+ *
+ * "replacment fields" are surrounded by braces '{}'.
  * Each replacement field is used as a key to lookup values in the object.
- * 
+ *
  * @param object - either a Backbone.Model, or a object
  * @param defaul_val value to use if the matched token is not found in the model
  * - this can be used to replace any token with a given default value
  * - if default_val is not provided, the replacement_field is left in the string.
  */
 var formatString = Iccbl.formatString = function(
-    stringWithTokens, 
-    object, 
-    default_val) 
+    stringWithTokens,
+    object,
+    default_val)
   {
   var isBackboneModel = object instanceof Backbone.Model;
   if (!isBackboneModel){
@@ -158,8 +158,8 @@ var formatString = Iccbl.formatString = function(
       isBackboneModel = true;
     }
   }
-  var interpolatedString = stringWithTokens.replace(/{([^}]+)}/g, 
-    function (match) 
+  var interpolatedString = stringWithTokens.replace(/{([^}]+)}/g,
+    function (match)
     {
       match = match.replace(/[{}]/g,'');
       if(isBackboneModel && !_.isUndefined(object.get(match))){
@@ -183,7 +183,7 @@ var formatString = Iccbl.formatString = function(
  */
 var stringToFunction = Iccbl.stringToFunction = function(str) {
   if (!str) return;
-  
+
   var arr = str.split(".");
 
   var fn = (window || this);
@@ -197,7 +197,7 @@ var stringToFunction = Iccbl.stringToFunction = function(str) {
 };
 
 
-/** 
+/**
  * Round by first converting to whole number, to avoid floating point number
  * arithmetic errors:
  * @see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Math/round
@@ -206,17 +206,17 @@ var round = Iccbl.round = function round(number, precision) {
   var shift = function (number, precision, reverseShift) {
     if (reverseShift) {
       precision = -precision;
-    }  
+    }
     var numArray = ("" + number).split("e");
   return +(numArray[0] + "e" + (numArray[1] ? (+numArray[1] + precision) : precision));
   };
   return shift(Math.round(shift(number, precision, false)), precision, true);
-}    
+}
 
 
 /**
  * Parse a string date value, ignoring the time and timezone.
- * 
+ *
  * @return Date
  * TODO: see Backgrid.DateFormatter.convert() method and refactor
  */
@@ -253,7 +253,7 @@ var dateParse = Iccbl.dateParse = function dateParse(rawData){
 
 /**
  * Generate an ISO date string from a JavaScript Date.
- * 
+ *
  * @param jsDate a JavaScript Date object
  * @return ISO date string for the Date object, ignoring the timezone.
  * - for internal representation of dates and communicating dates to the server.
@@ -261,15 +261,15 @@ var dateParse = Iccbl.dateParse = function dateParse(rawData){
 var getISODateString = Iccbl.getISODateString = function(jsDate){
   return jsDate && _.isDate(jsDate) ? jsDate.toISOString().split('T')[0] : jsDate;
   // equivalent:
-  //  date = lpad(jsDate.getUTCFullYear(), 4, 0) 
-  //    + '-' + lpad(jsDate.getUTCMonth() + 1, 2, 0) 
+  //  date = lpad(jsDate.getUTCFullYear(), 4, 0)
+  //    + '-' + lpad(jsDate.getUTCMonth() + 1, 2, 0)
   //    + '-' + lpad(jsDate.getUTCDate(), 2, 0);
   //  return date;
 };
 
 /**
  * Generate a date string from a Javascript Date.
- * 
+ *
  * @param jsDate a JavaScript Date object
  * @return string representation of the Date object, ignoring the timezone.
  * - "ICCBL" format is "MM/DD/YYYY"
@@ -281,13 +281,13 @@ var getIccblDateString = Iccbl.getDateString = function(jsDate){
     // attempt to parse the date
     jsDate = Iccbl.dateParse(jsDate);
   }
-  return ( 
-      lpad(jsDate.getMonth() + 1, 2, 0) 
-      + '/' + lpad(jsDate.getDate(), 2, 0) 
+  return (
+      lpad(jsDate.getMonth() + 1, 2, 0)
+      + '/' + lpad(jsDate.getDate(), 2, 0)
       + '/' + lpad(jsDate.getFullYear(), 4, 0) );
 };
 
-/** 
+/**
  * Matrix convolution/deconvolution Utilities:
  * - Convolution: converting (96,384) to (384,1536)
  * - Deconvolution: converting (1536,384) to (384,96)
@@ -302,7 +302,7 @@ var deconvoluteQuadrant = Iccbl.deconvoluteQuadrant = function(source_ps, dest_p
 
   var factor = source_ps/dest_ps
   if (factor != 4){
-    throw 'Deconvolute may only be used for source_ps/dest_ps == 4: ' + 
+    throw 'Deconvolute may only be used for source_ps/dest_ps == 4: ' +
       source_ps + '/' + dest_ps;
   }
   return col%(factor/2) +  (row%(factor/2))*(factor/2);
@@ -314,9 +314,9 @@ var deconvoluteQuadrant = Iccbl.deconvoluteQuadrant = function(source_ps, dest_p
  * @param col 0 based
  */
 var deconvoluteRow = Iccbl.deconvoluteRow = function(source_ps, dest_ps,row, col){
-  
+
   var dest_matrix_number = deconvoluteQuadrant(source_ps, dest_ps, row, col)
-  var factor = source_ps/dest_ps  
+  var factor = source_ps/dest_ps
   return Math.trunc(row/(factor/2))+ row%(factor/2)-Math.trunc(dest_matrix_number/(factor/2));
 };
 
@@ -326,9 +326,9 @@ var deconvoluteRow = Iccbl.deconvoluteRow = function(source_ps, dest_ps,row, col
  * @param col 0 based
  */
 var deconvoluteCol = Iccbl.deconvoluteCol = function(source_ps, dest_ps, row, col){
-    
+
   var dest_matrix_number = deconvoluteQuadrant(source_ps, dest_ps, row, col);
-  var factor = source_ps/dest_ps  
+  var factor = source_ps/dest_ps
   return Math.trunc(col/Math.trunc(factor/2))+ col%(factor/2)-dest_matrix_number%(factor/2);
 };
 
@@ -338,9 +338,9 @@ var deconvoluteCol = Iccbl.deconvoluteCol = function(source_ps, dest_ps, row, co
  * @param col 0 based
  */
 var convoluteRow = Iccbl.convoluteRow = function(source_ps, dest_ps, source_matrix_quadrant,row){
-  var factor = dest_ps/source_ps;  
+  var factor = dest_ps/source_ps;
   if (factor != 4){
-    throw 'Convolute may only be used for dest_ps/source_ps == 4: ' + 
+    throw 'Convolute may only be used for dest_ps/source_ps == 4: ' +
       dest_ps + '/' + source_ps;
   }
   if (!_.contains([0,1,2,3], source_matrix_quadrant)){
@@ -348,20 +348,20 @@ var convoluteRow = Iccbl.convoluteRow = function(source_ps, dest_ps, source_matr
   }
   return row * factor/2 + Math.trunc(source_matrix_quadrant/(factor/2))
 };
-    
+
 /**
  * Map (96,384)-well input col to (384,1536)-well output col
  * @param row 0 based
  * @param col 0 based
  */
 var convoluteCol = Iccbl.convoluteCol = function(source_ps, dest_ps, source_matrix_quadrant, col){
-  var factor = dest_ps/source_ps;  
+  var factor = dest_ps/source_ps;
   if (factor != 4){
-    throw 'Convolute may only be used for dest_ps/source_ps == 4: ' + 
+    throw 'Convolute may only be used for dest_ps/source_ps == 4: ' +
       dest_ps + '/' + source_ps;
   }
   return col * factor/2 + source_matrix_quadrant%(factor/2)
-  
+
 };
 
 /**
@@ -369,9 +369,9 @@ var convoluteCol = Iccbl.convoluteCol = function(source_ps, dest_ps, source_matr
  * returns 4 wells for each quadrant
  */
 var convoluteWell = Iccbl.convoluteWell = function(source_ps, dest_ps, wellName){
-  var factor = dest_ps/source_ps;  
+  var factor = dest_ps/source_ps;
   if (factor != 4){
-    throw 'Convolute may only be used for dest_ps/source_ps == 4: ' + 
+    throw 'Convolute may only be used for dest_ps/source_ps == 4: ' +
       dest_ps + '/' + source_ps;
   }
   var convolutedWells = [];
@@ -414,8 +414,8 @@ var deconvoluteWell = Iccbl.deconvoluteWell = function(source_ps, dest_ps, wellN
 
 /**
  * Map a list of wells from (384,1536) plate format to (96,384) plate format.
- * 
- * @return map of the plateQuadrant->deconvolutedWells 
+ *
+ * @return map of the plateQuadrant->deconvolutedWells
  *  where plateQuadrant is in [0,1,2,3]
  */
 var deconvoluteWells = Iccbl.deconvoluteWells = function(source_ps, dest_ps, wells){
@@ -429,7 +429,7 @@ var deconvoluteWells = Iccbl.deconvoluteWells = function(source_ps, dest_ps, wel
     var newWellname = quadrant_new_well[1];
     deconvolutedPlateQuadrantWells[quadrant].push(newWellname);
   });
-  
+
   if (Iccbl.appModel.DEBUG){
     console.log('wells deconvoluted', wells, source_ps,dest_ps, deconvolutedPlateQuadrantWells);
   }
@@ -440,35 +440,35 @@ var deconvoluteWells = Iccbl.deconvoluteWells = function(source_ps, dest_ps, wel
 
 /**
  * Parse labeled input specified in the Well Selection mini-language:
- * - One named range per line, if the label is omitted, 
+ * - One named range per line, if the label is omitted,
  * then a blank label is created:
  *  <well selections>="<label>"
  * - If a label is repeated, then wells are concatenated
  * - Wells may not be repeated between labels
  */
-var parseNamedWellRanges = Iccbl.parseNamedWellRanges = 
+var parseNamedWellRanges = Iccbl.parseNamedWellRanges =
   function(rawData, plateSize, errors) {
-  
+
   if (Iccbl.appModel.DEBUG){
     console.log('parseNamedWellRanges', rawData, plateSize);
   }
   var duplicate_wells_error_msg = 'duplicate wells found in ranges: ';
   var namedWellRanges = {};
-  
+
   var ordinal = 1;
   if (! rawData ){
     return namedWellRanges;
   }else{
     rawData = rawData.trim();
   }
-  
+
   _.each(rawData.split(/\n/), function(range){
-  
+
     range = range.trim();
     if (_.isEmpty(range)) return;
-    
+
     if (Iccbl.appModel.DEBUG) console.log('parse range', range);
-    
+
     var rangeToLabel = range.split(/[=]+/);
     var label = '';
     var unparsed = range;
@@ -482,7 +482,7 @@ var parseNamedWellRanges = Iccbl.parseNamedWellRanges =
       errors.push('range to label inputs may on have one equal sign per line: ' + range );
       return;
     }
-    
+
     if (!_.has(namedWellRanges, label)){
       var namedWellRange = {
         label: label,
@@ -500,13 +500,13 @@ var parseNamedWellRanges = Iccbl.parseNamedWellRanges =
     namedWellRange['wells'] = namedWellRange['wells'].concat(parsedWells);
   });
 
-  var duplicates = 
+  var duplicates =
     Iccbl.find_duplicates(_.map(_.values(namedWellRanges),
       function(nwr){
         return nwr['wells'];
       }
     ));
-  
+
   if (!_.isEmpty(duplicates)){
     errors.push(duplicate_wells_error_msg + duplicates.join(', '));
   }
@@ -546,13 +546,13 @@ var find_duplicates = Iccbl.find_duplicates = function(arrays){
  * - column or row blocks, specified by
  *  <left column> - <right column>
  *  <top row> - <bottom row>
- * 
+ *
  **/
-var parseWellSelections = Iccbl.parseWellSelections = 
+var parseWellSelections = Iccbl.parseWellSelections =
   function(rawData, plateSize, errors){
-  
+
   if (Iccbl.appModel.DEBUG) console.log('parseWellSelections: ', rawData, plateSize);
-  
+
   var wells = [];
   rawData = rawData.trim();
   if (_.isEmpty(rawData)){
@@ -565,12 +565,12 @@ var parseWellSelections = Iccbl.parseWellSelections =
     errors.push('Disallowed chars found: "' + disallowed + '"');
     return;
   }
-  
+
   var inputs = rawData.split(/\s*,\s*/);
-  
+
   var numCols = Iccbl.getCols(plateSize);
   var numRows = Iccbl.getRows(plateSize);
-  
+
   var WELL_PATTERN = this.WELL_PATTERN;
   var rangePartsUnequal = 'Both values of the range must be the same type';
   _.each(inputs, function(input){
@@ -588,7 +588,7 @@ var parseWellSelections = Iccbl.parseWellSelections =
         var startRow = Iccbl.letterToRow(ROW_PATTERN.exec(range[0])[2]);
         var stopRow = Iccbl.letterToRow(ROW_PATTERN.exec(range[1])[2]);
         if(startRow>stopRow) {
-          var tempVal=startRow; 
+          var tempVal=startRow;
           startRow=stopRow; stopRow=tempVal;
         }
         if (stopRow >= numRows){
@@ -639,7 +639,7 @@ var parseWellSelections = Iccbl.parseWellSelections =
         }
         var startCol = parseInt(one[2])-1;
         var stopCol = parseInt(two[2])-1;
-        
+
         if(startCol>stopCol) {
           var tempVal = startCol; startCol=stopCol; stopCol=tempVal;
         }
@@ -716,11 +716,11 @@ var parseWellSelections = Iccbl.parseWellSelections =
  * - column or row blocks, specified by
  *  <left column> - <right column>
  *  <top row> - <bottom row>
- * 
+ *
  **/
 var generateNamedWellBlockString = Iccbl.generateNamedWellBlockString =
   function(namedWellRanges, plateSize) {
-  
+
   if (Iccbl.appModel.DEBUG) console.log('generateNamedWellBlockString', namedWellRanges);
   var self = this;
   var finalArray = [];
@@ -736,7 +736,7 @@ var generateNamedWellBlockString = Iccbl.generateNamedWellBlockString =
         var firstEntry = wellBlock[0][0];
         if (wellBlock.length > 1){
           var lastBlock = wellBlock[wellBlock.length-1];
-          var lastEntry = lastBlock[lastBlock.length-1]; 
+          var lastEntry = lastBlock[lastBlock.length-1];
           if (Iccbl.appModel.DEBUG) console.log('wellBlock 0', wellBlock[0],wellBlock[0].length, nCols );
           if (wellBlock[0].length == nRows){
             // assume a col
@@ -788,14 +788,14 @@ var generateNamedWellBlockString = Iccbl.generateNamedWellBlockString =
  * Group a list of well names into contiguous blocks of wells:
  * Process:
  * - starting with a sorted (by row,col) list
- * - first, divide the list into sublists of adjacent wells; 
- * either adjacent rows in a column or adjacent columns in a row 
+ * - first, divide the list into sublists of adjacent wells;
+ * either adjacent rows in a column or adjacent columns in a row
  * (which ever yields the largest sublist for the start well)
  * - second combine adjacent row or column sublists into larger well blocks
  * consisting of the sublists.
  * - single wells are separated into well blocks consisting of one well.
- * - Block shape may not be optimal, and is determined by the order of 
- * operations (first scanning for adjacent rows, then columns) 
+ * - Block shape may not be optimal, and is determined by the order of
+ * operations (first scanning for adjacent rows, then columns)
  **/
 var getWellBlocks = Iccbl.getWellBlocks = function(wells, plateSize){
   var self = this;
@@ -803,7 +803,7 @@ var getWellBlocks = Iccbl.getWellBlocks = function(wells, plateSize){
   var nRows = self.getRows(plateSize);
   wells.sort();
   var colBlocks = [];
-  
+
   function findColBlock(wellName, allWells){
     var colBlock;
     var row_col = Iccbl.getWellRowCol(wellName);
@@ -841,11 +841,11 @@ var getWellBlocks = Iccbl.getWellBlocks = function(wells, plateSize){
     }else{
       colBlock = blockByRow;
     }
-    
+
     colBlock.sort();
     return colBlock;
   }
-  
+
   function findColBlocks(remainingWells){
     if(!_.isEmpty(remainingWells)){
       var seedWell = remainingWells.shift();
@@ -857,7 +857,7 @@ var getWellBlocks = Iccbl.getWellBlocks = function(wells, plateSize){
   };
   findColBlocks(wells);
   if (Iccbl.appModel.DEBUG) console.log('colBlocks', colBlocks);
-  
+
   function findWellBlock(colBlock, colBlocks){
     if (Iccbl.appModel.DEBUG) console.log('findWellBlock', colBlock,colBlocks)
     var wellBlock = [colBlock];
@@ -903,7 +903,7 @@ var getWellBlocks = Iccbl.getWellBlocks = function(wells, plateSize){
     }
   };
   findWellBlocks(colBlocks);
-  
+
   if (Iccbl.appModel.DEBUG) console.log('final getWellBlocks', wellBlocks);
   return wellBlocks;
 };
@@ -922,9 +922,9 @@ var parseCompoundVendorIDSearch = Iccbl.parseCompoundVendorIDSearch = function(r
 
 /**
  * Parse a Well search by line into an arrary of search lines of the form:
- * input: 
- * - lines separated by a newline char 
- * - space or comma separated values, 
+ * input:
+ * - lines separated by a newline char
+ * - space or comma separated values,
  * output:
  * search_line: {
       plates: [],
@@ -947,7 +947,7 @@ var parseRawWellSearch = Iccbl.parseRawWellSearch = function(rawData,errors){
     if(clause=='') return;
     search_array.push(clause);
   });
-  
+
   if (Iccbl.appModel.DEBUG){
     console.log('search_array', search_array);
   }
@@ -977,7 +977,7 @@ var parseRawWellSearch = Iccbl.parseRawWellSearch = function(rawData,errors){
           rangeParts = [rangeParts[1],rangeParts[2]];
           rangeParts.sort();
           if (Iccbl.appModel.DEBUG){
-            console.log('from PLATE_RANGE_PATTERN:' + part 
+            console.log('from PLATE_RANGE_PATTERN:' + part
               + 'to' + rangeParts.join(','));
           }
           final_search_line.plate_ranges.push(rangeParts[0]+'-'+rangeParts[1]);
@@ -1013,7 +1013,7 @@ var parseRawWellSearch = Iccbl.parseRawWellSearch = function(rawData,errors){
           errors.push('part not recognized: ' + part);
         }
       });
-      
+
       if (Iccbl.appModel.DEBUG){
         console.log('step 1: search_line' + JSON.stringify(final_search_line));
       }
@@ -1036,7 +1036,7 @@ var parseRawWellSearch = Iccbl.parseRawWellSearch = function(rawData,errors){
           errors.push(errmsg);
         }
       }
-        
+
       // Match wellnames only if plate, plate range, or single well_id is identified
       if (!_.isEmpty(wellnames) && _.isEmpty(plates) && _.isEmpty(plate_ranges)){
         if (well_ids.length > 1){
@@ -1079,15 +1079,15 @@ var parseRawWellSearch = Iccbl.parseRawWellSearch = function(rawData,errors){
     console.log('final_search_array', final_search_array);
   }
   return final_search_array;
-  
+
 };
 
 
 /**
  * Parse a Copy Plate search by line into an array of search lines of the form:
- * input: 
- * - lines separated by a newline char 
- * - space or comma separated values, 
+ * input:
+ * - lines separated by a newline char
+ * - space or comma separated values,
  * - quoted strings preserved; interpreted as copy names
  * - copy names must begin with a letter, may contain spaces and special chars
  * if quoted
@@ -1102,18 +1102,18 @@ var parseRawWellSearch = Iccbl.parseRawWellSearch = function(rawData,errors){
     - errors are pushed into the passed in errors array
  */
 var parseRawPlateSearch = Iccbl.parseRawPlateSearch = function(rawData, errors){
-  
+
   var search_array = []
-  
+
   var or_list = rawData.split(SEARCH_LINE_SPLITTING_PATTERN);
 
   _.each(or_list, function(clause){
     clause = clause.trim();
     if(clause=='') return;
-    
+
     // split quoted strings, split on spaces or commas
     var parts = _.filter(_.map(
-      clause.match(PLATE_COPY_RANGE_SPLITTING_PATTERN), 
+      clause.match(PLATE_COPY_RANGE_SPLITTING_PATTERN),
       function(val){
         return val;
         // 20180313 - do not remove quotes on client; API parser will remove
@@ -1126,7 +1126,7 @@ var parseRawPlateSearch = Iccbl.parseRawPlateSearch = function(rawData, errors){
       });
     search_array.push(parts);
   });
-  
+
   if (Iccbl.appModel.DEBUG) console.log('parseRawPlateSearch: search_array', search_array);
 
   var final_search_array = [];
@@ -1154,7 +1154,7 @@ var parseRawPlateSearch = Iccbl.parseRawPlateSearch = function(rawData, errors){
         final_search_line.plates, final_search_line.plate_ranges,
         final_search_line.copies
       );
-      
+
       final_search_array.push(final_search_line);
     }
   });
@@ -1163,7 +1163,7 @@ var parseRawPlateSearch = Iccbl.parseRawPlateSearch = function(rawData, errors){
 
 var parseRawPlateSearchToArray = Iccbl.parseRawPlateSearchToArray = function(rawData, errors){
   var plateSearchTextArray = [];
-  
+
   var plateData = Iccbl.parseRawPlateSearch(rawData, errors);
   _.each(plateData, function(plateClause){
     plateSearchTextArray = plateSearchTextArray.concat(
@@ -1210,14 +1210,14 @@ var parseSIVolume = Iccbl.parseSIVolume = function(rawText){
  * ignored text ...(#screen_facility_id) (plate ranges) (volume) (replicates),
  * e.g.
  * Screener Name (1292) 3560-3567, 1795-1811 100 nL x 2
- * 
- * @ return 
- * { 
+ *
+ * @ return
+ * {
  *    screen_facility_id, volume_required, plate_ranges, replicate_count }
  */
 var parseRawScreeningInquiry = Iccbl.parseRawScreeningInquiry = function(rawText, errors) {
-  
-  var screenPattern = /\(\s*(\w+)\s*\)/; 
+
+  var screenPattern = /\(\s*(\w+)\s*\)/;
   var volumePattern = /\s+([\d\.]+\s*[un]L)\s+x\s*\d+\s*$/i;
   var replicatePattern = /[un]L\s+x\s*(\d+)/i;
   var generalErrMsg = 'Screening inquiry format: ' +
@@ -1256,16 +1256,16 @@ var parseRawScreeningInquiry = Iccbl.parseRawScreeningInquiry = function(rawText
     var volume = Iccbl.parseSIVolume(volMatch[1])
     data['volume_required']= volume;
     data['replicate_count'] = replicateMatch[1];
-    
+
     var startPlatesIndex = rawText.indexOf(screenText) + screenText.length;
     var endPlatesIndex = rawText.indexOf(volMatch[0]);
     var plateText = rawText.slice(startPlatesIndex,endPlatesIndex);
     data['plate_ranges'] = Iccbl.parseRawPlateSearch(plateText, errors);
-    
+
     if (_.isEmpty(errors)){
       if (_.isEmpty(data['plate_ranges'])){
         errors.push('No plate ranges found');
-      } 
+      }
     }
     return data;
   }
@@ -1274,26 +1274,26 @@ var parseRawScreeningInquiry = Iccbl.parseRawScreeningInquiry = function(rawText
 
 
 /**
- * Decode the screening inquiry values from the URL "search" parameter, encoded using 
+ * Decode the screening inquiry values from the URL "search" parameter, encoded using
  * the above described "plate_search_mini_language"
- * 
+ *
  * @return urlStackData {
  *  plate_search, volume_required, replicate_count, show_retired, show_existing
  * }
  */
-var parseScreeningInquiryURLParam 
-    = Iccbl.parseScreeningInquiryURLParam 
+var parseScreeningInquiryURLParam
+    = Iccbl.parseScreeningInquiryURLParam
     = function(urlData, errors) {
 
   var urlStackData = {};
   var extra_volumes = [];
   var errors = [];
   var fullPlateSearch = [];
- 
+
   _.each(urlData.split(';'), function(element){
 
     if (Iccbl.appModel.DEBUG) console.log('parse element; "' + element + '"');
-    
+
     if (element == 'show_retired_plates'){
       urlStackData.show_retired_plates = true;
       return;
@@ -1314,7 +1314,7 @@ var parseScreeningInquiryURLParam
       urlStackData.replicate_count = parseInt(match[2]);
       return;
     }
-    
+
     var plateSearchTextArray = Iccbl.parseRawPlateSearchToArray(element, errors);
 //    var plateData = Iccbl.parseRawPlateSearch(element, errors);
 //    _.each(plateData, function(plateClause){
@@ -1330,7 +1330,7 @@ var parseScreeningInquiryURLParam
     fullPlateSearch.push(plateSearchTextArray.join(', '));
   });
   urlStackData['plate_search'] = fullPlateSearch;
-    
+
   if (!_.isEmpty(extra_volumes)){
     errors.push(
       'More than one volume required specified in the URL; ' +
@@ -1341,20 +1341,20 @@ var parseScreeningInquiryURLParam
 
 
 /**
- * Return an array of ID keys from the model 
- * 
+ * Return an array of ID keys from the model
+ *
  * @param schema a resource definition as defined by the API
  * @param model Backbone.Model or Object described by the schema
  * @return array
  */
 var getIdKeys = Iccbl.getIdKeys = function(model,schema) {
   if (! model) return;
-  
+
   if (_.has(schema, 'id_attribute')) {
-  
+
     var id_attribute = schema['id_attribute'];
     var idList = [];
-    
+
     _.each(id_attribute, function(item){
       var keyval;
       if (model instanceof Backbone.Model){
@@ -1369,30 +1369,30 @@ var getIdKeys = Iccbl.getIdKeys = function(model,schema) {
     });
     return idList;
   } else {
-    throw new TypeError("'id_attribute' not found on the schema: " 
+    throw new TypeError("'id_attribute' not found on the schema: "
             + JSON.stringify(schema)
             + ', for the model: ' + JSON.stringify(model.attributes));
   }
-  
+
 };
 
 /**
  * Generate an ID string for the model
- * 
+ *
  * The "complete ID" is formed by joining the ID keys with the forward slash.
  */
-var getIdFromIdAttribute = Iccbl.getIdFromIdAttribute = 
+var getIdFromIdAttribute = Iccbl.getIdFromIdAttribute =
   function(model, schema){
-    
+
     return Iccbl.getIdKeys(model,schema).join('/');
 };
 
 /**
  * Pops the appropriate number of items from the URI stack to form a model key.
- *  
- * - pop one key, in order, for each of the key fields specified in 
+ *
+ * - pop one key, in order, for each of the key fields specified in
  * the resource id_attribute.
- * 
+ *
  * @param resource - a resource definition as defined by the API
  * @param urlStack -
  *          array representation of the current unprocessed URI elements.
@@ -1401,12 +1401,12 @@ var getIdFromIdAttribute = Iccbl.getIdFromIdAttribute =
  */
 var popKeyFromStack = Iccbl.popKeyFromStack = function(
     resource, urlStack, consumedStack){
-  
+
   var id  = '';
   var self = this;
   var checkStack = function(stack){
     if (_.isEmpty(urlStack)){
-      var msg = 'not enough items on the URL to create the key for resource: ' + 
+      var msg = 'not enough items on the URL to create the key for resource: ' +
           resource.title + JSON.stringify(resource.id_attribute);
       throw msg;
     }
@@ -1447,7 +1447,7 @@ var popKeyFromStack = Iccbl.popKeyFromStack = function(
 };
 
 /**
- * Sort an array of keys based on the associated ordinal for each key 
+ * Sort an array of keys based on the associated ordinal for each key
  * in the Resource.fields "fieldHash"
  */
 var sortOnOrdinal = Iccbl.sortOnOrdinal = function(keys, fieldHash) {
@@ -1478,12 +1478,12 @@ var sortOnOrdinal = Iccbl.sortOnOrdinal = function(keys, fieldHash) {
 
 /**
  * Create a title from the schema "title_attribute".
- * 
- * Note: the title_attribute is an array of field specifiers and strings. 
- * If an array item is a field, the field value will be used, 
+ *
+ * Note: the title_attribute is an array of field specifiers and strings.
+ * If an array item is a field, the field value will be used,
  * If an array item is not a field, then it will be concatenated directly.
  */
-var getTitleFromTitleAttribute = Iccbl.getTitleFromTitleAttribute = 
+var getTitleFromTitleAttribute = Iccbl.getTitleFromTitleAttribute =
   function(model, schema){
     var re_isQuoted = /['"]+/g;
     var fields = schema['fields'];
@@ -1512,7 +1512,7 @@ var getTitleFromTitleAttribute = Iccbl.getTitleFromTitleAttribute =
         }, '');
       return title;
     }else{
-      throw new TypeError("'title_attribute' not found on the schema: " + 
+      throw new TypeError("'title_attribute' not found on the schema: " +
           JSON.stringify(schema)
           + ', for the model: ' + JSON.stringify(model.attributes));
     }
@@ -1520,13 +1520,13 @@ var getTitleFromTitleAttribute = Iccbl.getTitleFromTitleAttribute =
 
 
 /**
- * Determine if an array of URI fragments contains any match with the given 
+ * Determine if an array of URI fragments contains any match with the given
  * matchString.
- * Useful for determining if a partial URI (the matchstring) matches the URL, 
+ * Useful for determining if a partial URI (the matchstring) matches the URL,
  * parsed as a URL stack array.
- * 
- * Matches from the right to left; 
- * allowing URI fragments to match their parent URIs. 
+ *
+ * Matches from the right to left;
+ * allowing URI fragments to match their parent URIs.
  * Similar the the contains function, but using item.indexOf(matchString) ||
  * matchString.indexOf(item) for the truth test.
  */
@@ -1547,15 +1547,15 @@ var containsByMatch = Iccbl.containsByMatch = function(array, matchstring){
 
 /**
  * Break a long label into multiple lines for display.
- * 
- * Split label strings on non-word characters and re-join into lines, 
- * where each line is less than max_line_length 
- * (or, if a part is longer than max_line_length, 
+ *
+ * Split label strings on non-word characters and re-join into lines,
+ * where each line is less than max_line_length
+ * (or, if a part is longer than max_line_length,
  * then that part becomes an entire line).
  */
-var createLabel = Iccbl.createLabel = 
+var createLabel = Iccbl.createLabel =
   function(original_label, max_line_length, break_char){
-  
+
     var lines = [];
     var labelParts = original_label.split(/([\s_\-\.,]+)/);
     var line = '';
@@ -1579,7 +1579,7 @@ var createLabel = Iccbl.createLabel =
     });
     line = line.trim();
     lines.push(line);
-    
+
     if(_.isUndefined(break_char)){
       break_char = '<br>';
     }
@@ -1597,7 +1597,7 @@ var parseComments = Iccbl.parseComments = function(comment_array){
       var comment_parts = comment.split(Iccbl.appModel.LIST_DELIMITER_SUB_ARRAY);
       if (comment_parts.length == 3){
         return '(' + comment_parts[0] + ') ' +
-          Iccbl.getDateString(comment_parts[1]) + 
+          Iccbl.getDateString(comment_parts[1]) +
           ': ' + comment_parts[2];
       } else {
         if (Iccbl.appModel.DEBUG) console.log('unparsed comment:', comment_parts)
@@ -1607,7 +1607,7 @@ var parseComments = Iccbl.parseComments = function(comment_array){
 };
 
 /**
- * Create a comment icon with a link to display (parsed) comments in a 
+ * Create a comment icon with a link to display (parsed) comments in a
  * modal dialog.
  */
 var createCommentIcon = Iccbl.createCommentIcon = function(comments, title){
@@ -1615,7 +1615,7 @@ var createCommentIcon = Iccbl.createCommentIcon = function(comments, title){
     '<span class="glyphicon glyphicon-comment" ' +
     'style="color: lightgray; " ></span>');
   comment_icon.attr('title', comments);
-  
+
   var rows = 10;
   var buttons_on_top = false;
   if (comments.length > 300){
@@ -1636,7 +1636,7 @@ var createCommentIcon = Iccbl.createCommentIcon = function(comments, title){
 };
 
 var formatResponseError = Iccbl.formatResponseError = function(response){
-  
+
   var msg = '';
   var sep = '\n';
   if (!_.isUndefined(response.status))
@@ -1656,24 +1656,24 @@ var CollectionOnClient = Iccbl.CollectionOnClient = Backbone.Collection.extend({
   parse : function(resp) {
     if (_.has(resp,Iccbl.appModel.API_RESULT_DATA)){
       return resp[Iccbl.appModel.API_RESULT_DATA];
-    } 
+    }
     return resp.objects;
   },
-  
+
   setSearch: function(){
     //nop, for now
   }
 });
 
 
-var getCollectionOnClient = Iccbl.getCollectionOnClient = 
+var getCollectionOnClient = Iccbl.getCollectionOnClient =
   function(url, callback, options){
-  
+
     var options = options || {};
     var data_for_get = options.data_for_get || {};
     data_for_get = _.extend({ limit: 0 },data_for_get);
     var CollectionClass = Iccbl.CollectionOnClient.extend({
-      url: url 
+      url: url
     });
     var instance = new CollectionClass();
     instance.fetch({
@@ -1683,10 +1683,10 @@ var getCollectionOnClient = Iccbl.getCollectionOnClient =
       },
       always: function(){
       }
-    }).fail(function(){ Iccbl.appModel.jqXHRfail.apply(this,arguments); });      
+    }).fail(function(){ Iccbl.appModel.jqXHRfail.apply(this,arguments); });
 };
 
-var getCollection = Iccbl.getCollection = 
+var getCollection = Iccbl.getCollection =
   function(schemaResult, url, callback) {
     var CollectionClass = Iccbl.MyCollection.extend({
         url : url,
@@ -1731,11 +1731,11 @@ var MyModel = Iccbl.MyModel = Backbone.Model.extend({
 ///// Backgrid.Cell customizations /////
 
 var BaseCell = Iccbl.BaseCell = Backgrid.Cell.extend({
-  
+
   initialize: function (options) {
-    
+
     Backgrid.Cell.prototype.initialize.apply(this, arguments);
-    
+
     var self = this;
     var initialValue = this.initialValue = this.model.get(this.column.get('name'));
     this.model.on('change:'+this.column.get("name") , function(){
@@ -1749,7 +1749,7 @@ var BaseCell = Iccbl.BaseCell = Backgrid.Cell.extend({
       }
     });
   },
-  
+
   isEdited: function() {
     if (this.isEditable()){
       var val = this.model.get(this.column.get('name'));
@@ -1757,12 +1757,12 @@ var BaseCell = Iccbl.BaseCell = Backgrid.Cell.extend({
     }
     return false;
   },
-  
+
   isEditable: function(){
     var model = this.model, column = this.column;
     return Backgrid.callByNeed(column.editable(), column, model);
   },
-  
+
 });
 
 /**
@@ -1771,13 +1771,13 @@ var BaseCell = Iccbl.BaseCell = Backgrid.Cell.extend({
  * - "edited" flag is set and initialValue is tracked
  */
 var BooleanCell = Iccbl.BooleanCell = Backgrid.BooleanCell.extend({
-  
+
   initialize: function(){
-    
+
     BooleanCell.__super__.initialize.apply(this, arguments);
     var self = this;
     var initialValue = this.initialValue = this.model.get(this.column.get('name'));
-    
+
     this.model.on('change:'+this.column.get("name") , function(){
       if (self.isEdited()){
         self.$el.addClass('edited');
@@ -1786,12 +1786,12 @@ var BooleanCell = Iccbl.BooleanCell = Backgrid.BooleanCell.extend({
       }
     });
   },
-  
+
   isEditable: function(){
     var model = this.model, column = this.column;
     return Backgrid.callByNeed(column.editable(), column, model);
   },
-  
+
   isEdited: function() {
     if (this.isEditable()){
       var val = this.model.get(this.column.get('name'));
@@ -1802,12 +1802,12 @@ var BooleanCell = Iccbl.BooleanCell = Backgrid.BooleanCell.extend({
     }
     return false;
   },
-  
+
   // Set up to toggle the checkbox whenever the TD is clicked
   events: {
     'click': 'cellClicked'
   },
-  
+
   cellClicked: function(e){
     e.stopPropagation();
     if (this.isEditable()){
@@ -1824,7 +1824,7 @@ var BooleanCell = Iccbl.BooleanCell = Backgrid.BooleanCell.extend({
       }
     }
   },
-  
+
   render: function () {
     var model = this.model, column = this.column;
     var val = this.formatter.fromRaw(model.get(column.get("name")), model);
@@ -1844,7 +1844,7 @@ var BooleanCell = Iccbl.BooleanCell = Backgrid.BooleanCell.extend({
   }
 
 });
-  
+
 var StringFormatter = Iccbl.StringFormatter = function () {};
 
 StringFormatter.prototype = new Backgrid.StringFormatter();
@@ -1885,7 +1885,7 @@ var TextWrapCell = Iccbl.TextWrapCell = Backgrid.Cell.extend({
     this.delegateEvents();
     return this;
   },
-  
+
 });
 
 /**
@@ -1916,13 +1916,13 @@ var StringCell = Iccbl.StringCell = Backgrid.StringCell.extend({
         self.$el.addClass('edited');
       }
     });
-  }  
+  }
 });
 
 var LinkCell = Iccbl.LinkCell = Iccbl.BaseCell.extend({
-  
+
   // TODO: redo the link cell like the UriListCell
-  
+
   className : "link-cell",
 
   events : {
@@ -1932,7 +1932,7 @@ var LinkCell = Iccbl.LinkCell = Iccbl.BaseCell.extend({
   /**
    * @property {string} ["string with {model_key} values to interpolate"]
    */
-  hrefTemplate: 'Http://', 
+  hrefTemplate: 'Http://',
 
   /**
    * @property {string} [title] The title attribute of the generated anchor.
@@ -1948,7 +1948,7 @@ var LinkCell = Iccbl.LinkCell = Iccbl.BaseCell.extend({
    * - _self
    */
   target: "_self",
-  
+
   initialize : function(options) {
     LinkCell.__super__.initialize.apply(this, arguments);
   },
@@ -1956,12 +1956,12 @@ var LinkCell = Iccbl.LinkCell = Iccbl.BaseCell.extend({
   linkCallback: function(e){
     console.log('link clicked, override to handle', e);
   },
-  
+
   get_href: function(){
     var self = this;
     return Iccbl.formatString(self.hrefTemplate,self.model);
   },
-  
+
   render : function() {
     var self = this;
     this.$el.empty();
@@ -1997,13 +1997,13 @@ var DateLinkCell = Iccbl.DateLinkCell = Iccbl.LinkCell.extend({
 
 
 var UriListCell = Iccbl.UriListCell = Iccbl.BaseCell.extend({
-  
+
   className : "text-wrap-cell",
 
   /**
    * @property {string} ["string with {model_key} values to interpolate"]
    */
-  hrefTemplate: 'Http://', 
+  hrefTemplate: 'Http://',
 
   /**
    * @property {string} [title] The title attribute of the generated anchor. It
@@ -2017,7 +2017,7 @@ var UriListCell = Iccbl.UriListCell = Iccbl.BaseCell.extend({
    *           anchor.
    */
   target: "_self",
-  
+
   initialize : function(options) {
     UriListCell.__super__.initialize.apply(this, arguments);
   },
@@ -2026,7 +2026,7 @@ var UriListCell = Iccbl.UriListCell = Iccbl.BaseCell.extend({
     var self = this;
     this.$el.empty();
     var rawValue = this.model.get(this.column.get("name"));
-    
+
     if(rawValue && !_.isEmpty(rawValue)){
       var i = 0;
       _.each(rawValue, function(val){
@@ -2044,12 +2044,12 @@ var UriListCell = Iccbl.UriListCell = Iccbl.BaseCell.extend({
     return this;
   },
 
-}); 
+});
 
 var ImageCell = Iccbl.ImageCell = Iccbl.BaseCell.extend({
-  
+
   className : "image-cell",
-  
+
   events : {
       "click #link" : "toLink",
   },
@@ -2064,7 +2064,7 @@ var ImageCell = Iccbl.ImageCell = Iccbl.BaseCell.extend({
       this.delegateEvents();
       return this;
   },
-  
+
   render_image: function(){
     var val = this.model.get(this.column.get('name'));
     if (!_.isEmpty(val)){
@@ -2073,7 +2073,7 @@ var ImageCell = Iccbl.ImageCell = Iccbl.BaseCell.extend({
       return '';
     }
   },
-      
+
 });
 
 /**
@@ -2082,9 +2082,9 @@ var ImageCell = Iccbl.ImageCell = Iccbl.BaseCell.extend({
  *
  */
 var EditCell = Iccbl.EditCell = Iccbl.BaseCell.extend({
-  
+
   className : "detail-cell",
-  
+
   events : {
     "click #edit" : "editDetail",
   },
@@ -2122,11 +2122,11 @@ var EditCell = Iccbl.EditCell = Iccbl.BaseCell.extend({
 var NumberFormatter = Iccbl.NumberFormatter = Backgrid.NumberFormatter;
 
 var NumberCell = Iccbl.NumberCell = Backgrid.NumberCell.extend({
-  
+
   initialize: function (options) {
-    
+
     NumberCell.__super__.initialize.apply(this, arguments);
-    
+
     var self = this;
     var model = this.model;
     var column = this.column;
@@ -2144,14 +2144,14 @@ var NumberCell = Iccbl.NumberCell = Backgrid.NumberCell.extend({
 var DecimalFormatter = Iccbl.DecimalFormatter = function () {
   Backgrid.NumberFormatter.apply(this, arguments);
 };
- 
+
 DecimalFormatter.prototype = new Backgrid.NumberFormatter();
- 
+
 _.extend(DecimalFormatter.prototype, {
- 
+
   defaults: _.extend({}, NumberFormatter.prototype.defaults, {
     // If True, allow trailing zeros, only relevant if not using rounding
-    trailing_zeros: false, 
+    trailing_zeros: false,
     use_rounding: true
   }),
 
@@ -2179,7 +2179,7 @@ _.extend(DecimalFormatter.prototype, {
         return number;
       }
     }
-    
+
     if (this.use_rounding == true){
       number = round(number, this.decimals);
     } else {
@@ -2189,20 +2189,20 @@ _.extend(DecimalFormatter.prototype, {
       }
     }
     number = ''+number;
-    
+
     var parts = number.split('.');
     var integerPart = parts[0];
     var decimalPart = parts[1] ? (this.decimalSeparator || '.') + parts[1] : '';
 
     return integerPart.replace(this.HUMANIZED_NUM_RE, '$1' + this.orderSeparator) + decimalPart;
-    
+
   }
-});  
+});
 
 /**
  * A number formatter that converts a floating point number, optionally
  * multiplied by a multiplier, to a units string and vice versa.
- * 
+ *
  * @class Backgrid.UnitsFormatter
  * @extends Backgrid.NumberFormatter
  * @constructor
@@ -2221,10 +2221,10 @@ _.extend(SIUnitsFormatter.prototype, {
   /**
    * @member Backgrid.UnitsFormatter
    * @cfg {Object} options
-   * 
+   *
    * @cfg {number} [options.multiplier=1] The number used to multiply the model
    *      value for display.
-   * 
+   *
    * @cfg {string} [options.symbol='%'] The symbol to append to the Unitsage
    *      string.
    */
@@ -2247,14 +2247,14 @@ _.extend(SIUnitsFormatter.prototype, {
   }),
 
   SI_UNIT_PATTERN: /([\d\.]+)\s*((\w|\xB5|\x{03BC})\w)?/i,
-  
+
   /**
    * Extends Backgrid.NumberFormatter to support SI Units.
    * Takes a raw value from a model and returns an optionally formatted string.
-   * 
-   * NOTE: precision is lost; input string values are converted to floating 
+   *
+   * NOTE: precision is lost; input string values are converted to floating
    * point numbers.
-   * 
+   *
    * Convert input to a floating point number, where the number is first multiplied by
    * `multiplier`, then converted to a formatted string like
    * NumberFormatter#fromRaw, then finally append `symbol` to the end.
@@ -2270,19 +2270,19 @@ _.extend(SIUnitsFormatter.prototype, {
   },
 
   /**
-   * Return the best match SI Unit (unit_symbol,unit_val) for the default_unit_value, 
+   * Return the best match SI Unit (unit_symbol,unit_val) for the default_unit_value,
    * such that:
    * default_unit_value can be represented a number between 1 and 1000;
    * (best_match_symbol_val)<=default_unit_value<(next_higher_symbol_val)
    */
   getSIUnit: function(default_unit_value) {
     var pairUnit = _.find(this.siunits, function(pair){
-      return pair[1] <= Math.abs(default_unit_value); 
+      return pair[1] <= Math.abs(default_unit_value);
     });
-    
+
     return pairUnit;
   },
-  
+
   /**
    * Convert the number to a siunit value
    */
@@ -2311,7 +2311,7 @@ _.extend(SIUnitsFormatter.prototype, {
     }else{
       console.log("Error, DecimalCell multiplier ! > 0: " + multiplier);
     }
-    
+
     var pairUnit = self.getSIUnit(number);
     // 20180423 - If defaultUnit is set and less than the number, use it:
     // Test the SIUnit to make sure it does not result in a 0 display value;
@@ -2324,14 +2324,14 @@ _.extend(SIUnitsFormatter.prototype, {
         pairUnit = test_pairUnit;
       }
     }
-     
+
     if(_.isUndefined(pairUnit)){
       console.log('could not find units for the input number: ' + number);
       return number;
     }
-     
+
     var val = (1/pairUnit[1])*number;
-    
+
     if (self.use_rounding == false){
       // NOTE: use truncate to match current Screensaver functionality
       val = val.toFixed(~~decimals);
@@ -2346,15 +2346,15 @@ _.extend(SIUnitsFormatter.prototype, {
     var formattedValue = '' + val + ' ' + pairUnit[0] + symbol;
     return formattedValue;
   },
- 
-  
+
+
   /**
    * Extends Backgrid.NumberFormatter to support SI Units.
-   * 
+   *
    * Takes a formatted string, usually from user input, and returns a
    * number for persistence in the model.
-   * 
-   * NOTE: precision is lost with zero padding; 
+   *
+   * NOTE: precision is lost with zero padding;
    * NumberFormatter converts string values to number values.
    */
   toRaw: function (formattedValue, model) {
@@ -2362,7 +2362,7 @@ _.extend(SIUnitsFormatter.prototype, {
     var tokens;
     var rawValue, scaledRawValue;
     var unitMultiplier;
-    
+
     if (formattedValue === '') return null;
 
     // TODO: test regex version here
@@ -2379,9 +2379,9 @@ _.extend(SIUnitsFormatter.prototype, {
         return pair[0] == unit;
       });
     }
-     
+
    unitMultiplier = pairUnit[1];
-    
+
     var originalPrecision = 0;
     if (originalNumberPart.indexOf('.')>-1){
       originalPrecision = (originalNumberPart + "").split(".")[1].length;
@@ -2391,7 +2391,7 @@ _.extend(SIUnitsFormatter.prototype, {
     newRawValue = rawValue / this.multiplier;
     // use the SIUnit to scale the raw value
     newRawValue= rawValue*unitMultiplier;
-    
+
     // Truncate or pad the precision to the decimal setting
     var allowedPrecision = this.decimals;
     var desiredPrecision = originalPrecision;
@@ -2400,7 +2400,7 @@ _.extend(SIUnitsFormatter.prototype, {
       desiredPrecision += (unitMultiplier + "").split(".")[1].length;
     }
     newRawValue = newRawValue.toFixed(allowedPrecision)*1;
-    
+
     var newPrecision = 0;
     if ( (newRawValue+"").indexOf(".") > -1){
       newPrecision = (newRawValue+"").split(".")[1].length;
@@ -2412,31 +2412,31 @@ _.extend(SIUnitsFormatter.prototype, {
         newRawValue = newRawValue.toFixed(allowedPrecision);
       }
     }
-    
+
     // Convert to string to finalize precision with subsequent serialization
     return "" + newRawValue;
   },
- 
-});  
+
+});
 
 /**
  * A DecimalCell is another Backgrid.NumberCell that takes a floating number,
  * and showing a decimals number of digits.
- * 
+ *
  * @class Backgrid.DecimalCell
  * @extends Backgrid.NumberCell
  */
 var DecimalCell = Iccbl.DecimalCell = NumberCell.extend({
-  
+
   /** @property */
   className: "decimal-cell",
 
   /** @property {Backgrid.CellFormatter} [formatter=Backgrid.NumberFormatter] */
   formatter: DecimalFormatter,
- 
+
   /**
    * Initializes this cell and the Units formatter.
-   * 
+   *
    * @param {Object}
    *          options
    * @param {Backbone.Model}
@@ -2449,14 +2449,14 @@ var DecimalCell = Iccbl.DecimalCell = NumberCell.extend({
     var formatter = this.formatter;
     formatter.decimals = this.decimals;
   }
- 
- });  
+
+ });
 
 /**
  * A SIUnitsCell is another Backgrid.NumberCell that takes a floating number,
  * optionally multiplied by a multiplier, showing a decimals number of digits,
  * and displayed with a units symbol.
- * 
+ *
  * @class Backgrid.SIUnitsCell
  * @extends Backgrid.NumberCell
  */
@@ -2476,7 +2476,7 @@ var SIUnitsCell = Iccbl.SIUnitsCell = NumberCell.extend({
 
   /**
    * Initializes this cell and the Units formatter.
-   * 
+   *
    * @param {Object}
    *          options
    * @param {Backbone.Model}
@@ -2493,14 +2493,14 @@ var SIUnitsCell = Iccbl.SIUnitsCell = NumberCell.extend({
     formatter.defaultUnit = this.defaultUnit;
   }
 
-});  
+});
 
 var SelectCell = Iccbl.SelectCell = Backgrid.SelectCell.extend({
 
   className: 'text-wrap-cell',
 
   initialize: function(){
-    
+
     SelectCell.__super__.initialize.apply(this, arguments);
     var self = this;
     this.model.on('change:'+this.column.get("name") , function(){
@@ -2510,10 +2510,10 @@ var SelectCell = Iccbl.SelectCell = Backgrid.SelectCell.extend({
       }
     });
   },
-  
-  /** 
+
+  /**
    * override Backgrid.SelectCell:
-   * - render to return the cell value if optionValues is malformed or missing 
+   * - render to return the cell value if optionValues is malformed or missing
    * the value
    */
   render: function () {
@@ -2562,10 +2562,10 @@ var SelectCell = Iccbl.SelectCell = Backgrid.SelectCell.extend({
         'column: {column}, vocabulary: {vocabulary} is misconfigured: rawData: "{rawData}"',
         { column: this.column.get("name"),
           vocabulary: _.result(this, "vocabulary_scope_ref"),
-          rawData: rawData 
+          rawData: rawData
         }));
       console.log(Iccbl.formatString(
-        'column: {column}, vocabulary: {vocabulary} is misconfigured,' 
+        'column: {column}, vocabulary: {vocabulary} is misconfigured,'
           + 'rawData: "{rawData}", optionValues: {optionValues}',
         { column: this.column.get("name"),
           vocabulary: _.result(this, "vocabulary_scope_ref"),
@@ -2574,7 +2574,7 @@ var SelectCell = Iccbl.SelectCell = Backgrid.SelectCell.extend({
         }));
     }
     var finalText = selectedText.join(this.delimiter);
-    
+
     if(!_.isUndefined(this.hrefTemplate)){
       // hack - if hrefTemplate is defined, treat this like a link cell - 20150828
       var target = this.target || "_self";
@@ -2584,7 +2584,7 @@ var SelectCell = Iccbl.SelectCell = Backgrid.SelectCell.extend({
         href : interpolatedVal,
         target : this.target
       }).text(finalText));
-      
+
     }else{
       this.$el.append(finalText);
     }
@@ -2616,7 +2616,7 @@ _.extend(DatetimeFormatter.prototype, {
     if (_.isNull(rawData) || _.isUndefined(rawData)) return '';
     rawData = rawData.trim();
     if ((rawData + '').trim() === '') return null;
-    
+
     return getIccblDateString(Iccbl.dateParse(rawData));
   },
 
@@ -2635,7 +2635,7 @@ _.extend(DatetimeFormatter.prototype, {
       return;
     }
   },
-  
+
   /**
    * Modify Backgrid DatetimeFormatter convert:
    * - ignore timezone - remove UTC conversion
@@ -2648,11 +2648,11 @@ _.extend(DatetimeFormatter.prototype, {
     var date, time = null;
     if (_.isNumber(data)) {
       var jsDate = new Date(data);
-      date = lpad(jsDate.getFullYear(), 4, 0) 
-        + '-' + lpad(jsDate.getMonth() + 1, 2, 0) 
+      date = lpad(jsDate.getFullYear(), 4, 0)
+        + '-' + lpad(jsDate.getMonth() + 1, 2, 0)
         + '-' + lpad(jsDate.getDate(), 2, 0);
-      time = lpad(jsDate.getHours(), 2, 0) 
-        + ':' + lpad(jsDate.getMinutes(), 2, 0) 
+      time = lpad(jsDate.getHours(), 2, 0)
+        + ':' + lpad(jsDate.getMinutes(), 2, 0)
         + ':' + lpad(jsDate.getSeconds(), 2, 0);
       // modified 20150831 - use local date/time
       //date = lpad(jsDate.getFullYear(), 4, 0) + '-' + lpad(jsDate.getMonth() + 1, 2, 0) + '-' + lpad(jsDate.getDate(), 2, 0);
@@ -2664,7 +2664,7 @@ _.extend(DatetimeFormatter.prototype, {
       date = ICCBL_DATE_RE.test(parts[0]) ? parts[0] : '';
       time = date && parts[1] ? parts[1] : TIME_RE.test(parts[0]) ? parts[0] : '';
     }
-    // FIXME: review this 
+    // FIXME: review this
     var MMDDYYYY = ICCBL_DATE_RE.exec(date) || [];
     var HHmmssSSS = TIME_RE.exec(time) || [];
 
@@ -2690,10 +2690,10 @@ _.extend(DatetimeFormatter.prototype, {
     }
 
     if (this.includeTime) {
-      result = ( result 
-          + (this.includeDate ? 'T' : '') 
-          + lpad(jsDate.getHours(), 2, 0) 
-          + ':' + lpad(jsDate.getMinutes(), 2, 0) 
+      result = ( result
+          + (this.includeDate ? 'T' : '')
+          + lpad(jsDate.getHours(), 2, 0)
+          + ':' + lpad(jsDate.getMinutes(), 2, 0)
           + ':' + lpad(jsDate.getSeconds(), 2, 0)
           );
 
@@ -2707,7 +2707,7 @@ _.extend(DatetimeFormatter.prototype, {
     }
     return result;
   },
-  
+
 });
 
 /**
@@ -2724,10 +2724,10 @@ var DateCell2Editor = Iccbl.DateCell2Editor = Backgrid.CellEditor.extend({
   initialize: function (options) {
     DateCell2Editor.__super__.initialize.apply(this, arguments);
     _.bindAll(this, 'saveOrCancel', 'postRender');
-    
+
     this.value = new Date(this.model.get(this.column.get('name')));
   },
-  
+
   setValue: function(value) {
     $('input', this.el).datepicker('setUTCDate', value);
   },
@@ -2742,7 +2742,7 @@ var DateCell2Editor = Iccbl.DateCell2Editor = Backgrid.CellEditor.extend({
         return date;
       }
   },
-    
+
   /**
      Renders a text input with the cell value formatted for display, if it
      exists.
@@ -2759,16 +2759,16 @@ var DateCell2Editor = Iccbl.DateCell2Editor = Backgrid.CellEditor.extend({
         todayHighlight: true,
         orientation: "bottom auto"
     }).on('hide', this.saveOrCancel);
-    
+
     // manually get the input-group-addon click
     $('#datepicker-icon',el).click(function(e) {
       input.datepicker().focus();
     });
     this.setValue(this.value);
-      
+
     return this;
   },
-  
+
   saveOrCancel: function (e) {
     var model = this.model;
     var column = this.column;
@@ -2782,7 +2782,7 @@ var DateCell2Editor = Iccbl.DateCell2Editor = Backgrid.CellEditor.extend({
       var command = new NewCommand(e);
       model.trigger("backgrid:edited", model, column, command);
   },
-  
+
   postRender: function (model, column) {
     if (column == null || column.get("name") == this.column.get("name")) {
       // move the cursor to the end on firefox if text is right aligned
@@ -2804,12 +2804,12 @@ var DateCell2Editor = Iccbl.DateCell2Editor = Backgrid.CellEditor.extend({
  * - use bootstrap-datepicker to convert user input to a JavaScript Date
  */
 var DateCell2 = Iccbl.DateCell2 = Backgrid.Cell.extend({
-  
+
   initialize: function(){
     Iccbl.DateCell2.__super__.initialize.apply(this, arguments);
     var self = this;
-  }, 
-  
+  },
+
   /**
      Render a text string in a table cell. The text is converted from the
      model's raw value for this cell's column.
@@ -2831,14 +2831,14 @@ var DateCell2 = Iccbl.DateCell2 = Backgrid.Cell.extend({
    * - simplified from the Backgrid.DateTimeFormatter.fromRaw
    */
   fromRaw: function (rawData, model) {
-    
+
     if (_.isNull(rawData) || _.isUndefined(rawData)) return '';
     if (_.isDate(rawData)){
       return getIccblDateString(rawData);
     } else {
       rawData = rawData.trim();
       if ((rawData + '').trim() === '') return null;
-      
+
       return getIccblDateString(Iccbl.dateParse(rawData));
     }
   },
@@ -2846,22 +2846,22 @@ var DateCell2 = Iccbl.DateCell2 = Backgrid.Cell.extend({
   isEditable: function() {
     return Backgrid.callByNeed(this.column.editable(), this.column, this.model);
   },
-  
+
   enterEditMode: function () {
     var model = this.model;
     var column = this.column;
-    
+
     if (this.isEditable()) {
 
-      // ICCBL-Hack to stop the column from resizing on entering edit mode  
+      // ICCBL-Hack to stop the column from resizing on entering edit mode
       // https://github.com/cloudflare/backgrid/issues/489
       this.$el.width((this.$el.outerWidth()) + 'px');
-      
+
       this.currentEditor = new DateCell2Editor({
         model: model,
         column: column
       });
-      
+
       model.trigger("backgrid:edit", model, column, this, this.currentEditor);
 
       // Need to redundantly undelegate events for Firefox
@@ -2874,7 +2874,7 @@ var DateCell2 = Iccbl.DateCell2 = Backgrid.Cell.extend({
       model.trigger("backgrid:editing", model, column, this, this.currentEditor);
     }
   },
-  
+
   /**
      Removes the editor and re-render in display mode.
   */
@@ -2918,14 +2918,14 @@ var DateCell = Iccbl.DateCell = Backgrid.DateCell.extend({
     //   formatter.includeMilli = this.includeMilli;
 
     var placeholder = "MM/DD/YYYY";
-  
+
     this.editor = this.editor.extend({
       attributes: _.extend(
           {}, this.editor.prototype.attributes, this.editor.attributes, {
             placeholder: placeholder
           })
     });
-    
+
     this.model.on('change:'+this.column.get("name") , function(){
       // Block updates caused by adding columns
       if (!_.isUndefined(self.model.previous(self.column.get("name")))){
@@ -2933,7 +2933,7 @@ var DateCell = Iccbl.DateCell = Backgrid.DateCell.extend({
       }
     });
   }
-  
+
 });
 
 /**
@@ -2951,7 +2951,7 @@ var DeleteCell = Iccbl.DeleteCell = Iccbl.BaseCell.extend({
 
   render: function () {
     this.$el.empty();
-  
+
     this.$el.append("&nbsp;");
     this.$el.append(
       $("<a id='delete' >", {
@@ -2974,17 +2974,17 @@ var DeleteCell = Iccbl.DeleteCell = Iccbl.BaseCell.extend({
 var CommentArrayLinkCell = Iccbl.CommentArrayLinkCell = Iccbl.LinkCell.extend({
   /*
    * @property {string} [comment_attribute='comment_array'] The model
-   * attribute containing the apilog comment_array 
+   * attribute containing the apilog comment_array
    */
   comment_attribute: 'comment_array',
-  
+
   /*
    * Provide a title for generated dialog
    */
   title_function: function(model){
     return 'Comments'; // + ': ' + Iccbl.getIdFromIdAttribute(model, resource)
   },
-  
+
   render: function(){
     var self = this;
     Iccbl.LinkCell.prototype.render.apply(this, arguments);
@@ -3023,16 +3023,16 @@ var CollectionInColumns = Iccbl.CollectionInColumns = Backbone.Collection.extend
 });
 
 var UriContainerView = Iccbl.UriContainerView = Backbone.Layout.extend({
-  
+
   initialize: function(args) {
     if (Iccbl.appModel.DEBUG) console.log('initialize UriContainerView');
     var model = this.model = args.model;
     var targetProperty = args.property || 'uriStack';
     this.listenTo(model, 'change:'+targetProperty , this.uriStackChange );
-    
+
     Backbone.Layout.prototype.initialize.apply(this,arguments);
   },
-  
+
   /**
    * This method will report URI stack change events from child views.
    */
@@ -3046,10 +3046,10 @@ var UriContainerView = Iccbl.UriContainerView = Backbone.Layout.extend({
     }
     Iccbl.appModel.reportUriStack(actualStack, options);
   },
-  
+
   /**
    * Backbone.Model change event handler
-   * 
+   *
    * @param options.source =
    *          the event source triggering view
    */
@@ -3067,7 +3067,7 @@ var UriContainerView = Iccbl.UriContainerView = Backbone.Layout.extend({
       }
     }
   },
-  
+
   changeUri: function(uriStack) {
     window.alert(
       'ContentView changeUri function must be implemented. uriStack: ' +
@@ -3076,7 +3076,7 @@ var UriContainerView = Iccbl.UriContainerView = Backbone.Layout.extend({
 });
 
 var MultiSortBody = Iccbl.MultiSortBody = Backgrid.Body.extend({
-  
+
   /**
    * See Backgrid.Body.sort: - created to solve the multisort case for the
    * server side backbone-pageable collection only. triggered by "backgrid:sort" -
@@ -3094,17 +3094,17 @@ var MultiSortBody = Iccbl.MultiSortBody = Backgrid.Body.extend({
     if (direction === "ascending") order = -1;
     else if (direction === "descending") order = 1;
     else order = null;
-    
+
     collection.setSorting(column.get("name"), order,
         {sortValue: column.sortValue()});
     collection.fetch({
-      reset: true, 
+      reset: true,
       success: function () {
         if (Iccbl.appModel.DEBUG) console.log('fetch success, direction: ' + direction);
         collection.trigger("backgrid:sorted", column, direction, collection);
       }
-    }).fail(function(){ Iccbl.appModel.jqXHRfail.apply(this,arguments); });      
-    
+    }).fail(function(){ Iccbl.appModel.jqXHRfail.apply(this,arguments); });
+
     column.set("direction", direction);
 
     return this;
@@ -3117,7 +3117,7 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
     var self = this;
     this.options = options;
     Backbone.PageableCollection.prototype.initialize.apply(this, options);
-    
+
     // Define an order_by callback for backbone.paginator:
     // backbone.paginator will "map extra query parameters" when performing fetch
     this.queryParams.order_by = function(){
@@ -3180,16 +3180,16 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
       throw msg;
     }
     state.totalRecords = response.meta.total_count;
-    
+
     // FIXME: having to set this for the pre-fetched collections
     if(!_.isNumber(state.firstPage)) state.firstPage = 1;
-    
+
     if (Math.ceil(state.totalRecords / state.pageSize) < state.currentPage) {
       state.currentPage = 1;
     }
     return state;
   },
-  
+
   /**
    * Override
    */
@@ -3200,25 +3200,25 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
       return resp.objects;
     }
   },
-      
+
   /**
    * Method for external callers to set the search, with fetch
    * @param options - for Backbone.Collection.fetch:
-   * { reset: false } (default) - uses set to (intelligently) merge the fetched 
+   * { reset: false } (default) - uses set to (intelligently) merge the fetched
    * models ("add" events are fired),
-   * {reset: true}, in which case the collection will be (efficiently) reset 
+   * {reset: true}, in which case the collection will be (efficiently) reset
    * (no "add" events will be fired)
    */
   setSearch: function(searchHash, options) {
     var self = this;
     var searchHash = _.clone(searchHash);
     self.listModel.set(Iccbl.appModel.URI_PATH_SEARCH, searchHash);
-    
+
     // Tell all the header cells
     this.trigger("MyServerSideFilter:search", searchHash, this);
 
     // TODO: debug: "_data" is not needed
-    // backbone.paginator should translate all queryparams into "data" in the 
+    // backbone.paginator should translate all queryparams into "data" in the
     // fetch method
     //
     // Allow searches that aren't for a visible column:
@@ -3261,9 +3261,9 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
   /**
    * Proxy for the search elements to add search terms to the listModel,
    * if options.reset == true, then fetch, otherwise no fetch.
-   */ 
+   */
   addSearch: function(searchHash, options) {
-    console.log('addSearch: ' + JSON.stringify(searchHash) 
+    console.log('addSearch: ' + JSON.stringify(searchHash)
       + ', options: ' + JSON.stringify(options) );
     var self = this;
     var newSearchHash = _.clone(self.listModel.get(Iccbl.appModel.URI_PATH_SEARCH));
@@ -3278,10 +3278,10 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
    * Proxy for the search elements to clear search terms from the listModel on
    * the collection.
    * if options.reset == true, then fetch, otherwise no fetch.
-   */ 
+   */
   clearSearch: function(searchKeys, options) {
     if (Iccbl.appModel.DEBUG){
-      console.log('clearsearch: ' + JSON.stringify(searchKeys) 
+      console.log('clearsearch: ' + JSON.stringify(searchKeys)
         + ', options: ' + JSON.stringify(options) );
     }
     var self = this;
@@ -3312,14 +3312,14 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
   setSorting : function(sortKey, order, options) {
     var self = this;
     var state = this.state;
-    
+
     var orderStack = this.listModel.get('order') || [];
-    
+
     var newdir = order == 1 ? '-' : order == -1 ? '': null;
-    
+
     var newStack = [];
     var found = false;
-    
+
     _.each(orderStack, function(order_entry){
       var dir = order_entry.substring(0,1);
       var fieldname = order_entry;
@@ -3342,15 +3342,15 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
         newStack.push(order_entry);
       }
     });
-    
+
     if(!found && newdir !== null) newStack.push(newdir + sortKey);
-    
+
     if (Iccbl.appModel.DEBUG){
-      console.log('Ordering update: old: ' + JSON.stringify(orderStack) 
+      console.log('Ordering update: old: ' + JSON.stringify(orderStack)
         + ', new: ' + JSON.stringify(newStack));
     }
     self.listModel.set('order', newStack);
-    
+
     // Backbone.PageableCollection.prototype.setSorting.call(this, sortKey,
     // order);
 	  // TODO: Investigate why PageableCollection.setSorting is not triggering
@@ -3371,7 +3371,7 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
 	  // -> Backgrid.HeaderCell.removeCellDirection
 	  // Last note: this may be caused by not getting the sortKey from the
 	  // queryParams on parseState.
-  	this.trigger('sort',this); 
+  	this.trigger('sort',this);
   },
 
 });
@@ -3387,12 +3387,12 @@ var MultiSortHeaderCell = Iccbl.MultiSortHeaderCell = Backgrid.HeaderCell.extend
     MultiSortHeaderCell.__super__.initialize.apply(this, arguments);
 
     this.fieldinformation = _.clone(this.column.get('fieldinformation'));
-    
+
     this.listenTo(this.collection,"sort",this.collectionSorted);
     this.listenTo(this.collection,"Iccbl:clearSorts", this.removeCellDirection);
     _.bindAll(this, '_submit', 'clearSearch');
   },
-  
+
   // Original onClick, for reference, from Backgrid
   // onClick: function (e) {
   // e.preventDefault();
@@ -3423,11 +3423,11 @@ var MultiSortHeaderCell = Iccbl.MultiSortHeaderCell = Backgrid.HeaderCell.extend
   // else cycleSort(this, column);
   // }
   // },
-      
+
   // TODO: debounced clicking - sort of working, but...
   // - at this time this method is debouncing on the cell instance:
   // --- no coordination with other headercells
-  // 
+  //
   /**
    * Event handler for the `click` event on the cell's anchor. If the column is
    * sortable, clicking on the anchor will cycle through 3 sorting orderings -
@@ -3437,11 +3437,11 @@ var MultiSortHeaderCell = Iccbl.MultiSortHeaderCell = Backgrid.HeaderCell.extend
     var self=this;
     e.preventDefault();
     e.stopPropagation();
-    
+
     var collection = this.collection;
     var event = "backgrid:sort"
     var column = this.column;
-    
+
     if(_.isUndefined(this.tempdirection)){
       this.tempdirection = this.column.get("direction");
     }
@@ -3452,12 +3452,12 @@ var MultiSortHeaderCell = Iccbl.MultiSortHeaderCell = Backgrid.HeaderCell.extend
     }else{
       this.tempdirection = "descending";
     }
-    
+
     this.setCellDirection(
       column, self.tempdirection=="none"?null:self.tempdirection );
 
     var args = arguments;
-    
+
     var delayedClick = function(){
       if (Iccbl.appModel.DEBUG) console.log('delayedclick: tempdirection: ' + self.tempdirection);
       if(self.tempdirection !== self.lastExecutedVal){
@@ -3471,20 +3471,20 @@ var MultiSortHeaderCell = Iccbl.MultiSortHeaderCell = Backgrid.HeaderCell.extend
       }
     };
     _.debounce(delayedClick, 1000)();
-    // FIXME: 
+    // FIXME:
     // Both throttle and debounce seem to work the same;
     // that is they both are working like setTimeout
     // _.throttle(delayedClick, 5000, {leading: false})();
-    
-  },   
- 
+
+  },
+
   collectionSorted: function(collection, options){
     var self = this;
     var name = this.column.get('name');
 
     var i = 0;
     if (this.collection.listModel) {
-      
+
       var orderStack = this.collection.listModel.get('order') || [];
       _.each(orderStack, function(order_entry){
         i++;
@@ -3500,18 +3500,18 @@ var MultiSortHeaderCell = Iccbl.MultiSortHeaderCell = Backgrid.HeaderCell.extend
         }
         if(fieldname == name){
           self.$el.removeClass("ascending").removeClass("descending");
-          self.$el.addClass(direction); 
-  
+          self.$el.addClass(direction);
+
           var sorter = self.$el.find('#sorter');
           sorter.empty();
           sorter.append(
-           "<span style='margin-bottom: 2px;' class='badge pull-right'>" 
+           "<span style='margin-bottom: 2px;' class='badge pull-right'>"
            + i + "<b class='sort-caret'></b></span>");
         }
       });
     }
   },
- 
+
   /**
    * Event handler for the column's `change:direction` event. If this
    * HeaderCell's column is being sorted on, it applies the direction given as a
@@ -3521,7 +3521,7 @@ var MultiSortHeaderCell = Iccbl.MultiSortHeaderCell = Backgrid.HeaderCell.extend
   setCellDirection: function (column, direction) {
     var self = this;
     var name = column.get('name');
-    
+
     if(_.isUndefined(direction) || _.isNull(direction)){
       // this.$el.removeClass("ascending").removeClass("descending");
       // this.$el.find("#sorter").empty();
@@ -3529,25 +3529,25 @@ var MultiSortHeaderCell = Iccbl.MultiSortHeaderCell = Backgrid.HeaderCell.extend
     }else{
       this.$el.removeClass("ascending").removeClass("descending");
       this.$el.addClass(direction);
-       
+
       var num = 1;
       var orderStack = self.collection.listModel.get('order') || [];
       if (!_.isEmpty(orderStack)) {
         var i = 0;
         var found = _.find(orderStack, function(fieldname){
           i++;
-          if(fieldname == name || fieldname == '-' + name){ 
+          if(fieldname == name || fieldname == '-' + name){
             num = i;
             return true;
           }
         });
         if(!found){
-          num = orderStack.length+1; 
+          num = orderStack.length+1;
         }
       }
-      sorterText = $("<span style='margin-bottom: 2px;' class='badge pull-right'>" 
+      sorterText = $("<span style='margin-bottom: 2px;' class='badge pull-right'>"
           + num + "<b class='sort-caret'></b></span>");
-       
+
       self.sorter.empty();
       self.sorter.append(sorterText);
     }
@@ -3584,20 +3584,20 @@ var MultiSortHeaderCell = Iccbl.MultiSortHeaderCell = Backgrid.HeaderCell.extend
     this.$el.addClass(column.get("direction"));
     this.$el.addClass(column.get("name"));
     this.delegateEvents();
-    
-    var mouseover = this.options['column']['attributes']["description"];  
+
+    var mouseover = this.options['column']['attributes']["description"];
     if (this.options['column'].has('mouseover')){
       mouseover = this.options['column'].get('mouseover');
     }
     this.$el.prop('title', mouseover);
-    
+
     return this;
   }
-    
+
 }); // end MultiSortHeaderCell
 
 var FilterHeaderCell = Iccbl.FilterHeaderCell = Iccbl.MultiSortHeaderCell.extend({
-  
+
   filtericon_text : '<span class="pull-left glyphicon glyphicon-search" ' +
     ' id="filter-icon" ></span>',
   expandicon_text : '<span ' +
@@ -3607,7 +3607,7 @@ var FilterHeaderCell = Iccbl.FilterHeaderCell = Iccbl.MultiSortHeaderCell.extend
   collapseicon_text : '<span ' +
     ' class="pull-left glyphicon glyphicon-chevron-up"'+
     ' id="collapse-filter-icon" ></span>',
-  
+
   initialize : function(options) {
     var self = this;
     FilterHeaderCell.__super__.initialize.apply(this, arguments);
@@ -3616,7 +3616,7 @@ var FilterHeaderCell = Iccbl.FilterHeaderCell = Iccbl.MultiSortHeaderCell.extend
     this.collapseIcon = $(this.collapseicon_text);
     this.expandIcon = $(this.expandicon_text);
     this.expandIconText = this.expandIcon.find('#expand-filter-icon-text');
-    
+
     this.fieldinformation = options.fieldinformation || this.fieldinformation;
     if (_.isUndefined(this.fieldinformation)){
       throw 'must define a fieldinformation for FilterHeaderCell';
@@ -3625,7 +3625,7 @@ var FilterHeaderCell = Iccbl.FilterHeaderCell = Iccbl.MultiSortHeaderCell.extend
     if (_.isUndefined(this.serverSideFilter)){
       throw 'must define a serverSideFilter for FilterHeaderCell';
     }
-    
+
     this._serverSideFilter = new this.serverSideFilter(_.extend({
       columnName: this.column.get('name'),
       fieldinformation: this.fieldinformation
@@ -3636,7 +3636,7 @@ var FilterHeaderCell = Iccbl.FilterHeaderCell = Iccbl.MultiSortHeaderCell.extend
 
     _.bindAll(this, '_submit', 'clearSearch');
   },
-  
+
   /**
    * Listen for router generated search events
    */
@@ -3647,7 +3647,7 @@ var FilterHeaderCell = Iccbl.FilterHeaderCell = Iccbl.MultiSortHeaderCell.extend
 
     // TODO: could use form.isSet() instead of found
     var found = this._serverSideFilter._search(searchHash);
-    
+
     if(found){
       self.$el.addClass('filtered');
       self.expandIconText.html(
@@ -3657,37 +3657,37 @@ var FilterHeaderCell = Iccbl.FilterHeaderCell = Iccbl.MultiSortHeaderCell.extend
       self.$el.removeClass('filtered');
       self.expandIconText.empty();
     }
-  },  
-  
+  },
+
   clearSearch: function(options){
     var self=this;
     var name = this.column.get('name');
-    
+
     if (_.result(options,'fields_to_clear')){
       if (!_.contains(options.fields_to_clear, name)){
         return;
       }
     }
-    
+
     self._serverSideFilter.clear();
     self._serverSideFilter.$el.hide();
     self.filterIcon.show();
     self.collapseIcon.hide();
     self.expandIconText.empty();
     self.expandIcon.hide();
-  },      
-  
+  },
+
   _submit: function(e){
     var self  = this;
-    if (e) e.preventDefault();      
-  
+    if (e) e.preventDefault();
+
     var searchHash = self._serverSideFilter._submit();
     if(!_.isEmpty(searchHash)){
       var possibleSearches = self._serverSideFilter.getPossibleSearches();
       self.collection.clearSearch(possibleSearches, {silent: true});
-      
+
       if (Iccbl.appModel.DEBUG){
-        console.log('server side filter add search: ' + 
+        console.log('server side filter add search: ' +
             JSON.stringify(searchHash));
       }
       this.collection.addSearch(searchHash,{reset: true});
@@ -3695,7 +3695,7 @@ var FilterHeaderCell = Iccbl.FilterHeaderCell = Iccbl.MultiSortHeaderCell.extend
       console.log('nothing submitted');
     }
   },
-  
+
   _collapse: function(){
     this._serverSideFilter.$el.hide();
     this.$el.removeClass('expanded');
@@ -3704,15 +3704,15 @@ var FilterHeaderCell = Iccbl.FilterHeaderCell = Iccbl.MultiSortHeaderCell.extend
   _expand: function(){
     this._serverSideFilter.$el.show();
     this.$el.addClass('expanded');
-  },  
-  
+  },
+
   render : function() {
     var self = this;
     FilterHeaderCell.__super__.render.apply(this);
     if (_.result(this.fieldinformation,'filtering') !== true){
       return this;
     }
-  
+
     this._serverSideFilter.render();
     this.$el.append(this._serverSideFilter.el);
     this._serverSideFilter.$el.hide();
@@ -3724,40 +3724,40 @@ var FilterHeaderCell = Iccbl.FilterHeaderCell = Iccbl.MultiSortHeaderCell.extend
       e.preventDefault();
       e.stopPropagation();
       self.clearSearch();
-    
+
       var possibleSearches = self._serverSideFilter.getPossibleSearches();
       self.collection.clearSearch(possibleSearches);
     });
-    
+
     this._serverSideFilter.submitButton().click(function(e){
       e.preventDefault();
       self._submit();
       self._collapse();
     });
-  
+
     this.filterIcon.click(function(e){
       self._expand();
       return false;
     });
-  
+
     this.collapseIcon.click(function(e){
       self._collapse();
       return false;
     });
-  
+
     this.expandIcon.click(function(e){
       self._expand();
       return false;
     });
     return this;
-  },  
+  },
 
 }); // end FilterHeaderCell
 
 ///// Header Cell Filters /////
 
 var BackgridFormFilter = Backbone.Form.extend({
-  
+
   template: _.template([
     "<form class='form-horizontal container' >",
     '<div class="row center-block" style="margin: 0 0 0 0;" >',
@@ -3771,7 +3771,7 @@ var BackgridFormFilter = Backbone.Form.extend({
       '    </div>',
       '  </div>'
       ].join('')),
-   
+
   initialize : function(options) {
     BackgridFormFilter.__super__.initialize.apply(this, arguments);
     var self = this;
@@ -3780,12 +3780,12 @@ var BackgridFormFilter = Backbone.Form.extend({
     if (_.isUndefined(this.fieldinformation)){
       throw 'must define a fieldinformation for header cell BackgridFormFilter';
     }
-    
+
     this.columnName = options.columnName || this.columnName;
     if (_.isUndefined(this.columnName)){
       throw 'must define a columnName member for header cell BackgridFormFilter';
     }
-    
+
   },
 
   _printSearchHash: function(searchHash){
@@ -3799,9 +3799,9 @@ var BackgridFormFilter = Backbone.Form.extend({
       };
       return _.result(lookup, operator, operator);
     }
-    
-    return '&nbsp;' + _.map(              
-      _.pairs(searchHash), 
+
+    return '&nbsp;' + _.map(
+      _.pairs(searchHash),
       function(pair){
         var key_operator = pair[0].split('__');
         var val = '' + pair[1]
@@ -3821,28 +3821,28 @@ var BackgridFormFilter = Backbone.Form.extend({
         return operator + '&nbsp;' + val;
       }).join('&');
   },
-  
+
   _getSearchHash: function(){
     throw '_getSearchHash must be implemented';
   },
-  
+
   _search: function(){
     throw '_search must be implemented';
   },
-  
+
   clearSearch: function(){
     throw 'clearSearch must be implemented';
   },
-  
+
   _submit: function(){
     throw '_submit must be implemented';
   },
   isSet: function(){
     throw 'isSet must be implemented';
   },
- 
+
   /**
-   * - add a submit button 
+   * - add a submit button
    * - add a clear button
    */
   render: function () {
@@ -3863,15 +3863,15 @@ var BackgridFormFilter = Backbone.Form.extend({
 
     return this;
   },
-  
+
   clearButton: function(){
     return this.$el.find("a[data-backgrid-action=clear]");
   },
-  
+
   submitButton: function(){
     return this.$el.find(':submit');
   },
-  
+
   /**
    * Override the Backbone Layoutmanager template rendering to use Backbone
    * Forms
@@ -3879,19 +3879,19 @@ var BackgridFormFilter = Backbone.Form.extend({
   renderTemplate: function() {
     return Backbone.Form.prototype.render.apply(this);
   },
-  
+
   templateData: function() {
     return { years: 0, months: 0, dates: 0 };
   }
-  
-  
+
+
 });
 
 
 var CriteriumFormFilter = Iccbl.CriteriumFormFilter = BackgridFormFilter.extend({
   criterium: {'=':'eq'},
   errorClass: 'has-error',
-  criteriaTemplate: 
+  criteriaTemplate:
     [
       '<span  data-editor ></span>'
     ].join(''),
@@ -3909,7 +3909,7 @@ var CriteriumFormFilter = Iccbl.CriteriumFormFilter = BackgridFormFilter.extend(
     });
     return possibleSearches;
   },
-  
+
   //  /**
   //   * Determine if the form has been set with any values.
   //   */
@@ -3928,21 +3928,21 @@ var CriteriumFormFilter = Iccbl.CriteriumFormFilter = BackgridFormFilter.extend(
   //    });
   //    return !_.isEmpty(found);
   //  },
-  
+
   clear: function(){
     var self = this;
     _.each(_.keys(self.getValue()), function(key){
       self.setValue(key, null);
     });
   }
-  
+
 });
 
 var TextFormFilter = CriteriumFormFilter.extend({
-  
-  criterium: {'=':'eq','contains':'contains','icontains':'icontains','<>':'ne', 
+
+  criterium: {'=':'eq','contains':'contains','icontains':'icontains','<>':'ne',
     'in': 'in','blank':'is_blank','not blank':'not_blank'},
-    
+
   // provide a custom form template; use Bootstrap layout/styling
   template: _.template([
       '<form class="iccbl-headerfield-form" >',
@@ -3960,10 +3960,10 @@ var TextFormFilter = CriteriumFormFilter.extend({
   initialize : function(options) {
     var self = this;
     var options = this.options = options || {};
-    
+
     var formSchema = this.schema = {};
     formSchema['lower_criteria'] = {
-        title: '', 
+        title: '',
         key:  'lower_criteria', // TODO: "key" not needed>?
         type: 'Select',
         options: _.keys(self.criterium),
@@ -3984,7 +3984,7 @@ var TextFormFilter = CriteriumFormFilter.extend({
         type: 'Checkbox',
         template: self.checkboxTemplate,
         editorClass: ''
-    };    
+    };
 
     var FormFields = Backbone.Model.extend({
       schema: formSchema,
@@ -3998,8 +3998,8 @@ var TextFormFilter = CriteriumFormFilter.extend({
 
     // Set BackboneForms selectedFields variable:
     // Check which fields will be included (defaults to all)
-    this.selectedFields = ['lower_criteria','form_textarea','invert_field']; 
-    
+    this.selectedFields = ['lower_criteria','form_textarea','invert_field'];
+
     TextFormFilter.__super__.initialize.apply(this, arguments);
 
     this.listenTo(this, "change", function(e){
@@ -4011,7 +4011,7 @@ var TextFormFilter = CriteriumFormFilter.extend({
       }
     });
   },
-  
+
   isSet: function(){
     var values = this.getValue();
     if (_.isEmpty(values['lower_criteria'])){
@@ -4027,18 +4027,18 @@ var TextFormFilter = CriteriumFormFilter.extend({
     });
     return !_.isEmpty(found);
   },
-  
+
   _search: function(hash){
     var self = this;
     var searchHash = _.clone(hash);
-    
+
     var found = false;
     _.each(_.keys(self.criterium), function(criteriaKey){
-      
+
       var criteria = self.criterium[criteriaKey];
       var searchTerm = self.columnName + '__' + criteria;
       var nsearchTerm = '-' + self.columnName + '__' + criteria;
-      
+
       var searchVal = null;
       var negated = false;
       if(_.has(searchHash, searchTerm)){
@@ -4076,11 +4076,11 @@ var TextFormFilter = CriteriumFormFilter.extend({
       }
     });
     return found;
-  },  
+  },
 
   _getSearchHash: function(){
     var self = this;
-    
+
     var searchHash = {};
     var values = self.getValue();
     var criteria = self.criterium[values['lower_criteria']];
@@ -4097,9 +4097,9 @@ var TextFormFilter = CriteriumFormFilter.extend({
     var invert = values['invert_field'];
     if(invert) searchKey = '-'+searchKey;
     searchHash[searchKey] = searchVal;
-  
+
     return searchHash;
-    
+
   },
 
   _submit: function(){
@@ -4107,19 +4107,19 @@ var TextFormFilter = CriteriumFormFilter.extend({
     if(!self.isSet()) return;
     var self  = this;
     var searchHash = {};
-    var errors = self.commit({ validate: true }); 
+    var errors = self.commit({ validate: true });
     if(!_.isEmpty(errors)){
       console.log('form errors, abort submit: ' + JSON.stringify(errors));
       return;
     }else{
       // this.$el.find('#range_upper_block').removeClass(self.errorClass);
     }
-    
+
     return self._getSearchHash();
   },
 
   getPossibleSearches: function(){
-    var possibleSearches = 
+    var possibleSearches =
       CriteriumFormFilter.prototype.getPossibleSearches.apply(this,arguments);
     // TODO: add in the "=" (without __eq)
     possibleSearches.push(this.columnName)
@@ -4136,7 +4136,7 @@ var DateEditor = Backbone.Form.editors.Date.extend({
    * this.options = _.extend({ monthNames: Self.monthNames, why?
    */
   monthNames: [
-    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 
+    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct',
     'Nov', 'Dec'],
 
   initialize : function(options) {
@@ -4148,7 +4148,7 @@ var DateEditor = Backbone.Form.editors.Date.extend({
 });
 
 var DateFormFilter = CriteriumFormFilter.extend({
-  
+
   criterium: {'': 'unset', '=':'eq','>':'gt','>=':'gte','<':'lt','<=':'lte','<>':'ne',
     'between':'range', 'in': 'in','blank':'is_null','not blank':'not_blank'},
 
@@ -4171,14 +4171,14 @@ var DateFormFilter = CriteriumFormFilter.extend({
       '</div>',
       '</form>'
     ].join('')),
-      
+
   initialize : function(options) {
     var self = this;
-    
+
     var options = this.options = options || {};
     var formSchema = this.schema = {};
     formSchema['lower_criteria'] = {
-        title: '', 
+        title: '',
         key:  'lower_criteria', // TODO: "key" not needed>?
         type: 'Select',
         options: _.keys(self.criterium),
@@ -4216,13 +4216,13 @@ var DateFormFilter = CriteriumFormFilter.extend({
         type: 'Checkbox',
         template: self.checkboxTemplate,
         editorClass: ''
-    };    
+    };
 
     var FormFields = Backbone.Model.extend({
       schema: formSchema,
       validate: function(attrs) {
         var errs = {};
-        if(attrs.lower_criteria == 'in' 
+        if(attrs.lower_criteria == 'in'
           && !_.isEmpty(attrs.form_textarea) ){
           var datevals = attrs.form_textarea.split(',');
           var errmsgs = [];
@@ -4246,8 +4246,8 @@ var DateFormFilter = CriteriumFormFilter.extend({
     // Set BackboneForms selectedFields variable:
     // Check which fields will be included (defaults to all)
     this.selectedFields = ['lower_criteria','lower_value','form_textarea',
-                           'upper_value','invert_field']; 
-    
+                           'upper_value','invert_field'];
+
     this.listenTo(this, "change", function(e){
       var criteria = self.getValue('lower_criteria');
       if (Iccbl.appModel.DEBUG) console.log('change:' + criteria)
@@ -4271,7 +4271,7 @@ var DateFormFilter = CriteriumFormFilter.extend({
     });
 
     DateFormFilter.__super__.initialize.apply(this, arguments);
-    
+
   },
 
   clear: function(){
@@ -4288,11 +4288,11 @@ var DateFormFilter = CriteriumFormFilter.extend({
     });
     return !_.isEmpty(found);
   },
-  
+
   _search: function(hash){
     var self = this;
     var searchHash = _.clone(hash);
-    
+
     var found = false;
     _.each(_.keys(self.criterium), function(criteriaKey){
       var criteria = self.criterium[criteriaKey];
@@ -4333,20 +4333,20 @@ var DateFormFilter = CriteriumFormFilter.extend({
             self.setValue('lower_value', new Date(searchVal));
           }
         }catch(e){
-          var msg = 'Unable to parse date portion of the url, column: ' + 
+          var msg = 'Unable to parse date portion of the url, column: ' +
               self.columnName +', searchVal:'+ searchVal + ', error: ' + e;
           console.log(msg);
           Iccbl.appModel.error(msg);
           return false;
         }
-        
+
         if(negated){
           self.setValue('invert_field', true);
         }
       }
     });
     return found;
-  },  
+  },
 
   _getSearchHash: function(){
     var self = this;
@@ -4354,12 +4354,12 @@ var DateFormFilter = CriteriumFormFilter.extend({
     var values = self.getValue();
     var name = self.columnName;
 
-    
+
     var invert = values['invert_field'];
     if(invert) name = '-'+name;
     var criteria = self.criterium[values['lower_criteria']];
     var searchKey = name + '__' + criteria;
-    
+
     if(criteria == 'in'){
       searchHash[searchKey] = values['form_textarea'];
     }else if(criteria == 'is_null'){
@@ -4381,16 +4381,16 @@ var DateFormFilter = CriteriumFormFilter.extend({
       }
     }
     return searchHash
-    
+
   },
 
   _submit: function(){
     var self  = this;
     if(!self.isSet()) return;
-    
+
     // validate:true: tells bbf to run model.validate(), in addition to
     // field[].validate()
-    var errors = self.commit({ validate: true }); 
+    var errors = self.commit({ validate: true });
     if(!_.isEmpty(errors)){
       console.log('form errors, abort submit: ' + JSON.stringify(errors));
       this.$el.find('#range_upper_block').addClass(self.errorClass);
@@ -4398,15 +4398,15 @@ var DateFormFilter = CriteriumFormFilter.extend({
     }else{
       this.$el.find('#range_upper_block').removeClass(self.errorClass);
     }
-    
+
     return self._getSearchHash();
   }
 });
 
 var BooleanFormFilter = CriteriumFormFilter.extend({
-  criterium: {'': 'unset', 'true': 'true', 'false': 'false', 
+  criterium: {'': 'unset', 'true': 'true', 'false': 'false',
     'blank':'is_null','not blank':'not_blank'},
-    
+
   template: _.template([
       '<form class="iccbl-headerfield-form" >',
       '<div class="row center-block" style="margin: 0 0 0 0;" >',
@@ -4415,20 +4415,20 @@ var BooleanFormFilter = CriteriumFormFilter.extend({
       '     class="iccbl-headerfield-text" for="lower_value"   />',
       "</div>",
       "</form>"].join('')),
-  
+
   initialize : function(options) {
     var self = this;
     var options = this.options = options || {};
     var formSchema = this.schema = {};
     formSchema['lower_criteria'] = {
-        title: '', 
+        title: '',
         key:  'lower_criteria', // TODO: "key" not needed>?
         type: 'Select',
         options: _.keys(self.criterium),
         template: _.template(self.criteriaTemplate),
         editorClass: 'form-control'
     };
-    
+
     var FormFields = Backbone.Model.extend({
       schema: formSchema,
       validate: function(attrs) {
@@ -4440,8 +4440,8 @@ var BooleanFormFilter = CriteriumFormFilter.extend({
 
     // Set BackboneForms selectedFields variable:
     // Check which fields will be included (defaults to all)
-    this.selectedFields = ['lower_criteria'] 
-    
+    this.selectedFields = ['lower_criteria']
+
     BooleanFormFilter.__super__.initialize.apply(this, arguments);
   },
 
@@ -4467,7 +4467,7 @@ var BooleanFormFilter = CriteriumFormFilter.extend({
     }
     return searchHash;
   },
-  
+
   _submit: function(){
     var self  = this;
     if(!self.isSet()) return;
@@ -4478,7 +4478,7 @@ var BooleanFormFilter = CriteriumFormFilter.extend({
   _search: function(hash){
     var self = this;
     var searchHash = _.clone(hash);
-    
+
     var searchTerm = null;
     _.each(self.getPossibleSearches(), function(term){
       if(_.has(searchHash,term)) searchTerm = term;
@@ -4501,8 +4501,8 @@ var BooleanFormFilter = CriteriumFormFilter.extend({
       }
     }
     return searchTerm;
-  },  
-  
+  },
+
   isSet: function(){
     var values = this.getValue();
     var found = _.find(_.keys(values), function(key){
@@ -4510,18 +4510,18 @@ var BooleanFormFilter = CriteriumFormFilter.extend({
     });
     return found;
   },
-  
+
   getPossibleSearches: function(){
     return [this.columnName + '__eq',
             this.columnName + '__is_null'];
   }
-  
+
 });
 
 var SelectorFormFilter = CriteriumFormFilter.extend({
 
   criterium: {'': 'unset', 'blank':'is_null','not blank':'not_blank'},
-  
+
   template: _.template([
       "<form  class='form-horizontal container ' >",
       '<div class="row center-block" style="margin: 0 0 0 0;" >',
@@ -4538,26 +4538,26 @@ var SelectorFormFilter = CriteriumFormFilter.extend({
       '    </div>',
       '  </div>'
       ].join('')),
- 
+
   initialize: function(options){
-    
+
     var self = this;
     this.fieldinformation = options.fieldinformation || this.fieldinformation;
     if (_.isUndefined(this.fieldinformation)){
       throw 'must define a fieldinformation for SelectorFormFilter';
     }
-    
+
     // Create a form of checkboxes, one for each vocabulary item:
     // 1. start with fieldinformation.choices
     // 2. override with fieldinformation.vocabulary:
     // 2.a from fieldinformation.vocabulary, if available
     // 2.b fetch and add vocabulary from server
-    
+
     this.retiredFields = [];
     var choiceHash = {}
     var vocabulary;
     if(!_.isEmpty(this.fieldinformation.vocabulary)){
-      // TODO: vocabulary is using the titles as the key, 
+      // TODO: vocabulary is using the titles as the key,
       // because of how Backgrid.SelectCell initializes
       _.each(this.fieldinformation.vocabulary,function(pair){
         choiceHash[pair[1]] = pair[0];
@@ -4582,37 +4582,37 @@ var SelectorFormFilter = CriteriumFormFilter.extend({
       }
     }
 
-    var formSchema = this.schema = {};  
+    var formSchema = this.schema = {};
     _.each(_.keys(choiceHash), function(choice){
-      formSchema[choice] = { 
+      formSchema[choice] = {
           title: choiceHash[choice],
-          key:  choice, 
+          key:  choice,
           type: 'Checkbox',
-          template: self.altFieldTemplate 
+          template: self.altFieldTemplate
       };
       if (_.contains(self.retiredFields, choice)){
         formSchema[choice].title = formSchema[choice].title + ' (r)';
       }
-      
+
     });
 
     formSchema['lower_criteria'] = {
-      title: '', 
+      title: '',
       key:  'lower_criteria', // TODO: "key" not needed>?
       type: 'Select',
       options: _.keys(self.criterium),
       template: _.template(self.criteriaTemplate),
       editorClass: 'form-control'
     };
-    
+
     formSchema['invert_field'] = {
         title: 'invert',
         help: 'select this to invert the criteria',
         type: 'Checkbox',
         template: self.checkboxTemplate,
         editorClass: ''
-    };    
-    
+    };
+
     if (!_.isEmpty(this.retiredFields)){
       formSchema['show_retired'] = {
           title: 'show retired vocabularies',
@@ -4620,18 +4620,18 @@ var SelectorFormFilter = CriteriumFormFilter.extend({
           type: 'Checkbox',
           template: self.checkboxTemplate,
           editorClass: ''
-      };    
+      };
     }
-    
+
     var FormFields = Backbone.Model.extend({
       schema: formSchema
     });
     this.model = new FormFields();
 
     SelectorFormFilter.__super__.initialize.apply(this, arguments );
-    
+
     this.listenTo(this, "show_retired:change", function(){
-      
+
       var show_retired = self.getValue('show_retired');
       if (show_retired === true){
         _.each(self.retiredFields, function(key){
@@ -4643,7 +4643,7 @@ var SelectorFormFilter = CriteriumFormFilter.extend({
         });
       }
     });
-    
+
     this.listenTo(this, "lower_criteria:change", function(){
       var criteria = self.getValue('lower_criteria');
       if (Iccbl.appModel.DEBUG) console.log('criteria: ' + criteria);
@@ -4655,9 +4655,9 @@ var SelectorFormFilter = CriteriumFormFilter.extend({
         self.$el.find('[data-fields]').find('input').prop('disabled', false);
       }
     });
-    
+
   },
-  
+
   clear: function(){
     SelectorFormFilter.__super__.clear.apply(this, arguments);
     this.$el.find('[data-fields]').find('input').prop('disabled', false);
@@ -4671,7 +4671,7 @@ var SelectorFormFilter = CriteriumFormFilter.extend({
 
     var invert = values['invert_field'];
     if(invert) name = '-'+name;
-    
+
     var criteria = self.criterium[values['lower_criteria']];
     var searchKey = name + '__' + criteria;
     if(criteria == 'not_blank'){
@@ -4682,16 +4682,16 @@ var SelectorFormFilter = CriteriumFormFilter.extend({
       searchVal = 'true';
       searchHash[searchKey]=searchVal;
     }else{
-      var selected = _.filter(_.keys(values), function(key){ 
-        if(key !== 'invert_field' && key !== 'show_retired') return values[key]; 
+      var selected = _.filter(_.keys(values), function(key){
+        if(key !== 'invert_field' && key !== 'show_retired') return values[key];
         return false;
       });
       searchHash[name +'__in'] = selected.join(',');
     }
-    
+
     return searchHash;
   },
-    
+
   _submit: function(){
     var self  = this;
     if(!self.isSet()) return;
@@ -4712,7 +4712,7 @@ var SelectorFormFilter = CriteriumFormFilter.extend({
         searchVal = searchHash[term];
       }
     });
-    
+
     if(searchTerm){
       if(searchTerm.charAt(0) == '-'){
         self.setValue('invert_field', true);
@@ -4735,8 +4735,8 @@ var SelectorFormFilter = CriteriumFormFilter.extend({
       }
     }
     return searchTerm;
-  },  
-  
+  },
+
   /**
    * SelectorFormFilter Convenience - determine if the form has been set with
    * any values
@@ -4744,19 +4744,19 @@ var SelectorFormFilter = CriteriumFormFilter.extend({
   isSet: function(){
     var values = this.getValue();
     var found = _.find(_.keys(values), function(key){
-      if(key == 'invert_field' ) return false; // skip invert field 
+      if(key == 'invert_field' ) return false; // skip invert field
       return values[key];
     });
     return found;
   },
-  
+
   getPossibleSearches: function(){
     var possibleSearches = [this.columnName + '__in', '-'+this.columnName + '__in',
             this.columnName + '__is_null'];
     possibleSearches.push(this.columnName)
     return possibleSearches;
   },
-  
+
   render: function(){
     var self = this;
     var el = SelectorFormFilter.__super__.render.apply(this, arguments);
@@ -4768,13 +4768,13 @@ var SelectorFormFilter = CriteriumFormFilter.extend({
 });
 
 var NumberFormFilter = CriteriumFormFilter.extend({
-  
+
   criterium: {
     '=':'eq','\u2248':'about','>':'gt', '>=':'gte','<':'lt','<=':'lte',
     '<>':'ne', 'x..y':'range', 'in': 'in','blank':'is_null',
     'not blank':'not_blank'
   },
-  
+
   // FIXME: this template is a mix of adaptive and fixed styles, for instance:
   // for the first input-group: style="width: 50px"
   template: _.template([
@@ -4794,7 +4794,7 @@ var NumberFormFilter = CriteriumFormFilter.extend({
       '</div>',
       '</form>'
     ].join('')),
-      
+
   initialize : function(options) {
     var self = this;
     var options = this.options = options || {};
@@ -4802,7 +4802,7 @@ var NumberFormFilter = CriteriumFormFilter.extend({
     var fields = options.fields = options.fields || [];
 
     formSchema['lower_criteria'] = {
-        title: '', 
+        title: '',
         key:  'lower_criteria',
         type: 'Select',
         options: _.keys(self.criterium),
@@ -4837,12 +4837,12 @@ var NumberFormFilter = CriteriumFormFilter.extend({
         type: 'Checkbox',
         template: self.checkboxTemplate,
         editorClass: ''
-    };    
+    };
 
     var FormFields = Backbone.Model.extend({
       validate: function(attrs) {
         var errs = {};
-        //        if(attrs.lower_criteria == '...' 
+        //        if(attrs.lower_criteria == '...'
         //          && ( attrs.upper_value < 1 ) ){
         //          errs['upper_value'] = '!'
         //        }
@@ -4851,11 +4851,11 @@ var NumberFormFilter = CriteriumFormFilter.extend({
     });
     this.model = options['model'] = new FormFields();
     this.model.set('lower_criteria','>'); // default
-    
+
     options.fields = fields.concat(
         ['lower_criteria','lower_value','form_textarea',
-         'upper_value','invert_field']); 
-    
+         'upper_value','invert_field']);
+
     this.listenTo(this, "change", function(e){
       var criteria = self.getValue('lower_criteria');
       if(criteria == 'x..y'){
@@ -4878,7 +4878,7 @@ var NumberFormFilter = CriteriumFormFilter.extend({
     });
 
     NumberFormFilter.__super__.initialize.call(this, options);
-    
+
   },
 
   isSet: function(){
@@ -4891,7 +4891,7 @@ var NumberFormFilter = CriteriumFormFilter.extend({
     });
     return !_.isEmpty(found);
   },
-  
+
   _search: function(hash){
     var self = this;
     var searchHash = _.clone(hash);
@@ -4930,14 +4930,14 @@ var NumberFormFilter = CriteriumFormFilter.extend({
         }else{
           self.setValue('lower_value', searchVal);
         }
-        
+
         if(negated){
           self.setValue('invert_field', true);
         }
       }
     });
     return found;
-  },  
+  },
 
   _getSearchHash: function(){
     var self = this;
@@ -4950,7 +4950,7 @@ var NumberFormFilter = CriteriumFormFilter.extend({
     if(invert) name = '-'+name;
     var criteria = self.criterium[values['lower_criteria']];
     var searchKey = name + '__' + criteria;
-    
+
     if(criteria == 'in'){
       searchHash[searchKey] = values['form_textarea'];
     }else if(criteria == 'is_null'){
@@ -4976,7 +4976,7 @@ var NumberFormFilter = CriteriumFormFilter.extend({
   _submit: function(){
     var self  = this;
     if(!self.isSet()) return;
-    var errors = self.commit({ validate: true }); 
+    var errors = self.commit({ validate: true });
     if(!_.isEmpty(errors)){
       console.log('form errors, abort submit: ' + JSON.stringify(errors));
       this.$el.find('#range_upper_block').addClass(self.errorClass);
@@ -4984,15 +4984,15 @@ var NumberFormFilter = CriteriumFormFilter.extend({
     }else{
       this.$el.find('#range_upper_block').removeClass(self.errorClass);
     }
-    
+
     return self._getSearchHash();
   }
 });
 
 var SIUnitFormFilter = NumberFormFilter.extend({
-  
+
   symbol: "",
-  
+
   // provide a custom form template; use Bootstrap layout/styling
   template: _.template([
       '<form class="iccbl-headerfield-form" >',
@@ -5033,7 +5033,7 @@ var SIUnitFormFilter = NumberFormFilter.extend({
     if (_.isUndefined(this.fieldinformation)){
       throw 'must define a fieldinformation for SIUnitFormFilter';
     }
-    
+
     var options = _.extend({},this.fieldinformation['display_options'],options);
 
     if(!options.symbol)
@@ -5046,9 +5046,9 @@ var SIUnitFormFilter = NumberFormFilter.extend({
     var defaultUnit = this.defaultUnit = options.defaultUnit;
     var units = this.units = [];
     var formSchema = options.schema = options.schema || {};
-    
+
     if(! options.symbol){
-      throw 'Error: SIUnitFormFilter requires a "symbol" option' 
+      throw 'Error: SIUnitFormFilter requires a "symbol" option'
     }
     this.defaultSymbol = null;
     _.each(this.siunits,function(pair){
@@ -5064,32 +5064,32 @@ var SIUnitFormFilter = NumberFormFilter.extend({
       }
     });
     formSchema['lower_siunit'] = {
-      title: '', 
+      title: '',
       key:  'lower_siunit', // TODO: "key" not needed>?
       type: 'Select',
       options: units,
       template: _.template(self.criteriaTemplate),
       editorClass: 'form-control'
     };
-    
+
     formSchema['upper_siunit'] = {
-      title: '', 
+      title: '',
       key:  'upper_siunit', // TODO: "key" not needed>?
       type: 'Select',
       options: units,
       template: _.template(self.criteriaTemplate),
       editorClass: 'form-control'
     };
-    
+
     options['fields'] = ['lower_siunit','upper_siunit']
-    
+
     SIUnitFormFilter.__super__.initialize.call(this, options);
-    
+
   },
-  
+
   render: function(){
     SIUnitFormFilter.__super__.render.apply(this, arguments);
-    
+
     // Fixme: these values must be set after render, because inheritance is not
     // proper for this class.
     if (_.isNumber(this.defaultUnit)){
@@ -5097,16 +5097,16 @@ var SIUnitFormFilter = NumberFormFilter.extend({
       this.setValue('upper_siunit',this.defaultUnit);
     }
     return this;
-    
+
   },
-  
+
   isSet: function(){
     var values = this.getValue();
     if (_.isEmpty(values['lower_criteria'])){
       return false;
     }
     var found = _.find(_.keys(values), function(key){
-      if(key == 'lower_criteria' 
+      if(key == 'lower_criteria'
         || key == 'lower_siunit'
         || key == 'upper_siunit' ) return false;
       // signal isSet for any field value set
@@ -5114,18 +5114,18 @@ var SIUnitFormFilter = NumberFormFilter.extend({
     });
     return !_.isEmpty(found);
   },
-  
+
   _printSearchHash: function(searchHash){
     var self = this;
     _.each(_.keys(searchHash), function(key){
       var nu = self._findNumberAndUnit(searchHash[key]);
-      searchHash[key] = nu.number + '&nbsp;' 
+      searchHash[key] = nu.number + '&nbsp;'
         + _.result(_.invert(_.object(self.siunits)),nu.unit,nu.unit)
         + self.symbol;
     });
     return SIUnitFormFilter.__super__._printSearchHash.call(this, searchHash);
   },
-  
+
   _getSearchHash: function(){
     var self = this;
     var searchHash = {};
@@ -5164,7 +5164,7 @@ var SIUnitFormFilter = NumberFormFilter.extend({
     return searchHash;
   },
 
-  
+
   /**
    * SIUnitFormFilter Form submit handler
    */
@@ -5173,7 +5173,7 @@ var SIUnitFormFilter = NumberFormFilter.extend({
     SIUnitFormFilter.__super__._submit.call(this);
     return self._getSearchHash();
   },
-  
+
   _calculate: function(multiplier, sci_mult, val){
     // Run strip after every calculation to round out floating point math errors
     function strip(number) {
@@ -5185,7 +5185,7 @@ var SIUnitFormFilter = NumberFormFilter.extend({
     }
     return val;
   },
-  
+
   _findNumberAndUnit: function(number){
     var decimals = 3; // TODO: users will not be expected to enter values beyond
                       // 3 decimals
@@ -5195,27 +5195,27 @@ var SIUnitFormFilter = NumberFormFilter.extend({
       };
     number = strip(number/self.multiplier);
     pair = _.find(this.siunits, function(pair){
-      return pair[1] <= Math.abs(number); 
+      return pair[1] <= Math.abs(number);
     });
-    
+
     if(_.isUndefined(pair)){
       console.log('could not find units for the input number: ' + number);
       return { number:number, unit: ''};
     }
-    
+
     var val = (1/pair[1])*number;
     //val = Math.round(val*Math.pow(10,decimals))/Math.pow(10,decimals);
     val = round(val,decimals);
     return {number:val, unit: pair[1]};
   },
-  
+
   _search: function(hash){
     var self = this;
     var searchHash = _.clone(hash);
     var found = SIUnitFormFilter.__super__._search.call(this, hash);
     if(found){
       var values = self.getValue();
-      
+
       if(values['lower_value'] !== ''){
         var numberAndUnit = self._findNumberAndUnit(values['lower_value']);
         self.setValue('lower_value', numberAndUnit.number);
@@ -5228,13 +5228,13 @@ var SIUnitFormFilter = NumberFormFilter.extend({
       }
     }
     return found;
-  }  
-  
+  }
+
 });
 
 /**
  * Return an array for backgrid column descriptors.
- * 
+ *
  * @param {Object}
  *          prop - hash of field properties from REST metadata: field properties {
  *          visibility: [array of strings], title: a label for the field, order:
@@ -5247,12 +5247,12 @@ var SIUnitFormFilter = NumberFormFilter.extend({
  * @param {array}
  *          orderStack - for rendering ordered columns
  */
-var createBackgridColumn = Iccbl.createBackgridColumn = 
+var createBackgridColumn = Iccbl.createBackgridColumn =
   function(key, prop, _orderStack, optionalHeaderCell ){
-  
+
   var orderStack = _orderStack || [];
   var column = {};
-  var visible = _.has(prop, 'visibility') && 
+  var visible = _.has(prop, 'visibility') &&
                     _.contains(prop['visibility'], 'l');
   var data_type = _.isEmpty(prop.data_type)?'string':prop.data_type.toLowerCase();
   var display_type = _.isEmpty(prop.display_type)?data_type:prop.display_type.toLowerCase();
@@ -5274,15 +5274,15 @@ var createBackgridColumn = Iccbl.createBackgridColumn =
   }
 
   if(!_.isEmpty(prop.vocabulary)){
-    cell_options.optionValues = prop.vocabulary; 
+    cell_options.optionValues = prop.vocabulary;
   }else if(!_.isEmpty(prop.vocabulary_scope_ref)){
     cell_options = _.extend(cell_options,{
-      optionValues: 
+      optionValues:
         Iccbl.appModel.getVocabularySelectCellArray(prop.vocabulary_scope_ref),
       vocabulary_scope_ref: prop.vocabulary_scope_ref
     });
   }
-  
+
   if (_.has(prop, 'backgridCellType')){
     if (Iccbl.appModel.DEBUG){
       console.log('using specified "backgridCellType": ',key, prop.backgridCellType );
@@ -5299,7 +5299,7 @@ var createBackgridColumn = Iccbl.createBackgridColumn =
       if (Iccbl.appModel.DEBUG)
         console.log('field', key, display_type, 'typemap',typeMap[display_type])
       var backgridCellType = typeMap[display_type];
-      
+
       if (display_type=='link' && data_type=='list'){
         backgridCellType = Iccbl.UriListCell;
       }
@@ -5313,8 +5313,8 @@ var createBackgridColumn = Iccbl.createBackgridColumn =
     if(!_.isEmpty(cell_options)){
       backgridCellType = backgridCellType.extend(cell_options);
     }
-    
-  }  
+
+  }
 //  if (data_type == 'list'){
 //    backgridCellType = backgridCellType.extend({
 //      formatter: Iccbl.StringFormatter
@@ -5342,7 +5342,7 @@ var createBackgridColumn = Iccbl.createBackgridColumn =
   else if(orderStack && _.contains(orderStack, '-' + key)){
     column['direction'] = 'descending';
   }
-  
+
   var headerCellDefaults = {
     'fieldinformation': prop,
     'serverSideFilter': TextFormFilter
@@ -5351,7 +5351,7 @@ var createBackgridColumn = Iccbl.createBackgridColumn =
     column['headerCell'] = optionalHeaderCell.extend(headerCellDefaults);
   }else if (_.has(prop, 'headerCell')){
     column['headerCell'] = prop.headerCell.extend(headerCellDefaults);
-  } 
+  }
   else{
     // Set up a more specific header cell, with filter
     if(data_type == 'string'){
@@ -5360,7 +5360,7 @@ var createBackgridColumn = Iccbl.createBackgridColumn =
     else if(data_type == 'integer'
       || data_type == 'float'
       || data_type == 'decimal' ){
-      
+
       if(display_type == 'siunit'){
         headerCellDefaults['serverSideFilter'] = SIUnitFormFilter;
       } else {
@@ -5374,24 +5374,24 @@ var createBackgridColumn = Iccbl.createBackgridColumn =
       headerCellDefaults['serverSideFilter'] = BooleanFormFilter;
     }
 
-    if( edit_type == 'select' 
-      || edit_type == 'multiselect' 
-      || edit_type == 'multiselect2' 
-      || edit_type == 'multiselect3' 
-        
+    if( edit_type == 'select'
+      || edit_type == 'multiselect'
+      || edit_type == 'multiselect2'
+      || edit_type == 'multiselect3'
+
     ){
       headerCellDefaults['serverSideFilter'] = SelectorFormFilter;
     }
     column['headerCell'] = FilterHeaderCell.extend(headerCellDefaults);
   }
-    
+
   return column;
 };
 
 
-var createBackgridColModel = Iccbl.createBackgridColModel = 
+var createBackgridColModel = Iccbl.createBackgridColModel =
   function(restFields, _orderStack, _searchHash, _manualIncludes) {
-    
+
   console.log('--createBackgridColModel');
   var manualIncludes = _manualIncludes || [];
   var orderStack = _orderStack || [];
@@ -5405,7 +5405,7 @@ var createBackgridColModel = Iccbl.createBackgridColModel =
     var prop = pair[1];
     var column = createBackgridColumn(key, prop, orderStack);
     column.key = key;
-    var visible = _.has(prop, 'visibility') && 
+    var visible = _.has(prop, 'visibility') &&
       _.contains(prop['visibility'], 'l');
     if (visible || _.contains(manualIncludes, key) ) {
       if(_.contains(manualIncludes, '-'+key)){
@@ -5417,7 +5417,7 @@ var createBackgridColModel = Iccbl.createBackgridColModel =
     } else {
       var hashSearch = RegExp('^(' + key + ')(_{2}\w+)?$');
       var orderSearch = RegExp('^-?' + key + '$');
-      if( 
+      if(
         _.findKey(searchHash, function(val,hashkey){
           return hashSearch.test(hashkey);
         })
@@ -5430,7 +5430,7 @@ var createBackgridColModel = Iccbl.createBackgridColModel =
       }
     }
   });
-  
+
   colModel = new Backgrid.Columns(colModel);
   colModel.comparator = 'order';
   colModel.sort();

@@ -118,10 +118,10 @@ define([
     
     defaults: {
 
-      // TODO: deprecate these variables
-      // use the REPORTS_API_URI, and DB_API_URI defined below
-      root_url: '/',  // used for the backbone history
-      api_root_url: '/reports/api/v1',
+//      // TODO: deprecate these variables
+//      // use the REPORTS_API_URI, and DB_API_URI defined below
+//      root_url: '/',  // used for the backbone history
+//      api_root_url: '/reports/api/v1',
 
       path: '',
       actualStack: [],

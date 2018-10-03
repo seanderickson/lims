@@ -87,6 +87,7 @@ module.exports = {
   },
   plugins: [
     assetsPluginInstance,
+    // Use ProvidePlugin to shim
     new webpack.ProvidePlugin({
       'LayoutManager': 'layoutmanager'
     }),

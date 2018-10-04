@@ -184,9 +184,8 @@ function django_migrate {
     error "demo server creation requires db/migrations_new_install directory"
   else
     echo "back up the existing migrations directory..."
-    cp -a db/migrations "db/migrations_$(ts)"
-    rm -rf db/migrations
-    cp -a db/migrations_new_install db/migrations
+    mv db/migrations db/migrations_bak
+    mv db/migrations_new_install db/migrations
   fi
   
   
@@ -194,6 +193,10 @@ function django_migrate {
   do
     echo "migrate app: $x ..." >> "$LOGFILE"
     $DJANGO_CMD migrate $x; #  --fake-initial; 
+    if [[ $? -ne 0 ]]; then
+      error "migrate app $x failed: $?" >> "$LOGFILE"
+    fi
+    $DJANGO_CMD showmigrations $x; #  --fake-initial; 
   done
   
   echo "- Create the superuser: $adminuser" >> "$LOGFILE"
@@ -271,6 +274,12 @@ function django_migrate {
   #  echo "restore migrations_existing_database and migrations_new_install directories..."
   #  mv db/migrations db/migrations_new_install
   #  mv db/migrations_existing_database db/migrations
+  if [[ -e db/migrations_bak ]]; then
+    echo "restore migrations directory..."
+    mv db/migrations db/migrations_new_install
+    mv db/migrations_bak db/migrations
+  fi
+  
   
   echo "django_migrate done: $(ts) ..." >> "$LOGFILE"
 }

@@ -12,7 +12,7 @@ function error () {
 function read_auth_file() {
   auth_file=$1
   if [[ ! -e $auth_file ]]; then
-     warn "apache auth file not found at: \"$auth_file\""
+     error "apache auth file not found at: \"$auth_file\""
   else 
 
 #set -x

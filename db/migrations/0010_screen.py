@@ -58,7 +58,8 @@ def make_log(
         times_seen.add(max_datetime)
         log.date_time = max_datetime
         collision_counter = collision_counter + 1
-        
+    
+    log.save()   
     return log
 
 def migrate_pin_transfer_approval(apps, schema_editor):
@@ -93,6 +94,7 @@ def migrate_pin_transfer_approval(apps, schema_editor):
             diffs=diffs, comment=activity.comments,
             user_id=activity.created_by.screensaver_user_id,
             username=activity.created_by.username)
+        
         count = count + 1
         
         s.pin_transfer_approved_by = activity.created_by

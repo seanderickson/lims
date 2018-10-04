@@ -976,21 +976,21 @@ class CachedQuery(models.Model):
             '<CachedQuery(id: %r, uri: %r, username: %r, count:%r)>' 
             % (self.id, self.uri, self.username, self.count ))
 
-class WellQueryIndex(models.Model):
-    ''' For caching large resultvalue queries '''
-     
-    well = models.ForeignKey(
-        'Well', null=False, on_delete=models.CASCADE)
-    query = models.ForeignKey(
-        'CachedQuery', null=False, on_delete=models.CASCADE)
-
-    class Meta:
-        db_table = 'well_query_index'
-
-    def __repr__(self):
-        return (
-            '<WellQueryIndex(id: %r, well: %r, query: %r)>' 
-            % (self.id, self.well, self.query ))
+# class WellQueryIndex(models.Model):
+#     ''' For caching large resultvalue queries '''
+#      
+#     well = models.ForeignKey(
+#         'Well', null=False, on_delete=models.CASCADE)
+#     query = models.ForeignKey(
+#         'CachedQuery', null=False, on_delete=models.CASCADE)
+# 
+#     class Meta:
+#         db_table = 'well_query_index'
+# 
+#     def __repr__(self):
+#         return (
+#             '<WellQueryIndex(id: %r, well: %r, query: %r)>' 
+#             % (self.id, self.well, self.query ))
         
 class Reagent(models.Model):
 

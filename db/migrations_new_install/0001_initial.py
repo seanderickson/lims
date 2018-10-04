@@ -690,17 +690,6 @@ class Migration(migrations.Migration):
             },
         ),
         migrations.CreateModel(
-            name='WellQueryIndex',
-            fields=[
-                ('id', models.AutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('query', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='db.CachedQuery')),
-                ('well', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='db.Well')),
-            ],
-            options={
-                'db_table': 'well_query_index',
-            },
-        ),
-        migrations.CreateModel(
             name='LabActivity',
             fields=[
                 ('activitylink', models.OneToOneField(db_column='activity_id', on_delete=django.db.models.deletion.CASCADE, parent_link=True, primary_key=True, serialize=False, to='db.Activity')),

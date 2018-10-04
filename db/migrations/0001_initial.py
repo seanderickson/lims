@@ -889,7 +889,7 @@ class Migration(migrations.Migration):
                 ('ecommons_id', models.TextField(null=True)),
                 ('date_loaded', models.DateTimeField(null=True)),
                 ('date_publicly_available', models.DateTimeField(null=True)),
-#                 ('login_id', models.TextField(null=True)),
+                ('login_id', models.TextField(null=True)),
 #                 ('digested_password', models.TextField(null=True)),
                 ('comments', models.TextField(null=True)),
                 ('gender', models.TextField(null=True)),

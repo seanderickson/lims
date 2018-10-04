@@ -160,10 +160,12 @@ class Migration(migrations.Migration):
             model_name='LabActivity',
             name='screen',
         ),
-
+        migrations.RemoveField(
+            model_name='ScreensaverUser',
+            name='login_id'),
+            
         migrations.RunSQL('''
             alter table screensaver_user drop column digested_password ;
-            alter table screensaver_user drop column login_id;
         '''),
 
         # FIXME: not working on orchestra: moved to manual migration 0002

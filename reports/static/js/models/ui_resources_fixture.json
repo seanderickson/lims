@@ -342,8 +342,8 @@
       "order": []  }
   },
   "librarycopy_sm_freeze_thaw": {
-    "title": "Small Molecule Copy Freeze Thaw",
-    "listing_title": "Small Molecule Copy Freeze Thaw",
+    "title": "Copy Freeze Thaw Report (Small Molecule)",
+    "listing_title": "Copy Freeze Thaw Report (Small Molecule)",
     "api_resource": "librarycopy",
     "description": "Show the screening copies that have been freeze/thawed 12 or more times",
     "options": { 
@@ -363,8 +363,8 @@
     }
   },
   "librarycopy_sm_min_volume": {
-    "title": "Small Molecule Copy Min Vol Remaining",
-    "listing_title": "Small Molecule Copy Min Vol Remaining",
+    "title": "Copy Min Vol Report (Small Molecule)",
+    "listing_title": "Copy Min Vol Report (Small Molecule)",
     "api_resource": "librarycopy",
     "description": "Show the screening copies that have a minimum well volume less than 7 uL",
     "options": { 
@@ -390,8 +390,8 @@
       "order": []  }
   },
   "librarycopyplate_sm_freeze_thaw": {
-    "title": "Small Molecule Plate Freeze Thaw",
-    "listing_title": "Small Molecule Plate Freeze Thaw",
+    "title": "Plate Freeze Thaw Report (Small Molecule)",
+    "listing_title": "Plate Freeze Thaw Report (Small Molecule)",
     "description": "Report the screening copy plates that have been freeze/thawed 12 or more times",
     "detailView": "LibraryCopyPlateView",
     "listView": "LibraryCopyPlateView",
@@ -413,8 +413,8 @@
     }
   },
   "librarycopyplate_sm_min_vol": {
-    "title": "Small Molecule Plate Min Vol Remaining",
-    "listing_title": "Small Molecule Plate Min Vol Remaining",
+    "title": "Plate Min Vol Report (Small Molecule)",
+    "listing_title": "Plate Min Vol Report (Small Molecule)",
     "description": "Show the screening copy plates that have a minimum well volume less than 7 uL",
     "detailView": "LibraryCopyPlateView",
     "listView": "LibraryCopyPlateView",

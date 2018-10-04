@@ -55,25 +55,25 @@
         }
       }
     },
-    "activity":{
-      "view": "",
-      "expanded": false,
-      "submenus": {
-        "activity_service": {
-          "view": "list"
-        },
-        "activity_lab": {
-          "view": "list"
-        },
-        "activity_all": {
-          "view": "list"
-        }
-      }          
-    },
     "reports": {
       "expanded": false,
       "view": "",
       "submenus": {
+        "activity":{
+          "view": "",
+          "expanded": false,
+          "submenus": {
+            "activity_service": {
+              "view": "list"
+            },
+            "activity_lab": {
+              "view": "list"
+            },
+            "activity_all": {
+              "view": "list"
+            }
+          }          
+        },
         "librarycopy": {
           "view": "list",
           "expanded": false,
@@ -113,18 +113,13 @@
         "platelocation": {
           "view": "list"
         },
-        "libraryscreening": {
-          "view": "list"
-        },
         "reagent":{
           "view": "list",
           "expanded": false,
           "submenus": {
             "smallmoleculereagent":{
-              "view": "list"
-            },
-            "compound_search": {
-              "view": "list"
+              "view": "list",
+              "alias": "compound_search"
             },
             "silencingreagent":{
               "view": "list"

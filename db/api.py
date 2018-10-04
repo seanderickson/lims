@@ -260,6 +260,14 @@ class DbApiResource(reports.api.ApiResource):
                     sqlalchemy.Column('screen_id', sqlalchemy.Integer),
                     sqlalchemy.Column('overlap_screen_id', sqlalchemy.Integer))
                 
+            elif table_name == 'well_query_index':
+                return sqlalchemy.sql.schema.Table(
+                    'well_query_index', 
+                    aldjemy.core.get_meta(),
+                    sqlalchemy.Column('id', sqlalchemy.Integer),
+                    sqlalchemy.Column('well_id', sqlalchemy.Integer),
+                    sqlalchemy.Column('query_id', sqlalchemy.Integer))
+                
             else:
                 raise Exception('unknown table: %r', table_name)
         
@@ -3903,7 +3911,7 @@ class ScreenResultResource(DbApiResource):
             settings, 'MAX_WELL_INDEXES_TO_CACHE', 3e+08)
         logger.debug('max_indexes_to_cache %s' % max_indexes_to_cache)
 
-        _wellQueryIndex = self.bridge['well_query_index']
+        _wellQueryIndex = self.get_table_def('well_query_index')
 
         try:
             query = CachedQuery.objects.filter(uri__contains='/screenresult/')
@@ -4148,7 +4156,7 @@ class ScreenResultResource(DbApiResource):
         MIN_WELLS_TO_CLEAR_INDEXES = getattr(
             settings, 'MIN_WELLS_TO_CLEAR_INDEXES', 3e5)
         
-        _wellQueryIndex = self.bridge['well_query_index']
+        _wellQueryIndex = self.get_table_def('well_query_index')
         
         # 1.a insert the base statement well ids into the indexing table
         m = hashlib.md5()
@@ -4311,7 +4319,7 @@ class ScreenResultResource(DbApiResource):
         _reagent = self.bridge['reagent']
         _library = self.bridge['library']
         excluded_cols_select = self.create_exclusions_cte(screenresult)
-        _wellQueryIndex = self.bridge['well_query_index']
+        _wellQueryIndex = self.get_table_def('well_query_index')
                     
         # Strategy: 
         # 1. create the base clause, which will build a stored index in 

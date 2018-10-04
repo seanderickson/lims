@@ -59,6 +59,10 @@ class CustomAuthenticationBackend():
                         user = User.objects.get(username=logged_in_as)
                         logger.info('logged in super user %r as %r',
                             superuser, logged_in_as)
+                        if user.is_superuser:
+                            if not s_user.is_superuser:
+                                raise PermissionDenied(
+                                    '"login as" may not be used to access a superuser account')
                         return user
                     except User.DoesNotExist, e:
                         msg = 'no such user with the id: %r' % username

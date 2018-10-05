@@ -1,8 +1,8 @@
 key,scope,table,field,ref,category,ordinal,comment,filtering,description,title,ordering,json_field_type,vocabulary_scope_ref,visibility,editability,data_type,display_type,display_options,edit_type,is_restricted,nested_resource,required,regex,min,alphanumeric_sort
 activity_id,fields.libraryscreening,activity,,fields.activity/activity_id,,0,,TRUE,"Activity ID","Activity ID",TRUE,,,[d],,integer,link,"{ 'hrefTemplate': '#screen/{screen_facility_id}/summary/libraryscreening/{activity_id}' }",,,,,,,
 date_of_activity,fields.libraryscreening,activity,,fields.activity/date_of_activity,,1,,TRUE,"The date the activity was performed","Date Performed",TRUE,,,[l;d],[c;u],date,link,"{ 'hrefTemplate': '#screen/{screen_facility_id}/summary/libraryscreening/{activity_id}' }",,,,,,,
-type,fields.libraryscreening,activity,,fields.activity/type,,3,"Note: read only for library screening",TRUE,"The type of the activity",Type,TRUE,,activity.type.screening,[l;d],,string,link,"{ 'hrefTemplate': '#vocabulary/activity.type/{type}' }",select,,,FALSE,,,
-classification,fields.libraryscreening,activity,,fields.activity/classification,,101,"Note: read only for library screening",TRUE,"The class of the activity","Activity Class",TRUE,,activity.class,[],,string,,,select,,,FALSE,,,
+type,fields.libraryscreening,activity,,fields.activity/type,,3,"Note: read only for library screening",TRUE,"The type of the activity",Type,TRUE,,activity.type.screening,[l;d],[],string,link,"{ 'hrefTemplate': '#vocabulary/activity.type/{type}' }",select,,,FALSE,,,
+classification,fields.libraryscreening,activity,,fields.activity/classification,,101,"Note: read only for library screening",TRUE,"The class of the activity","Activity Class",TRUE,,activity.class,[],[],string,,,select,,,FALSE,,,
 serviced_user,fields.libraryscreening,activity,,fields.activity/serviced_user,,102,"Note: not used for library screening",,"User the service activity was performed for","Serviced User",TRUE,,,[],[],,,,,,,,,,
 funding_support,fields.libraryscreening,custom,,,,101,"Note: hide for Library Screening, uses screen_funding_supports",TRUE,"Funding Support","Funding Support",TRUE,,,[],,,,,,,,,,,
 number_of_replicates,fields.libraryscreening,screening,,,,21,,TRUE,"Number of replicates",Replicates,TRUE,,,[l;d;e],[c;u],integer,,"{ 'hrefTemplate': '#screen/{screen_facility_id}/libraryscreening/{activity_id}' }",,,,TRUE,,1,
@@ -17,4 +17,4 @@ comments,fields.libraryscreening,activity,,,,29,,TRUE,Comments,Comments,TRUE,,,[
 assay_protocol_type,fields.libraryscreening,screening,,,,26,"Todo: deprecated",TRUE,"Protocol type","Protocol Type",TRUE,,assayprotocol.type,,,string,,,select,,,,,,
 assay_protocol_last_modified_date,fields.libraryscreening,screening,,,,27,"Todo: deprecated",FALSE,"The date this assay protocol was last modified","Last Modified",FALSE,,,,,date,,,,,,,,,
 assay_protocol,fields.libraryscreening,screening,,,,28,"Todo: deprecated",TRUE,"Assay protocol",Protocol,TRUE,,,,,string,,,textarea,,,,,,
-screen_facility_id,fields.libraryscreening,,,fields.activity/screen_facility_id,,7,,,,,,,,[l],,,,,,,,TRUE,,,
+screen_facility_id,fields.libraryscreening,,,fields.activity/screen_facility_id,,7,,,,,,,,[l],[c],,,,,,,TRUE,,,

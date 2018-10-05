@@ -11,6 +11,16 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
+        
+        # NOTE: complete this operation from the last (0010) due to tx triggers 
+        # blocking this action in the (0010).
+        # NOTE: should just drop the foreign key constraint here
+        migrations.RunSQL('''
+            alter table screen drop constraint fk_screen_to_pin_transfer_admin_activity;
+        '''),
+#         migrations.RunSQL('''
+#             update screen set pin_transfer_admin_activity_id = null;
+#         '''),
 
         # TODO: 20170918 ======
         # - to be tested with the orchestra migrations

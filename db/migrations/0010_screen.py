@@ -13,6 +13,7 @@ import pytz
 
 from db.migrations import create_log_time, times_seen
 from reports.utils import default_converter
+from reports.models import ApiLog
 
 
 logger = logging.getLogger(__name__)
@@ -23,7 +24,7 @@ def make_log(
     apps, input_date, ref_resource_name, key, 
     diffs=None, comment=None, user_id=None, username=None):
 
-    ApiLog = apps.get_model('reports','apilog')
+#     ApiLog = apps.get_model('reports','apilog')
     collision_counter=0
 
     if diffs is None:
@@ -191,6 +192,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ('db', '0008_usergroups'),
+        ('reports', '0001_initial'), 
     ]
 
     operations = [
@@ -203,10 +205,15 @@ class Migration(migrations.Migration):
         #     model_name='screen',
         #     name='pin_transfer_admin_activity',
         # ),
-        migrations.RunSQL('''
-            update screen set pin_transfer_admin_activity_id = null;
-        '''),
         
+#         # NOTE: should just drop the foreign key constraint here
+#         migrations.RunSQL('''
+#             alter table screen drop constraint fk_screen_to_pin_transfer_admin_activity;
+#         '''),
+# #         migrations.RunSQL('''
+# #             update screen set pin_transfer_admin_activity_id = null;
+# #         '''),
+#         
         migrations.RunPython(migrate_screen_project_phase),
         
 # Moved to final migration        

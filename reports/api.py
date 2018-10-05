@@ -2890,6 +2890,7 @@ class FieldResource(ApiResource):
     
     def build_schema(self, user=None, **kwargs):
         # start with the default schema for bootstrapping
+        logger.info('field.build_schema ...')
         default_field = {
             'data_type': 'string',
             'editability': ['c','u'],
@@ -2933,15 +2934,17 @@ class FieldResource(ApiResource):
                 
             },
         }
-        
+        logger.info('1. query db for field metadata...')
         field_schema = deepcopy(
             MetaHash.objects.get_and_parse(
                 scope='fields.field', field_definition_scope='fields.field',
                 clear=True))
+        logger.info('2...')
         for key,val in field_schema.items():
             for k,v in default_field.items():
                 if k not in val or val.get(k)==None:
                     val[k] = v
+        logger.info('3...')
         # do not allow the default values to be changed
         for key, val in default_schema.items():
             if key in field_schema:
@@ -2975,10 +2978,12 @@ class FieldResource(ApiResource):
             'supertype': '',
             RESOURCE.FIELDS: field_schema,
         }
+        logger.info('4...')
+        
         temp = [ x.scope for x in self.Meta.queryset.distinct('scope')]
         schema['extraSelectorOptions'] = { 
             'label': 'Resource', 'searchColumn': 'scope', 'options': temp }
-        
+        logger.info('field.build_schema - done')
         return schema
     
     @read_authorization
@@ -3176,17 +3181,13 @@ class FieldResource(ApiResource):
                         temp = deepcopy(ref_field)
                         for k,v in field.items():
                             # Overwrite the parent fields if val is set for base field
-                            # NOTE: ref_field values cannot be overwritten with null
+                            # NOTE 1: ref_field values cannot be overwritten with null
+                            # NOTE 2: any list field will be overwritten:
+                            # (e.g. editability/visibility must be set in the child)
                             if DEBUG_RESOURCES:
                                 logger.info('test ref key, %r, val: %r, base: %r', k, v, temp.get(k))
                             if v is not None and v != '':
-                                if isinstance(v, (list,tuple)):
-                                    # NOTE: csv input for null is converted to empty list
-                                    # (overwrite with parent if empty list)
-                                    if v:
-                                        temp[k] = v
-                                else:
-                                    temp[k] = v
+                                temp[k] = v
                             if DEBUG_RESOURCES:
                                 logger.info('final: %r, %r', k, temp[k])
                         recursion_test.pop()
@@ -3197,18 +3198,6 @@ class FieldResource(ApiResource):
             field['1'] = field['scope']
             field['2'] = field['key']
             fields[key] = fill_field_refs(key)
-# 
-#             vocab_scope_ref = field.get('vocabulary_scope_ref')
-#             if vocab_scope_ref:
-#                 vocab_hash = VocabularyResource()._get_vocabularies_by_scope(vocab_scope_ref)
-#                 
-#                 if vocab_hash:
-#                     field['choices'] = [
-#                         key for key,vocab in vocab_hash.items() 
-#                             if vocab.get('is_retired') is not True]
-#                 else:
-#                     logger.info('could not find vocab for %r, %r, ref: %r', 
-#                         key, field.get('scope'), vocab_scope_ref)    
         
         decorated = [(x['scope'],x['ordinal'],x['key'], x) for x in fields.values()]
         decorated.sort(key=itemgetter(0,1,2))

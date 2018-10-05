@@ -16,7 +16,6 @@ class Migration(migrations.Migration):
         # blocking this action in the (0010).
         # NOTE: should just drop the foreign key constraint here
         migrations.RunSQL('''
-            alter table screen drop constraint fk_screen_to_pin_transfer_admin_activity;
             alter table screen drop constraint fk_pin_transfer_admin_activity_id;
         '''),
 #         migrations.RunSQL('''

@@ -595,7 +595,7 @@ var parseWellSelections = Iccbl.parseWellSelections =
           errors.push('Row is out of range: "' + input + '", max: '+ rowToLetter(numRows-1));
           return;
         }
-        for(var i=0;i<=numCols;i++) {
+        for(var i=0;i<numCols;i++) {
           for(var j=startRow; j<=stopRow; j++)
           {
             wells.push(Iccbl.getWellName(j,i));
@@ -700,6 +700,9 @@ var parseWellSelections = Iccbl.parseWellSelections =
     }
   });
   if (Iccbl.appModel.DEBUG) console.log('wells', wells);
+  if (Iccbl.appModel.DEBUG && !_.isEmpty(errors)){
+    console.log('errors', errors);
+  }
   return wells;
 };
 
@@ -747,15 +750,16 @@ var generateNamedWellBlockString = Iccbl.generateNamedWellBlockString =
         var entry;
         var firstEntry = wellBlock[0][0];
         if (wellBlock.length > 1){
+          var firstBlockLast = wellBlock[0][wellBlock.length-1]
           var lastBlock = wellBlock[wellBlock.length-1];
           var lastEntry = lastBlock[lastBlock.length-1];
           if (Iccbl.appModel.DEBUG) console.log('wellBlock 0', wellBlock[0],wellBlock[0].length, nCols );
-          if (wellBlock[0].length == nRows && sameCol(firstEntry,lastEntry)){
+          if (wellBlock[0].length == nRows && sameCol(firstEntry,firstBlockLast)){
             // assume a col
             var firstCol = parseInt(WELL_PATTERN.exec(firstEntry)[2]);
             var lastCol = parseInt(WELL_PATTERN.exec(lastEntry)[2]);
             entry = firstCol + '-' + lastCol;
-          }else if (wellBlock[0].length == nCols && sameRow(firstEntry,lastEntry)){
+          }else if (wellBlock[0].length == nCols && sameRow(firstEntry,firstBlockLast)){
             // assume a row
             var rowLetter1 = WELL_PATTERN.exec(firstEntry)[1];
             var rowLetter2 = WELL_PATTERN.exec(lastEntry)[1];

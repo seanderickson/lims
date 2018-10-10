@@ -726,6 +726,18 @@ var generateNamedWellBlockString = Iccbl.generateNamedWellBlockString =
   var finalArray = [];
   var nCols = self.getCols(plateSize);
   var nRows = self.getRows(plateSize);
+  
+  function sameRow(firstEntry, lastEntry){
+    var rowLetter1 = WELL_PATTERN.exec(firstEntry)[1];
+    var rowLetter2 = WELL_PATTERN.exec(lastEntry)[1];
+    return rowLetter1==rowLetter2;
+  };
+  function sameCol(firstEntry, lastEntry){
+    var col1 = WELL_PATTERN.exec(firstEntry)[2];
+    var col2 = WELL_PATTERN.exec(lastEntry)[2];
+    return col1==col2;
+  };
+  
   _.each(namedWellRanges, function(namedRange){
     var wellBlocks = self.getWellBlocks(namedRange['wells'], plateSize);
     var label = namedRange['label'];
@@ -738,12 +750,12 @@ var generateNamedWellBlockString = Iccbl.generateNamedWellBlockString =
           var lastBlock = wellBlock[wellBlock.length-1];
           var lastEntry = lastBlock[lastBlock.length-1];
           if (Iccbl.appModel.DEBUG) console.log('wellBlock 0', wellBlock[0],wellBlock[0].length, nCols );
-          if (wellBlock[0].length == nRows){
+          if (wellBlock[0].length == nRows && sameCol(firstEntry,lastEntry)){
             // assume a col
             var firstCol = parseInt(WELL_PATTERN.exec(firstEntry)[2]);
             var lastCol = parseInt(WELL_PATTERN.exec(lastEntry)[2]);
             entry = firstCol + '-' + lastCol;
-          }else if (wellBlock[0].length == nCols){
+          }else if (wellBlock[0].length == nCols && sameRow(firstEntry,lastEntry)){
             // assume a row
             var rowLetter1 = WELL_PATTERN.exec(firstEntry)[1];
             var rowLetter2 = WELL_PATTERN.exec(lastEntry)[1];
@@ -756,11 +768,11 @@ var generateNamedWellBlockString = Iccbl.generateNamedWellBlockString =
           var firstEntry = onlyBlock[0];
           if (onlyBlock.length > 1){
             var lastEntry = onlyBlock[onlyBlock.length-1];
-            if (onlyBlock.length == nRows){
+            if (wellBlock[0].length == nRows && sameCol(firstEntry,lastEntry)){
               // assume a col
               entry = parseInt(WELL_PATTERN.exec(firstEntry)[2]);
             }
-            else if (onlyBlock.length == nCols){
+            else if (wellBlock[0].length == nCols && sameRow(firstEntry,lastEntry)){
               // assume a row
               entry = WELL_PATTERN.exec(firstEntry)[1];
             }else{

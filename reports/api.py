@@ -765,8 +765,15 @@ class ApiResource(SqlAlchemyResource):
             request,
             format='json',
             **kwargs)
+        
         _data = self.get_serializer().deserialize(
             LimsSerializer.get_content(response), JSON_MIMETYPE)
+
+        if response.status_code >= 300:
+            logger.warn('_patch_detail_internal error: %r, %r', 
+                response.status_code, _data)
+            return self.build_error_response(request, _data)
+        
         return _data
     
     def _patch_list_internal(self, data, user=None, **kwargs):
@@ -802,6 +809,12 @@ class ApiResource(SqlAlchemyResource):
             **kwargs)
         _data = self.get_serializer().deserialize(
             LimsSerializer.get_content(response), JSON_MIMETYPE)
+
+        if response.status_code >= 300:
+            logger.warn('_patch_list_internal error: %r, %r', 
+                response.status_code, _data)
+            return self.build_error_response(request, _data)
+        
         return _data
     
     def build_schema(self, user=None, **kwargs):
@@ -1706,7 +1719,8 @@ class ApiResource(SqlAlchemyResource):
         if patched_log:
             patched_log.save()
             meta[SCHEMA.API_MSG_RESULT] = SCHEMA.API_MSG_SUCCESS
-            logger.debug('patch log: %r', patched_log)
+            if DEBUG_PATCH_LOG:
+                logger.info('patch log: %r', patched_log)
         else:
             logger.info('no patch log')
             meta[SCHEMA.API_MSG_WARNING] = 'No Changes were detected'
@@ -2890,7 +2904,6 @@ class FieldResource(ApiResource):
     
     def build_schema(self, user=None, **kwargs):
         # start with the default schema for bootstrapping
-        logger.info('field.build_schema ...')
         default_field = {
             'data_type': 'string',
             'editability': ['c','u'],
@@ -2934,17 +2947,14 @@ class FieldResource(ApiResource):
                 
             },
         }
-        logger.info('1. query db for field metadata...')
         field_schema = deepcopy(
             MetaHash.objects.get_and_parse(
                 scope='fields.field', field_definition_scope='fields.field',
                 clear=True))
-        logger.info('2...')
         for key,val in field_schema.items():
             for k,v in default_field.items():
                 if k not in val or val.get(k)==None:
                     val[k] = v
-        logger.info('3...')
         # do not allow the default values to be changed
         for key, val in default_schema.items():
             if key in field_schema:
@@ -2978,12 +2988,10 @@ class FieldResource(ApiResource):
             'supertype': '',
             RESOURCE.FIELDS: field_schema,
         }
-        logger.info('4...')
         
         temp = [ x.scope for x in self.Meta.queryset.distinct('scope')]
         schema['extraSelectorOptions'] = { 
             'label': 'Resource', 'searchColumn': 'scope', 'options': temp }
-        logger.info('field.build_schema - done')
         return schema
     
     @read_authorization
@@ -3129,7 +3137,7 @@ class FieldResource(ApiResource):
                 scopes = ['fields.field',]
 
         scopes = set(scopes)
-        logger.info('internal build_fields for scopes: %r', scopes)
+        logger.debug('internal build_fields for scopes: %r', scopes)
 
         fields = {}
         field_key = '{scope}/{key}'
@@ -4674,137 +4682,134 @@ class UserResource(ApiResource):
             if (val['table'] and val['table']=='reports_userprofile'
                 or name in ['username', 'ecommons_id'])}
         is_patch = False
-        try:
-            # create the auth_user
-            username = id_kwargs.get('username', None)
-            ecommons_id = id_kwargs.get('ecommons_id', None)
-            if not username:
+        # create the auth_user
+        username = id_kwargs.get('username', None)
+        ecommons_id = id_kwargs.get('ecommons_id', None)
+        if not username:
+            if ecommons_id:
                 logger.info('username not specified, setting username to'
                     ' ecommons_id: %s', ecommons_id)
                 username = ecommons_id
-            
-            try:
-                user = DjangoUser.objects.get(username=username)
-                is_patch = True
-                errors = self.validate(deserialized, patch=is_patch, schema=schema)
-                if errors:
-                    raise ValidationError(errors)
-            except ObjectDoesNotExist, e:
-                logger.info('User %s does not exist, creating', id_kwargs)
-                errors = self.validate(deserialized, patch=is_patch, schema=schema)
-                if errors:
-                    raise ValidationError(errors)
-                user = DjangoUser.objects.create_user(username=username)
-                # User is not active by default
-                # user.is_active = True
-                logger.info('created Auth.User: %s', user)
-
-            initializer_dict = self.parse(
-                deserialized, schema=schema, create=not is_patch)
-
-            auth_initializer_dict = {
-                k:v for k,v in initializer_dict.items() if k in auth_user_fields}
-            if auth_initializer_dict:
-                for key,val in auth_initializer_dict.items():
-                    if hasattr(user,key):
-                        setattr(user,key,val)
-                user.save()
-                logger.info('== auth user updated, is_patch:%r : %r', 
-                    is_patch, user.username)
             else:
-                logger.debug('no auth_user fields to update %s', deserialized)
+                raise MissingParam('username')
+        try:
+            user = DjangoUser.objects.get(username=username)
+            is_patch = True
+            errors = self.validate(deserialized, patch=is_patch, schema=schema)
+            if errors:
+                raise ValidationError(errors)
+        except ObjectDoesNotExist, e:
+            logger.info('User %s does not exist, creating', id_kwargs)
+            errors = self.validate(deserialized, patch=is_patch, schema=schema)
+            if errors:
+                raise ValidationError(errors)
+            user = DjangoUser.objects.create_user(username=username)
+            # User is not active by default
+            # user.is_active = True
+            logger.info('created Auth.User: %s', user)
+
+        initializer_dict = self.parse(
+            deserialized, schema=schema, create=not is_patch)
+
+        auth_initializer_dict = {
+            k:v for k,v in initializer_dict.items() if k in auth_user_fields}
+        if auth_initializer_dict:
+            for key,val in auth_initializer_dict.items():
+                if hasattr(user,key):
+                    setattr(user,key,val)
+            user.save()
+            logger.info('== auth user updated, is_patch:%r : %r', 
+                is_patch, user.username)
+        else:
+            logger.info('no auth_user fields to update %s', deserialized)
+            
+        userprofile = None
+        try:
+            userprofile = UserProfile.objects.get(**id_kwargs)
+        except ObjectDoesNotExist, e:
+            if hasattr(user, 'userprofile'):
+                raise ValueError(
+                    'user already exists: %s: %s' % (user, user.userprofile))
+            logger.info('Reports User %s does not exist, creating' % id_kwargs)
+            userprofile = UserProfile.objects.create(**id_kwargs)
+            logger.info('created UserProfile: %s', userprofile)
+        
+        userprofile.user = user
+        userprofile.save()
+
+        # create the reports userprofile
+        userprofile_initializer_dict = {
+            k:v for k,v in initializer_dict.items() if k in userprofile_fields}
+        if userprofile_initializer_dict:
+            logger.info('initializer dict: %r', initializer_dict)
+            for key,val in userprofile_initializer_dict.items():
+                logger.debug('set: %s to %r, %s',key,val,hasattr(userprofile, key))
                 
-            userprofile = None
-            try:
-                userprofile = UserProfile.objects.get(**id_kwargs)
-            except ObjectDoesNotExist, e:
-                if hasattr(user, 'userprofile'):
-                    raise ValueError(
-                        'user already exists: %s: %s' % (user, user.userprofile))
-                logger.info('Reports User %s does not exist, creating' % id_kwargs)
-                userprofile = UserProfile.objects.create(**id_kwargs)
-                logger.info('created UserProfile: %s', userprofile)
-            
-            userprofile.user = user
+                if key == 'permissions':
+                    # FIXME: first check if permissions have changed
+                    userprofile.permissions.clear()
+                    if val:
+                        # NOTE: staff requirement is enforced in the db application
+                        # if user.is_staff != True:
+                        #     raise ValidationError(
+                        #         key='permissions',
+                        #         msg='May only be set for staff users')
+                        
+                        pr = self.get_permission_resource()
+                        for p in val:
+                            permission_key = ( 
+                                pr.find_key_from_resource_uri(p))
+                            try:
+                                permission = Permission.objects.get(**permission_key)
+                                userprofile.permissions.add(permission)
+                            except ObjectDoesNotExist, e:
+                                logger.warn(
+                                    'no such permission: %r, %r, %r', 
+                                    p, permission_key, initializer_dict)
+                                # if permission does not exist, create it
+                                # TODO: created through the permission resource
+                                permission = Permission.objects.create(
+                                    **permission_key)
+                                permission.save()
+                                logger.info('created permission: %r', permission)
+                                userprofile.permissions.add(permission)
+                                userprofile.save()
+                elif key == 'usergroups':
+                    # FIXME: first check if groups have changed
+                    logger.info('patch usergroups: %r', val)
+                    userprofile.usergroup_set.clear()
+                    if val:
+                        # NOTE: staff requirement is enforced in the db application
+                        # if user.is_staff != True:
+                        #     raise ValidationError(
+                        #         key='usergroups',
+                        #         msg='May only be set for staff users')
+                        ugr = self.get_usergroup_resource()
+                        for g in val:
+                            usergroup_key = ugr.find_key_from_resource_uri(g)
+                            logger.info('usergroup_key: %r', usergroup_key)
+                            try:
+                                usergroup = UserGroup.objects.get(**usergroup_key)
+                                usergroup.users.add(userprofile)
+                                usergroup.save()
+                                logger.debug(
+                                    'added user %r, %r to usergroup %r', 
+                                    userprofile,userprofile.user, usergroup)
+                            except ObjectDoesNotExist as e:
+                                msg = ('no such usergroup: %r, initializer: %r'
+                                    % (usergroup_key, initializer_dict))
+                                logger.exception(msg)
+                                raise ValidationError(msg)
+                elif hasattr(userprofile,key):
+                    setattr(userprofile,key,val)
+
             userprofile.save()
+            logger.info('created/updated userprofile %r', user.username)
+        else:
+            logger.info('no reports_userprofile fields to update')
 
-            # create the reports userprofile
-            userprofile_initializer_dict = {
-                k:v for k,v in initializer_dict.items() if k in userprofile_fields}
-            if userprofile_initializer_dict:
-                logger.info('initializer dict: %r', initializer_dict)
-                for key,val in userprofile_initializer_dict.items():
-                    logger.debug('set: %s to %r, %s',key,val,hasattr(userprofile, key))
-                    
-                    if key == 'permissions':
-                        # FIXME: first check if permissions have changed
-                        userprofile.permissions.clear()
-                        if val:
-                            # NOTE: staff requirement is enforced in the db application
-                            # if user.is_staff != True:
-                            #     raise ValidationError(
-                            #         key='permissions',
-                            #         msg='May only be set for staff users')
-                            
-                            pr = self.get_permission_resource()
-                            for p in val:
-                                permission_key = ( 
-                                    pr.find_key_from_resource_uri(p))
-                                try:
-                                    permission = Permission.objects.get(**permission_key)
-                                    userprofile.permissions.add(permission)
-                                except ObjectDoesNotExist, e:
-                                    logger.warn(
-                                        'no such permission: %r, %r, %r', 
-                                        p, permission_key, initializer_dict)
-                                    # if permission does not exist, create it
-                                    # TODO: created through the permission resource
-                                    permission = Permission.objects.create(
-                                        **permission_key)
-                                    permission.save()
-                                    logger.info('created permission: %r', permission)
-                                    userprofile.permissions.add(permission)
-                                    userprofile.save()
-                    elif key == 'usergroups':
-                        # FIXME: first check if groups have changed
-                        logger.info('patch usergroups: %r', val)
-                        userprofile.usergroup_set.clear()
-                        if val:
-                            # NOTE: staff requirement is enforced in the db application
-                            # if user.is_staff != True:
-                            #     raise ValidationError(
-                            #         key='usergroups',
-                            #         msg='May only be set for staff users')
-                            ugr = self.get_usergroup_resource()
-                            for g in val:
-                                usergroup_key = ugr.find_key_from_resource_uri(g)
-                                logger.info('usergroup_key: %r', usergroup_key)
-                                try:
-                                    usergroup = UserGroup.objects.get(**usergroup_key)
-                                    usergroup.users.add(userprofile)
-                                    usergroup.save()
-                                    logger.debug(
-                                        'added user %r, %r to usergroup %r', 
-                                        userprofile,userprofile.user, usergroup)
-                                except ObjectDoesNotExist as e:
-                                    msg = ('no such usergroup: %r, initializer: %r'
-                                        % (usergroup_key, initializer_dict))
-                                    logger.exception(msg)
-                                    raise ValidationError(msg)
-                    elif hasattr(userprofile,key):
-                        setattr(userprofile,key,val)
-
-                userprofile.save()
-                logger.info('created/updated userprofile %r', user.username)
-            else:
-                logger.info('no reports_userprofile fields to update')
-
-            return { API_RESULT_OBJ: userprofile }
+        return { API_RESULT_OBJ: userprofile }
             
-        except Exception:
-            logger.exception('on patch_obj')
-            raise  
-
 
 class UserGroupResource(ApiResource):
     

@@ -522,7 +522,7 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
                     e.httpresponse)
                 response = e.httpresponse
             except ValidationError as e:
-                logger.exception('Validation error: %r', e)
+                logger.exception('Validation error: %r', e.errors)
                 response = self.build_error_response(
                     request, { API_RESULT_ERROR: e.errors }, **kwargs)
                 if 'xls' in response['Content-Type']:

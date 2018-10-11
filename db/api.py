@@ -2629,10 +2629,6 @@ class UserAgreementResource(DbApiResource):
             url(r"^(?P<resource_name>%s)/schema%s$" 
                 % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('get_schema'), name="api_get_schema"),
-#             url((r"^(?P<resource_name>%s)/" 
-#                  r"(?P<user_agreement_id>([\d]+))%s$")
-#                     % (self._meta.resource_name, TRAILING_SLASH),
-#                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
             url((r"^(?P<resource_name>%s)/" 
                  r"(?P<screensaver_user_id>([\d]+))/"
                  r"(?P<type>(\w+))%s$")
@@ -2720,11 +2716,10 @@ class UserAgreementResource(DbApiResource):
             .where(func.coalesce(_vocab.c.is_retired,False) != True)
             .order_by(_vocab.c.ordinal))
         types = []
+        queries = []
         with get_engine().connect() as conn:
             result = conn.execute(agreement_type_table)
             types =  [x[0] for x in result ]
-        logger.info('types: %r', types)
-        queries = []
         for type in types:
             query = (
                 select([
@@ -2770,6 +2765,7 @@ class UserAgreementResource(DbApiResource):
             'user_first_name': _user_cte.c.first_name,
             'user_last_name': _user_cte.c.last_name,
             'user_email': _user_cte.c.email,
+            'classification': _user_cte.c.classification,
             'type' : all_users.c.type,
             'data_sharing_level': _user_entered_agreements.c.data_sharing_level,
             'status': case([
@@ -2817,7 +2813,7 @@ class UserAgreementResource(DbApiResource):
         j = j.join(
             _lh_entered_agreements,
             and_(
-                all_users.c.lab_head_id != all_users.c.screensaver_user_id,
+#                 all_users.c.lab_head_id != all_users.c.screensaver_user_id,
                 all_users.c.lab_head_id == _lh_entered_agreements.c.screensaver_user_id,
                 _lh_entered_agreements.c.type== all_users.c.type),
             isouter=True
@@ -2866,8 +2862,11 @@ class UserAgreementResource(DbApiResource):
     @write_authorization
     @un_cache        
     @transaction.atomic
-    def post_detail(self, request, **kwargs):
+    def post_detail(self, request, parent_log=None, **kwargs):
         '''
+        API NOTE: see ScreensaverUserResource.dispatch_useragreement_view:
+        - performs user maintenance functions related to UA updates.
+        
         Modified POST because:
         - Attached File may be included in request
         '''
@@ -2886,7 +2885,9 @@ class UserAgreementResource(DbApiResource):
         for key in fields.keys():
             if param_hash.get(key, None) is not None:
                 deserialized[key] = param_hash[key]
-        
+                
+        screensaver_user_id = param_hash.get('screensaver_user_id')
+
         # POST is only used to create or reset to active; file is required
         # Note: see PATCH: status=deactivate
         attached_file = request.FILES.get('attached_file', None)
@@ -2903,44 +2904,11 @@ class UserAgreementResource(DbApiResource):
         #         request, format=kwargs.get('format', None))
         #     logger.info('deserialized: %r', deserialized)
 
-        # Validate Identity
-        username = deserialized.pop('username', None)
-        screensaver_user_id = deserialized.pop('screensaver_user_id', None)
-        if username is None and screensaver_user_id is None:
-            msg = 'must provide a screensaver_user_id or username parameter'
-            raise BadRequest({'username': msg, 'screensaver_user_id': msg })
-        if username is not None and screensaver_user_id is not None:
-            msg = 'must provide a screensaver_user_id or username parameter'
-            raise BadRequest({'username': msg, 'screensaver_user_id': msg })
-        if username is not None:
-            su = ScreensaverUser.objects.get(username=username)
-            screensaver_user_id = su.screensaver_user_id
         deserialized['screensaver_user_id'] = screensaver_user_id
-
         id_kwargs = self.get_id(deserialized,validate=True, **kwargs)
-
-        # Create a parent log for the user
-        user_resource = self.get_su_resource()
-        # Cache the user data for logging
-        kwargs_for_user = {
-            'exact_fields': ['screensaver_user_id', 'is_active',
-                'sm_data_sharing_level', 'rnai_data_sharing_level',
-                'lab_head_id', 'username'] 
-        }
-        kwargs_for_user['screensaver_user_id'] = screensaver_user_id
-        original_user_data = user_resource._get_detail_response_internal(**kwargs_for_user)
-        if not original_user_data:
-            msg = 'User not found: %r'
-            raise ValidationError({
-                'screensaver_user_id': msg % screensaver_user_id,
-                'username': msg % username
-            })
-        parent_log = user_resource.make_log(
-            request, attributes=original_user_data, api_action='PATCH')
-        parent_log.save()
-
         log = self.make_log(
             request, id_kwargs, id_attribute=id_attribute, schema=schema)
+        log.parent_log = parent_log;
         log.save()
         original_data = self._get_detail_response_internal(**id_kwargs)
 
@@ -2960,13 +2928,11 @@ class UserAgreementResource(DbApiResource):
             logger.info('UA DNE, creating: %r', user_agreement)
         
         # Perform the PATCH
-        logger.info('patch_obj: %r', deserialized)
-        patch_result = self.patch_obj(request, deserialized, log=log, **kwargs)
+        patch_result = self.patch_obj(request, deserialized, log=log, **param_hash)
         user_agreement = patch_result[API_RESULT_OBJ]
         user_agreement.save()
 
         # === Attached File ===
-        # TODO: delete existing Attached File if replacing
         attached_type = None
         if user_agreement.type == self.VOCAB_USER_AGREEMENT_SM:
             attached_type = self.VOCAB_FILE_TYPE_SMUA
@@ -2981,6 +2947,7 @@ class UserAgreementResource(DbApiResource):
         kwargs_for_attachedfile['type'] = attached_type
         kwargs_for_attachedfile['filename'] = deserialized.get('filename')
         
+        logger.info('POST user agreement attached file: %r', kwargs_for_attachedfile)
         attached_file_resource = self.get_attached_file_resource()
         attached_file_response = \
             attached_file_resource.post_detail(request, **kwargs_for_attachedfile)
@@ -2996,32 +2963,7 @@ class UserAgreementResource(DbApiResource):
             logger.error('attached file error: %r, %r', 
                 attached_file_response.status_code, error_resp)
             raise Exception('attached file resource error: %r', error_resp)
-
-        # === Attached File - Done ===
-        meta = {}
-        if user_agreement.date_active is not None:
-            if user_agreement.date_expired is None:
-                if not original_user_data.get('username'):
-                    meta['Note'] = \
-                        'Login capability not set: User must have an eCommons ID or password to enable login.'
-                else:
-                    logger.info('UserAgreement is active: %r, add login access for user')
-                    # NOTE: is_active is a reports.user property and will only be 
-                    # set if the user has a ecommonsId or username set
-                    user_schema = user_resource.build_schema(request.user)
-                    user_patch_data = {
-                        'screensaver_user_id': screensaver_user_id,
-                        'is_active': True }
-                    patch_result = user_resource.patch_obj(
-                        request, user_patch_data, schema=user_schema)
-                    meta.update(patch_result.get(API_RESULT_META))
-                    logger.info('user patch result: %r', patch_result)
-
         user_agreement.save()
-
-        new_user_data = user_resource._get_detail_response_internal(**kwargs_for_user)
-        user_resource.log_patch(request, original_user_data, new_user_data, parent_log)
-        parent_log.save()
         
         new_data = self._get_detail_response_internal(**id_kwargs)
         
@@ -3030,8 +2972,6 @@ class UserAgreementResource(DbApiResource):
         log.save()
         
         data = { API_RESULT_DATA: [new_data]}
-        if meta:
-            data[API_RESULT_META] = meta 
         if 'test_only' in param_hash:
             logger.info('test_only flag: %r', param_hash.get('test_only'))    
             raise InformationError(
@@ -3114,7 +3054,8 @@ class UserAgreementResource(DbApiResource):
                         msg='Agreement is already expired and may not be deactivated')
                 user_agreement.date_active = None
                 user_agreement.date_notified = None
-                user_agreement.data_sharing_level = None
+                # 20181011 - leave the dsl on the user for information purposes
+                # user_agreement.data_sharing_level = None
                 user_agreement.file = None
                 logger.info('UserAgreement %r deactivated', user_agreement)
             else:
@@ -3123,52 +3064,11 @@ class UserAgreementResource(DbApiResource):
         elif new_date_notified is not None:
             pass
         else:
-            # Disallow setting DSL to a level different than the Lab Head
-            lab_head_id = screensaver_user.lab_head_id
-            if lab_head_id != screensaver_user.screensaver_user_id:
-                try:
-                    lh_user_agreement = UserAgreement.objects.get(
-                        screensaver_user_id=lab_head_id, type=user_agreement.type)
-                    if user_agreement.data_sharing_level is not None:
-                        if user_agreement.data_sharing_level != \
-                            lh_user_agreement.data_sharing_level:
-                            raise ValidationError(
-                                key='data_sharing_level',
-                                msg='Must match Lab Head value: %r' 
-                                    % lh_user_agreement.data_sharing_level)    
-                except ObjectDoesNotExist:
-                    logger.info('no lab head user agreement found')
-                    raise ValidationError(
-                        key='status',
-                        msg='User may not be active until their lab head has a user agreement')
-            # TODO: if user is a LabHead:
-            # Display warning if Lab Head DSL is being set to something other than
-            # Lab_member's DSL
+            pass
+            # No new status
             # TODO: if DSL does not match user screens, display warning?
             
         user_agreement.save()
-        
-        active_user_agreements = UserAgreement.objects\
-            .filter(screensaver_user=screensaver_user)\
-            .filter(date_active__isnull=False)\
-            .filter(date_expired__isnull=True)
-        # If all user agreements are inactive, turn off login capability
-        if not active_user_agreements.exists():
-            logger.info(
-                'no active user agreements exist for %r, removing is_active', 
-                screensaver_user)
-            user_resource = self.get_su_resource()
-            user_schema = user_resource.build_schema(request.user)
-            user_patch_data = {
-                'screensaver_user_id': screensaver_user_id,
-                'is_active': False }
-            patch_result = user_resource.patch_obj(
-                request, user_patch_data, schema=user_schema)
-            logger.info('user patch result: %r', patch_result)
-        else:
-            logger.info('active user agreements exist: %r',
-                [x for x in active_user_agreements.all()])
-        
         logger.info('UserAgreement %r patched', user_agreement)
         
         return { 
@@ -7029,8 +6929,8 @@ class CopyWellResource(DbApiResource):
             except ObjectDoesNotExist:
                 # create copy-wells that dne
                 try:
-                    logger.info('copywell dne: %r/%r, creating', 
-                        copy.name, lcp.source_well)
+                    logger.info('Reserve CPR %r volume: copywell dne: %r/%r, creating', 
+                        cpr.cherry_pick_request_id, copy.name, lcp.source_well)
                     logger.info('plate: %r, remaining_well_volume: %r', 
                         plate, plate.remaining_well_volume)
                     copywell = CopyWell.objects.create(
@@ -9875,12 +9775,12 @@ class ScreenerCherryPickResource(DbApiResource):
                 'no cpr found for cherry_pick_request_id: %r' % cherry_pick_request_id)
 
     def build_schema(self, library_classification=None, user=None, **kwargs):
-        logger.info('build sreenercherrypick schema for library_classification: %r',
+        logger.debug('build sreenercherrypick schema for library_classification: %r',
             library_classification)
         schema = deepcopy(
             super(ScreenerCherryPickResource, self).build_schema(user=user, **kwargs))
         original_fields = schema['fields']
-        logger.info('original_fields: %r', original_fields.keys())
+        logger.debug('original_fields: %r', original_fields.keys())
         if library_classification:
             # Add in reagent fields
             sub_data = self.get_reagent_resource(library_classification)\
@@ -9975,7 +9875,6 @@ class ScreenerCherryPickResource(DbApiResource):
             param_hash.get('visibilities'),
             exact_fields=set(param_hash.get('exact_fields', [])),
             order_params=order_params)
-        logger.info('visible fields: %r', field_hash.keys())
         order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
             order_params, field_hash)
             
@@ -10019,7 +9918,6 @@ class ScreenerCherryPickResource(DbApiResource):
                 .select_from(
                     _scp.join(_reagent, _scp.c.screened_well_id==_reagent.c.well_id)
                         .join(_well,_reagent.c.well_id==_well.c.well_id))
-#                         .join(_library, _well.c.library_id==_library.c.library_id))
                 .where(_scp.c.cherry_pick_request_id==cherry_pick_request_id)
                 .where(_scp.c.searched_well_id==_scp.c.screened_well_id)
                 )
@@ -20243,8 +20141,14 @@ class ScreensaverUserResource(DbApiResource):
     def __init__(self, **kwargs):
         
         self.user_resource = None
+        self.useragreement_resource = None
         super(ScreensaverUserResource, self).__init__(**kwargs)
 
+    def get_ua_resource(self):
+        if self.useragreement_resource is None:
+            self.useragreement_resource = UserAgreementResource()
+        return self.useragreement_resource
+    
     def prepend_urls(self):
         
         return [
@@ -20285,7 +20189,17 @@ class ScreensaverUserResource(DbApiResource):
                     % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_useragreement_view'),
                 name="api_dispatch_useragreement_view"),
+            url(r"^(?P<resource_name>%s)/(?P<screensaver_user_id>([\d]+))/useragreement/" 
+                r"(?P<type>(\w+))%s$"
+                    % (self._meta.resource_name, TRAILING_SLASH),
+                self.wrap_view('dispatch_useragreement_view'),
+                name="api_dispatch_useragreement_view"),
             url(r"^(?P<resource_name>%s)/(?P<username>([\w]+))/useragreement%s$" 
+                    % (self._meta.resource_name, TRAILING_SLASH),
+                self.wrap_view('dispatch_useragreement_view'),
+                name="api_dispatch_useragreement_view"),
+            url(r"^(?P<resource_name>%s)/(?P<username>([\w]+))/useragreement/"
+                r"(?P<type>(\w+))%s$"
                     % (self._meta.resource_name, TRAILING_SLASH),
                 self.wrap_view('dispatch_useragreement_view'),
                 name="api_dispatch_useragreement_view"),
@@ -20338,14 +20252,214 @@ class ScreensaverUserResource(DbApiResource):
         if request.method.lower() == 'post':
             # if put is used, force to "post_detail"
             method = 'detail'
-        return AttachedFileResource().dispatch(method, request, **kwargs)    
+        return AttachedFileResource().dispatch(method, request, **kwargs)   
+    
+    @write_authorization
+    @un_cache        
+    @transaction.atomic    
+    def update_user_agreement(self, request, screensaver_user_id, **kwargs): 
+        ''' Update the User Agreement for the user and provide managment functions:
+        - invalidate Lab Members if data sharing level is different,
+        - add/remove login capabilities on activate/deactivate
+        '''
 
-    def dispatch_useragreement_view(self, request, **kwargs):
-        method = 'list'
-        if request.method.lower() == 'post':
-            # if put is used, force to "post_detail"
-            method = 'detail'
-        return UserAgreementResource().dispatch(method, request, **kwargs)    
+        logger.info('update_user_agreement: %r', screensaver_user_id)
+
+        if request.method.lower() not in ['post','patch']:
+            raise Exception('Only POST/PATCH is allowed for user agreement update')
+            
+        kwargs_for_user = {
+            'exact_fields': ['screensaver_user_id', 'is_active',
+                'sm_data_sharing_level', 'rnai_data_sharing_level',
+                'lab_head_id', 'username','classification'] 
+        }
+        kwargs_for_user['screensaver_user_id'] = screensaver_user_id
+        original_user_data = self._get_detail_response_internal(**kwargs_for_user)
+        if not original_user_data:
+            msg = 'User not found: %r'
+            raise ValidationError({
+                'screensaver_user_id': msg % screensaver_user_id,
+                'username': msg % username
+            })
+        parent_log = self.make_log(
+            request, attributes=original_user_data, api_action='PATCH')
+        parent_log.save()
+        
+        logger.info('perform the POST/PATCH operation on the UA resource...')
+        
+        # 1. Perform the User Agreement Patch
+        # TODO: response type may not be JSON
+        method = 'detail'
+        response = self.get_ua_resource().dispatch(
+            method, request, parent_log=parent_log, 
+            screensaver_user_id=screensaver_user_id, **kwargs)    
+        _data = self.get_serializer().deserialize(
+            LimsSerializer.get_content(response), JSON_MIMETYPE)
+        _meta = _data.get(API_RESULT_META, {})
+        logger.debug('original meta: %r', _meta)
+        user_agreement_data = _data.get(API_RESULT_DATA)
+        assert len(user_agreement_data) == 1, 'too many objects returned'
+        user_agreement_data = user_agreement_data[0]
+        logger.debug('ua data: %r', user_agreement_data)
+
+        logger.info('user agreement POST/PATCH completed')
+
+        user_data = self._get_detail_response_internal(
+            screensaver_user_id=screensaver_user_id)
+
+        
+        # 2. Perform checks for user:
+        # 2.a activate if username is set and UA is active
+        extra_meta = {}
+        if user_data.get('is_active') is not True:
+            if user_agreement_data.get('date_active') is not None \
+                    and user_agreement_data.get('date_expired') is None:
+                if not original_user_data.get('username'):
+                    extra_meta['Note'] = \
+                        'Login capability not set: User must have an '\
+                        'eCommons ID or password to enable login.'
+                else:
+                    logger.info('UserAgreement is active: %r, add login access for user')
+                    # NOTE: is_active is a reports.user property and will only be 
+                    # set if the user has a ecommonsId or username set
+                    user_schema = self.build_schema(request.user)
+                    user_patch_data = {
+                        'screensaver_user_id': screensaver_user_id,
+                        'is_active': True }
+                    logger.info('User Agreement: Patch "is_active=true" for user: %r...', 
+                        screensaver_user_id)
+                    patch_result = self.patch_obj(
+                        request, user_patch_data, schema=user_schema)
+                    extra_meta.update(patch_result.get(API_RESULT_META))
+                    logger.info('ScreensverUser "is_active" Patch result: %r', patch_result)
+                    
+                    parent_log.diffs['is_active'] = [False, True]
+                    parent_log.save()
+        else:
+            
+            # 2.b If all user agreements are inactive, turn off login capability
+            active_user_agreements = UserAgreement.objects\
+                .filter(screensaver_user_id=screensaver_user_id)\
+                .filter(date_active__isnull=False)\
+                .filter(date_expired__isnull=True)
+            if not active_user_agreements.exists():
+            
+                user_patch_data = {
+                    'screensaver_user_id': screensaver_user_id,
+                    'is_active': False }
+                logger.info(
+                    'no active user agreements exist for %r, removing is_active...', 
+                    screensaver_user_id)
+                patch_result = self.patch_obj(request, user_patch_data, **kwargs)
+                
+                logger.info('ScreensverUser patch result: %r', patch_result)
+                extra_meta['Account deactivated'] = 'true'
+                parent_log.diffs['is_active'] = [ True, False ]
+                parent_log.save()
+            else:
+                logger.info('preserve "is_active" flag for: %r, active user agreements exist: %r',
+                    screensaver_user_id, [x for x in active_user_agreements.all()])
+
+        # Lab head checks
+        # 2.c deactivate lab members if is lab head and DSL changes
+        current_dsl = user_agreement_data.get('data_sharing_level')
+        current_type = user_agreement_data.get('type')
+        PI_ROLE = SCHEMA.VOCAB.screensaver_user.classification.PRINCIPAL_INVESTIGATOR
+        if original_user_data.get('classification') != PI_ROLE:
+            lab_head_id = original_user_data.get('lab_head_id')
+            # 1. Disallow setting DSL to a level different than the Lab Head
+            if current_dsl:
+                try:
+                    lh_user_agreement = UserAgreement.objects.get(
+                        screensaver_user_id=lab_head_id, 
+                        type=current_type)
+                    if current_dsl != lh_user_agreement.data_sharing_level:
+                        raise ValidationError(
+                            key='data_sharing_level',
+                            msg='Must match Lab Head value: %r' 
+                                % lh_user_agreement.data_sharing_level)    
+                except ObjectDoesNotExist:
+                    logger.info('no lab head user agreement found')
+                    raise ValidationError(
+                        key='status',
+                        msg='User may not be active until their lab head has a user agreement')
+        else:
+            # 2. If lab head DSL != lab_member DSL's, require override 
+            # and deactivate lab_member DSLs
+            param_hash = self._convert_request_to_dict(request)
+            param_hash.update(kwargs)
+            override_param = parse_val(
+                param_hash.get(API_PARAM_OVERRIDE, False),
+                    API_PARAM_OVERRIDE, 'boolean')
+            lab_member_uas_to_deactivate = UserAgreement.objects\
+                .filter(
+                    screensaver_user__lab_head_id=screensaver_user_id, 
+                    type__exact=current_type,
+                    date_active__isnull=False,
+                    date_expired__isnull=True)\
+                .exclude(screensaver_user_id=screensaver_user_id)\
+                .exclude(data_sharing_level=current_dsl)
+            
+            uas_to_deactivate = []
+            for ua in lab_member_uas_to_deactivate.all():
+                logger.info('lab member ua to deactivate: %r, override: %r', 
+                    ua, override_param)
+                uas_to_deactivate.append(
+                    '({}) {} {}, level: {}'.format(
+                        ua.screensaver_user.screensaver_user_id,
+                        ua.screensaver_user.first_name,
+                        ua.screensaver_user.last_name,
+                        ua.data_sharing_level))
+                if override_param is True:
+                    user_agreement_input = {
+                        'type': current_type,
+                        'screensaver_user_id': ua.screensaver_user_id,
+                        'status': SCHEMA.VOCAB.user_agreement.status.INACTIVE
+                        }
+                    logger.info('deactivate lab member UA: %r', user_agreement_data)
+                    result = self.get_ua_resource()._patch_detail_internal(
+                        user_agreement_input, request.user, parent_log=parent_log)
+                    # Will raise exception on fail
+                    
+                    # 20181011 - TODO: if lab member has no active agreements,
+                    # should remove "is_active" flag?
+                    
+            if uas_to_deactivate:
+                if override_param is not True:
+                    raise ValidationError({
+                        'Message': (
+                            'Setting the Lab Head Data Sharing Level to [%s] will '
+                            'invalidate the Lab Member Agreements with '
+                            'differing Data Sharing Levels') % str(current_dsl),
+                        API_PARAM_OVERRIDE: 'required',
+                        'Lab Member Agreements to deactivate': uas_to_deactivate
+                    })
+                else:
+                    extra_meta['Users Deactivated'] = ', '.join(uas_to_deactivate)
+        
+        new_user_data = self._get_detail_response_internal(**kwargs_for_user)
+        self.log_patch(request, original_user_data, new_user_data, log=parent_log)
+        parent_log.save()
+        
+        _meta.update(extra_meta)
+        
+        data = { API_RESULT_DATA: [user_agreement_data,], API_RESULT_META: _meta }
+        return self.build_response(request, data)
+        
+
+    def dispatch_useragreement_view(self, request, screensaver_user_id=None, username=None, **kwargs):
+        if username is not None:
+            su = ScreensaverUser.objects.get(username=username)
+            screensaver_user_id = su.screensaver_user_id
+
+        if request.method.lower() in ['post','patch']:
+            logger.info('%r update user agreement...', request.method)
+            return self.update_user_agreement(request, screensaver_user_id)
+        else:
+            logger.info('dispatching: %r', request.method)
+            return self.get_ua_resource().dispatch(
+                'list', request, 
+                screensaver_user_id=screensaver_user_id, **kwargs)    
 
     def dispatch_user_attachedfiledetailview(self, request, **kwargs):
         return AttachedFileResource().dispatch('detail', request, **kwargs)    
@@ -20406,7 +20520,8 @@ class ScreensaverUserResource(DbApiResource):
                 _su.c.first_name,
                 _su.c.last_name,
                 _su.c.email,
-                _su.c.lab_head_id
+                _su.c.lab_head_id,
+                _su.c.classification
                 ])
             .select_from(j))
         return user_table

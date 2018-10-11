@@ -10625,6 +10625,10 @@ class ScreensaverUserResource(DBResourceTestCase):
         logger.info('test10_user_agreement_updator...')
         
         # Setup
+        base_resource_uri = \
+            BASE_URI_DB + '/screensaveruser/{screensaver_user_id}/useragreement'
+
+        
         # Create a lab head, as all users must either be a lab head or have one
         ua_user = self.create_lab_head({
             'is_active': False })
@@ -10645,8 +10649,7 @@ class ScreensaverUserResource(DBResourceTestCase):
             'type': VOCAB_USER_AGREEMENT_SM,
             'data_sharing_level': 2,
             }
-        resource_uri = \
-            BASE_URI_DB + '/screensaveruser/%s/useragreement/' % test_su_id
+        resource_uri = base_resource_uri.format(**ua_user)
         resp = self.api_client.patch(
             resource_uri, 
             format='json', 
@@ -10663,8 +10666,6 @@ class ScreensaverUserResource(DBResourceTestCase):
         post_kwargs[HTTP_PARAM_AUTH] = authentication
         post_kwargs[HEADER_APILOG_COMMENT] = test_comment
         post_kwargs[DJANGO_ACCEPT_PARAM] = JSON_MIMETYPE
-        resource_uri = \
-            BASE_URI_DB + '/screensaveruser/%s/useragreement/' % test_su_id
         logger.info('POST user agreement %r to the server...', resource_uri)
         resp = self.django_client.post(
             resource_uri, content_type=MULTIPART_CONTENT, 
@@ -10691,8 +10692,6 @@ class ScreensaverUserResource(DBResourceTestCase):
         logger.info('Open and POST file: %r', filepath)
         with open(filepath) as input_file:
             # NOTE: create a detail URI; post_list is not implemented
-            resource_uri = \
-                BASE_URI_DB + '/screensaveruser/%s/useragreement/' % test_su_id
             logger.info('POST user agreement %r to the server...', resource_uri)
             user_agreement_input['attached_file'] = input_file
             user_agreement_input['filename'] = filename
@@ -10709,9 +10708,8 @@ class ScreensaverUserResource(DBResourceTestCase):
         
         # 1.A Verify User Agreement was created
         
-        resource_uri = '/'.join([
-            BASE_URI_DB,'useragreement', test_su_id,VOCAB_USER_AGREEMENT_SM])
-        user_agreement_output = self.get_single_resource(resource_uri)
+        user_agreement_output = self.get_single_resource(
+            resource_uri + '/' + VOCAB_USER_AGREEMENT_SM)
         
         logger.info('user agreement created: %r', user_agreement_output)
         self.assertEqual(
@@ -10723,15 +10721,17 @@ class ScreensaverUserResource(DBResourceTestCase):
         self.assertEqual(
             user_agreement_input['date_active'],
             user_agreement_output['date_active'])
-        
+        self.assertEqual(
+            user_agreement_input['filename'],
+            user_agreement_output['filename'])
         # 1.B Verify that the attached file was created 
         
         self.assertTrue('file_id' in user_agreement_output)
         
         file_id = str(user_agreement_output['file_id'])
-        resource_uri = '/'.join([
+        af_uri = '/'.join([
             BASE_URI_DB, 'attachedfile', file_id])
-        af_output_data = self.get_single_resource(resource_uri)
+        af_output_data = self.get_single_resource(af_uri)
 
         self.assertEqual(
             af_output_data['type'],
@@ -10763,10 +10763,8 @@ class ScreensaverUserResource(DBResourceTestCase):
         # 1.C Verify that the DSL is shown on the ScreensaverUser, 
         # and the user is "is_active"
         
-        resource_uri = BASE_URI_DB + '/screensaveruser'
-        resource_uri = '/'.join([resource_uri,ua_user['username']])
-        user_data = self.get_single_resource(resource_uri)
-        
+        su_uri = BASE_URI_DB + '/screensaveruser/{username}'.format(**ua_user)
+        user_data = self.get_single_resource(su_uri)
         self.assertEqual(
             user_data['sm_data_sharing_level'],
             user_agreement_input['data_sharing_level'])
@@ -10775,7 +10773,7 @@ class ScreensaverUserResource(DBResourceTestCase):
 
         # 1.d check logs
          
-        resource_uri = BASE_REPORTS_URI + '/apilog'
+        apilog_uri = BASE_REPORTS_URI + '/apilog'
         data_for_get={ 
             'limit': 0, 
             'ref_resource_name': 'screensaveruser', 
@@ -10783,7 +10781,7 @@ class ScreensaverUserResource(DBResourceTestCase):
             'diff_keys__contains': 'sm_data_sharing_level' 
         }
         apilogs = self.get_list_resource(
-            resource_uri, data_for_get=data_for_get )
+            apilog_uri, data_for_get=data_for_get )
         logger.info('logs: %r', apilogs)
         self.assertEqual(
             len(apilogs),1, 'wrong apilog count: %r' % apilogs)
@@ -10800,7 +10798,7 @@ class ScreensaverUserResource(DBResourceTestCase):
             'parent_log': parent_log['id'] 
         }
         apilogs = self.get_list_resource(
-            resource_uri, data_for_get=data_for_get )
+            apilog_uri, data_for_get=data_for_get )
         logger.info('child logs (useragreement): %r', apilogs)
         self.assertEqual(
             len(apilogs),1, 'wrong apilog count: %r' % apilogs)
@@ -10816,7 +10814,6 @@ class ScreensaverUserResource(DBResourceTestCase):
             'screensaver_user_id': test_su_id,
             'data_sharing_level': 5,
             }
-        resource_uri = BASE_URI_DB + '/useragreement'
         resp = self.api_client.patch(
             resource_uri, 
             format='json', 
@@ -10838,7 +10835,6 @@ class ScreensaverUserResource(DBResourceTestCase):
             'screensaver_user_id': test_su_id,
             'date_notified': '2017-10-23',
             }
-        resource_uri = BASE_URI_DB + '/useragreement'
         resp = self.api_client.patch(
             resource_uri, 
             format='json', 
@@ -10860,25 +10856,24 @@ class ScreensaverUserResource(DBResourceTestCase):
         
         # 2.E POST/PATCH a new file; verify that previous file is deleted from the system
         
-        # 2.F Verify that attached file may not be deleted unless not attached 
+        logger.info('2.F Verify that attached file may not be deleted unless not attached...')
         # to a user agreement
         file_id = str(user_agreement_output3['file_id'])
-        resource_uri = '/'.join([
+        af_uri = '/'.join([
             BASE_URI_DB, 'attachedfile', file_id])
         resp = self.api_client.delete(
-            resource_uri, authentication=self.get_credentials())
+            af_uri, authentication=self.get_credentials())
         self.assertTrue(
             resp.status_code == 400, 
             (resp.status_code, self.get_content(resp)))
         
-        # 3. Patch - expired
+        logger.info('3. Patch - expired...')
         
         user_agreement_input3a = {
             'type': VOCAB_USER_AGREEMENT_SM,
             'screensaver_user_id': test_su_id,
             'status': 'expired',
             }
-        resource_uri = BASE_URI_DB + '/useragreement'
         resp = self.api_client.patch(
             resource_uri, 
             format='json', 
@@ -10896,16 +10891,14 @@ class ScreensaverUserResource(DBResourceTestCase):
             _now().date().strftime("%Y-%m-%d"),
             user_agreement_output3a['date_expired'])
         logger.info('after patch expired: %r', user_agreement_output3a)
+        
         # 3.A Verify that the User has is_active==False
-        
-        resource_uri = BASE_URI_DB + '/screensaveruser'
-        resource_uri = '/'.join([resource_uri,ua_user['username']])
-        user_data = self.get_single_resource(resource_uri)
-        
+
+        user_data = self.get_single_resource(su_uri)
         self.assertEqual(
             user_data['is_active'], False)
         
-        # 4. Reset the User Agreement:
+        logger.info('4. Reset the User Agreement...')
         # Requires a new POST, with attached file
         # if date_notified, date_expired were set, then they are unset
         
@@ -10920,8 +10913,6 @@ class ScreensaverUserResource(DBResourceTestCase):
             user_agreement_input4['filename'] = filename
 
             # NOTE: create a detail URI; post_list is not implemented
-            resource_uri = \
-                BASE_URI_DB + '/screensaveruser/%s/useragreement/' % test_su_id
             logger.info('POST user agreement %r to the server...', resource_uri)
             resp = self.django_client.post(
                 resource_uri, content_type=MULTIPART_CONTENT, 
@@ -10950,25 +10941,23 @@ class ScreensaverUserResource(DBResourceTestCase):
             self.assertIsNone(user_agreement_output4['date_notified'])
             self.assertIsNone(user_agreement_output4['date_expired'])
         
-        # 4.A Verify that previous attached file may now be deleted 
+        logger.info('4.A Verify that previous attached file may now be deleted...')
         file_id = str(user_agreement_output3['file_id'])
-        resource_uri = '/'.join([
+        af_uri = '/'.join([
             BASE_URI_DB, 'attachedfile', file_id])
         resp = self.api_client.delete(
-            resource_uri, authentication=self.get_credentials())
+            af_uri, authentication=self.get_credentials())
         self.assertTrue(
             resp.status_code == 204, 
             (resp.status_code, self.get_content(resp)))
         
-        # 4.B Reset the User Agreement to None
+        logger.info('4.B Reset the User Agreement to None...')
 
         user_agreement_input4a = {
             'type': VOCAB_USER_AGREEMENT_SM,
             'screensaver_user_id': test_su_id,
-            'status': 'inactive'
+            'status': SCHEMA.VOCAB.user_agreement.status.INACTIVE
             }
-        resource_uri = \
-            BASE_URI_DB + '/screensaveruser/%s/useragreement/' % test_su_id
         resp = self.api_client.patch(
             resource_uri, 
             format='json', 
@@ -10989,39 +10978,252 @@ class ScreensaverUserResource(DBResourceTestCase):
         self.assertIsNone(user_agreement_output4a['date_expired'])
         self.assertIsNone(user_agreement_output4a['file_id'])
         self.assertIsNone(user_agreement_output4a['filename'])
-        self.assertIsNone(user_agreement_output4a['data_sharing_level'])
-        VOCAB_UA_STATUS_INACTIVE = 'inactive'
-        self.assertEqual(user_agreement_output4a['status'], VOCAB_UA_STATUS_INACTIVE)
+        self.assertEqual(
+            user_agreement_output4a['status'], 
+            SCHEMA.VOCAB.user_agreement.status.INACTIVE)
         logger.info('status: %r', user_agreement_output4a)
         
 
     def test11_update_lab_head_dsl(self):
         
         # Verify that the lab member dsl's are updated on lab head update.
+
+        lab_head = self.create_lab_head({
+            'is_active': False })
+        self.assertFalse(lab_head['is_active'])
+        test_lh_id = str(lab_head['screensaver_user_id'])
+
+        # TODO: Create specific Group/Permissions for User Agreement        
+        ua_admin = self.create_staff_user({ 
+            'username': 'attached_file_admin1',
+            'is_superuser': True,
+            'is_active': True
+        })
         
-        # TODO: Business rules:
-        # 1. User DSL must match Lab Head (PI) DSL
-        # 1.a On updating user's SMUA, should the validation limit the DSL choice to 
-        # match the PI's?
-        # 2. On updating PI's SMUA, should batch operation include updating the
-        # lab member DSL's?
-        # 3. Does PI SMUA expiration affect Lab Member SMUA expiration?
+        # 1. Post the lab head UA
         
-        pass
+        test_comment = 'test lab head comment for user agreement'
+        authentication=self.get_credentials()
+        post_kwargs = { 'limit': 0, 'includes': ['*'] }
+        post_kwargs[HTTP_PARAM_AUTH] = authentication
+        post_kwargs[HEADER_APILOG_COMMENT] = test_comment
+        post_kwargs[DJANGO_ACCEPT_PARAM] = JSON_MIMETYPE
         
+        user_agreement_input = {
+            'type': VOCAB_USER_AGREEMENT_SM,
+            'data_sharing_level': 2,
+            'date_active': '2017-10-22'
+            }
+        filename = 'iccbl_sm_user_agreement_march2015.pdf'
+        filepath = \
+            '%s/db/static/test_data/useragreement/%s' %(APP_ROOT_DIR,filename)
+        logger.info('Open and POST file: %r', filepath)
+        with open(filepath) as input_file:
+            resource_uri = \
+                BASE_URI_DB + '/screensaveruser/%s/useragreement/' % test_lh_id
+            logger.info('POST user agreement %r to the server...', resource_uri)
+            user_agreement_input['attached_file'] = input_file
+            user_agreement_input['filename'] = filename
+            resp = self.django_client.post(
+                resource_uri, content_type=MULTIPART_CONTENT, 
+                data=user_agreement_input, **post_kwargs)
+            if resp.status_code not in [200]:
+                logger.info(
+                    'resp code: %d, resp: %r, content: %r', 
+                    resp.status_code, resp, resp.content)
+            self.assertTrue(
+                resp.status_code in [200], 
+                (resp.status_code))
         
-        # TODO: test user/lab head/screen DSL combinations
-        # - user cannot be created as non-lab head without a lab head (unless staff)
-        # - DSL must match lab head
-        # - change Lab Head DSL changes user DSL
+        # 1.A Verify User Agreement was created
         
+        resource_uri = '/'.join([
+            BASE_URI_DB,'useragreement', test_lh_id,VOCAB_USER_AGREEMENT_SM])
+        user_agreement_output = self.get_single_resource(resource_uri)
         
-        # User agreement
-        # - attached file
-        # - date active (checklist item event)
-        # - dsl level
-        # - date expired
-    # TODO: test expire dsl: create a "UserAgreementResource.expire"
+        logger.info('user agreement created: %r', user_agreement_output)
+        self.assertEqual(
+            user_agreement_input['type'], 
+            user_agreement_output['type'])
+        self.assertEqual(
+            user_agreement_input['data_sharing_level'], 
+            user_agreement_output['data_sharing_level'])
+        self.assertEqual(
+            user_agreement_input['date_active'],
+            user_agreement_output['date_active'])
+
+        # 2. Create lab_member UA
+        logger.info('2. Assign a user to the Lab Head...')
+        user_data = {
+            'username': 'test4screeningUser', 
+            'lab_head_id': test_lh_id
+        }
+        lab_member = self.create_screening_user(data=user_data)
+        lab_member_id = str(lab_member['screensaver_user_id'])
+        logger.info('User: %r (with lab head set)', lab_member)
+        
+        self.assertEqual(
+            str(lab_member['lab_head_id']), test_lh_id)
+        self.assertEqual(lab_member['lab_name'], lab_head['lab_name'])
+        self.assertEqual(
+            lab_member['lab_affiliation_category'], 
+            lab_head['lab_affiliation_category'])
+
+        # 2.B Verify user2 is a lab member
+        
+        resource_uri = BASE_URI_DB + '/screensaveruser'
+        resource_uri = '/'.join([resource_uri,lab_head['username']])
+        lab_head_updated = self.get_single_resource(
+            resource_uri, 
+            {'screensaver_user_id': lab_head['screensaver_user_id']})
+        self.assertTrue('lab_member_ids' in lab_head_updated)
+        lab_member_ids = lab_head_updated['lab_member_ids']
+        self.assertTrue(
+            str(lab_member['screensaver_user_id']) in lab_member_ids,
+            'lab_member_ids: %r, does not contain: %r'
+            % (lab_member_ids, lab_member['screensaver_user_id']))
+        
+        # 2.a Invalid; lab_member UA dsl != lab_head UA
+        
+        user_agreement_input = {
+            'type': VOCAB_USER_AGREEMENT_SM,
+            'data_sharing_level': 3,
+            'date_active': '2017-10-22'
+            }
+        logger.info('Open and POST file: %r', filepath)
+        with open(filepath) as input_file:
+            resource_uri = \
+                BASE_URI_DB + '/screensaveruser/%s/useragreement/' % lab_member_id
+            logger.info('POST user agreement %r to the server...', resource_uri)
+            user_agreement_input['attached_file'] = input_file
+            user_agreement_input['filename'] = filename
+            resp = self.django_client.post(
+                resource_uri, content_type=MULTIPART_CONTENT, 
+                data=user_agreement_input, **post_kwargs)
+            if resp.status_code not in [400]:
+                logger.info(
+                    'resp code: %d, resp: %r, content: %r', 
+                    resp.status_code, resp, resp.content)
+            self.assertTrue(
+                resp.status_code in [400], 
+                (resp.status_code))
+            data = self.deserialize(resp)
+            logger.info('response: %r', data) 
+            data = data[API_RESULT_ERROR]
+            key = 'data_sharing_level'
+            error_messages = find_in_dict(key, data)
+            self.assertTrue(error_messages is not None, 
+                'Error: response error not found: %r, obj: %r' %(key, data))
+            logger.info('error messages: %r', error_messages)
+            self.assertEqual(len(error_messages),1)
+            self.assertEqual(error_messages[0], 'Must match Lab Head value: 2')
+        
+        # 2.b valid; lab_member UA dsl == lab_head UA
+        
+        user_agreement_input = {
+            'type': VOCAB_USER_AGREEMENT_SM,
+            'data_sharing_level': 2,
+            'date_active': '2017-10-22'
+            }
+        filename = 'iccbl_sm_user_agreement_march2015.pdf'
+        filepath = \
+            '%s/db/static/test_data/useragreement/%s' %(APP_ROOT_DIR,filename)
+        logger.info('Open and POST file: %r', filepath)
+        with open(filepath) as input_file:
+            resource_uri = \
+                BASE_URI_DB + '/screensaveruser/%s/useragreement/' % lab_member_id
+            logger.info('POST user agreement %r to the server...', resource_uri)
+            user_agreement_input['attached_file'] = input_file
+            user_agreement_input['filename'] = filename
+            resp = self.django_client.post(
+                resource_uri, content_type=MULTIPART_CONTENT, 
+                data=user_agreement_input, **post_kwargs)
+            if resp.status_code not in [200]:
+                logger.info(
+                    'resp code: %d, resp: %r, content: %r', 
+                    resp.status_code, resp, resp.content)
+            self.assertTrue(
+                resp.status_code in [200], 
+                (resp.status_code))
+
+        # 3. Update the lab head UA
+        
+        # 3.a requires override
+        test_comment = 'test lab head user agreement level change will invalidate lab_member UAs'
+        logger.info(test_comment)
+        logger.info('3.a - fail, requires override')
+        user_agreement_input = {
+            'type': VOCAB_USER_AGREEMENT_SM,
+            'data_sharing_level': 3,
+            'date_active': '2017-10-22'
+            }
+        logger.info('Open and POST file: %r', filepath)
+        with open(filepath) as input_file:
+            resource_uri = \
+                BASE_URI_DB + '/screensaveruser/%s/useragreement/' % test_lh_id
+            logger.info('POST user agreement %r to the server...', resource_uri)
+            user_agreement_input['attached_file'] = input_file
+            user_agreement_input['filename'] = filename
+            resp = self.django_client.post(
+                resource_uri, content_type=MULTIPART_CONTENT, 
+                data=user_agreement_input, **post_kwargs)
+            # Expect Fail, requires override
+            if resp.status_code not in [400]:
+                logger.info(
+                    'resp code: %d, resp: %r, content: %r', 
+                    resp.status_code, resp, resp.content)
+            self.assertTrue(
+                resp.status_code in [400], 
+                (resp.status_code))
+        
+            resp = self.deserialize(resp)
+            logger.info('resp: %r', resp)
+            self.assertTrue(API_RESULT_ERROR in resp)
+            errors = resp[API_RESULT_ERROR]
+            self.assertTrue(API_PARAM_OVERRIDE in errors) 
+            self.assertEqual(errors[API_PARAM_OVERRIDE], 'required')
+            
+            # 3.b Try again, with override
+            override_resource_uri = \
+                resource_uri + '?' + API_PARAM_OVERRIDE + '=true' \
+            
+            resp = self.django_client.post(
+                override_resource_uri, content_type=MULTIPART_CONTENT, 
+                data=user_agreement_input, **post_kwargs)
+            # Expect Fail, requires override
+            if resp.status_code not in [200]:
+                logger.info(
+                    'resp code: %d, resp: %r, content: %r', 
+                    resp.status_code, resp, resp.content)
+            self.assertTrue(
+                resp.status_code in [200], 
+                (resp.status_code))
+            
+        # 3.c Verify that the lab member UA is deactivated
+        resource_uri = \
+            BASE_URI_DB + '/screensaveruser/%s/useragreement/' % lab_member_id
+            
+        resp = self.api_client.get(
+            resource_uri,
+            authentication=self.get_credentials(),
+            data={ 
+                'type': VOCAB_USER_AGREEMENT_SM,
+                'limit': 0, 'includes': '*'} )
+        self.assertTrue(
+            resp.status_code == 200, 
+            ('error, lab member UA should be deactivated', resp.status_code, 
+                self.get_content(resp)))
+
+        resp = self.deserialize(resp)
+        
+        data = resp[API_RESULT_DATA]
+        logger.info('data: %r', data)
+        
+        for ua_returned in data:
+            logger.info('ua: %r', ua_returned)
+            self.assertEqual(
+                ua_returned.get('status'),
+                SCHEMA.VOCAB.user_agreement.status.INACTIVE)
         
     def test12_service_activity(self):
         

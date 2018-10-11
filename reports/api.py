@@ -1107,7 +1107,7 @@ class ApiResource(SqlAlchemyResource):
                 rows_to_ids[_row] = id_kwargs
                 for idkey,idval in id_kwargs.items():
                     id_param = '%s__in' % idkey
-                    id_query_params[id_param].add(idval)
+                    id_query_params[id_param].add(str(idval))
         return (id_query_params,rows_to_ids)
     
     @write_authorization
@@ -2504,7 +2504,10 @@ class ApiLogResource(ApiResource):
         return self.build_list_response(request, **kwargs)
         
     @classmethod
-    def get_resource_comment_subquery(cls, resource_name):
+    def get_resource_comment_subquery(cls, resource_name, without_log_diffs=True):
+        '''
+        @param without_log_diffs if True only include logs without diffs
+        '''
         bridge = get_tables()
         _apilog = bridge['reports_apilog']
         _logdiff = bridge['reports_logdiff']
@@ -2520,10 +2523,14 @@ class ApiLogResource(ApiResource):
                 _user_cte,_apilog.c.username==_user_cte.c.username))
             .where(_apilog.c.ref_resource_name==resource_name)
             .where(_apilog.c.comment!=None)
-            .where(not_(exists(
+            .order_by(desc(_apilog.c.date_time)))
+        
+        if without_log_diffs is True:
+            _comment_apilogs = _comment_apilogs.where(not_(exists(
                 select([None]).select_from(_logdiff)
                     .where(_logdiff.c.log_id==_apilog.c.id))))
-            .order_by(desc(_apilog.c.date_time)))
+            
+        
         return _comment_apilogs
     
     @read_authorization
@@ -2883,8 +2890,10 @@ class FieldResource(ApiResource):
 
     def clear_cache(self, request, **kwargs):
         logger.debug('clear_cache: FieldResource...')
+        # Clear all caches, field names may effect sorting
+        kwargs['all'] = True
         ApiResource.clear_cache(self, request, **kwargs)
-        self.get_resource_resource().clear_cache(request, **kwargs)
+        # self.get_resource_resource().clear_cache(request, **kwargs)
         
     def get_resource_resource(self):
         if self.resource_resource is None:
@@ -3361,6 +3370,8 @@ class ResourceResource(ApiResource):
 
     def clear_cache(self, request, **kwargs):
         logger.debug('clear_cache ResourceResource ..')
+        # Clear all caches, resource definitions may effect sorting
+        kwargs['all'] = True
         ApiResource.clear_cache(self, request, **kwargs)
         caches['resource_cache'].clear()
         
@@ -3837,8 +3848,10 @@ class VocabularyResource(ApiResource):
          
     def clear_cache(self, request, **kwargs):
         logger.info('clear vocabulary caches')
+        # Clear all caches, vocabulary may effect sorting
+        kwargs['all'] = True
         super(VocabularyResource,self).clear_cache(request, **kwargs)
-        caches['resource_cache'].clear()
+        # caches['resource_cache'].clear()
         
     def build_list_response(self,request, **kwargs):
         schema = kwargs.pop('schema', None)

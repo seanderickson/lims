@@ -12975,6 +12975,9 @@ class AttachedFileResource(DbApiResource):
             _publication = self.bridge['publication']
             _reagent = self.bridge['reagent']
             _up = self.bridge['reports_userprofile']
+            _comment_apilogs = ApiLogResource.get_resource_comment_subquery(
+                self._meta.resource_name, without_log_diffs=False)
+            _comment_apilogs = _comment_apilogs.cte('_comment_apilogs')
             
             j = _af
             isouter = False
@@ -13006,6 +13009,23 @@ class AttachedFileResource(DbApiResource):
                     '(Select au.username '
                     ' from screensaver_user au '
                     ' where au.screensaver_user_id=attached_file.created_by_id )'),
+                'comment_array': (
+                    select([func.array_to_string(
+                        func.array_agg(
+                            _concat(                            
+                                cast(_comment_apilogs.c.name,
+                                    sqlalchemy.sql.sqltypes.Text),
+                                LIST_DELIMITER_SUB_ARRAY,
+                                cast(_comment_apilogs.c.date_time,
+                                    sqlalchemy.sql.sqltypes.Text),
+                                LIST_DELIMITER_SUB_ARRAY,
+                                _comment_apilogs.c.comment)
+                        ), 
+                        LIST_DELIMITER_SQL_ARRAY) ])
+                    .select_from(_comment_apilogs)
+                    .where(
+                        _comment_apilogs.c.key == 
+                        cast(_af.c.attached_file_id,sqlalchemy.sql.sqltypes.TEXT))),
                 }
 
             base_query_tables = [
@@ -13026,7 +13046,9 @@ class AttachedFileResource(DbApiResource):
                 stmt, order_clauses, filter_expression)
             stmt = stmt.order_by('-attached_file_id')
             
-            # compiled_stmt = str(stmt.compile(compile_kwargs={"literal_binds": True}))
+            # compiled_stmt = str(stmt.compile(
+            #     dialect=postgresql.dialect(),
+            #     compile_kwargs={"literal_binds": True}))
             # logger.info('compiled_stmt %s', compiled_stmt)
             
             title_function = None
@@ -19765,6 +19787,7 @@ class UserChecklistResource(DbApiResource):
             'date_effective': entered_checklists.c.date_effective,
             'date_notified': entered_checklists.c.date_notified,
             'is_retired': checklist_table.c.is_retired,
+            'ordinal': checklist_table.c.ordinal,
             }
         
         base_query_tables = ['user_checklist', 'screensaver_user'] 
@@ -19789,6 +19812,7 @@ class UserChecklistResource(DbApiResource):
             stmt = stmt.order_by(
                 entered_checklists.c.user_last_name, 
                 entered_checklists.c.user_first_name)
+        stmt = stmt.order_by(checklist_table.c.ordinal)
         # general setup
         if 'is_retired' not in readable_filter_hash:
             stmt = stmt.where(
@@ -20445,7 +20469,6 @@ class ScreensaverUserResource(DbApiResource):
         
         data = { API_RESULT_DATA: [user_agreement_data,], API_RESULT_META: _meta }
         return self.build_response(request, data)
-        
 
     def dispatch_useragreement_view(self, request, screensaver_user_id=None, username=None, **kwargs):
         if username is not None:

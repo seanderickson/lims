@@ -1383,6 +1383,7 @@ define([
           field['visibility'] = [];
         }
       });
+      activityResource.fields['funding_support']['visibility'] = [];
       
       if (!_.isEmpty(delegateStack) && delegateStack[0]=='+add') {
           self.addServiceActivity();
@@ -1393,7 +1394,6 @@ define([
         
         activityResource.fields['screen_facility_id'].editability = [];
         activityResource.fields['funding_support']['editability'] = [];
-        activityResource.fields['funding_support']['visibility'] = [];
         
         var activity_id = delegateStack.shift();
         self.consumedStack.push(activity_id);

@@ -41,7 +41,6 @@ def from_csv(csvfile, list_delimiters=None, list_keys=None):
     '''
     # reader = csv.reader(csvfile, encoding='utf-8')
     reader = unicode_csv_reader(csvfile)
-#     return from_csv_iterate(reader, list_delimiters=list_delimiters, list_keys=list_keys)
     return input_spreadsheet_reader(reader, list_delimiters=list_delimiters, list_keys=list_keys)
     
 def input_spreadsheet_reader(iterable, list_delimiters=None, list_keys=None):
@@ -59,7 +58,7 @@ def input_spreadsheet_reader(iterable, list_delimiters=None, list_keys=None):
     list_keys = list_keys or []
     list_keys = set(list_keys)
     if list_keys:
-        logger.info('read csv, using list_keys: %r', list_keys)
+        logger.debug('read csv, using list_keys: %r', list_keys)
     list_delimiters = list_delimiters or [LIST_DELIMITER_CSV,]
     list_delim_regex = re.compile(r'[%s]+' % ''.join(list_delimiters))
     i = 0 

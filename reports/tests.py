@@ -104,6 +104,8 @@ except:
     APP_ROOT_DIR = os.path.abspath(os.path.dirname(reports.__path__))
 
 DEBUG = False
+DEBUG_API_CLIENT = False
+
 
 def find_in_dict(key,content):
     ''' 
@@ -1639,7 +1641,10 @@ def tearDownModule():
 
 
 class TestApiClient(object):
-
+    '''
+    Patched version of tastypie.test.TestApiClient
+    TODO: show forks, if any
+    '''
 
     def __init__(self, serializer=None):
         """
@@ -1668,6 +1673,8 @@ class TestApiClient(object):
         if authentication is not None:
             kwargs[HTTP_PARAM_AUTH] = authentication
 
+        if DEBUG_API_CLIENT:
+            logger.info('GET: %r, %r', uri, kwargs)
         return self.client.get(uri, **kwargs)
 
     def post(
@@ -1692,6 +1699,8 @@ class TestApiClient(object):
         if authentication is not None:
             kwargs[HTTP_PARAM_AUTH] = authentication
 
+        if DEBUG_API_CLIENT:
+            logger.info('POST: %r, %r', uri, kwargs)
         return self.client.post(uri, **kwargs)
 
     def put(self, uri, format='json', data=None, authentication=None, **kwargs):
@@ -1715,6 +1724,8 @@ class TestApiClient(object):
         if authentication is not None:
             kwargs[HTTP_PARAM_AUTH] = authentication
 
+        if DEBUG_API_CLIENT:
+            logger.info('PUT: %r, %r', uri, kwargs)
         return self.client.put(uri, **kwargs)
 
     def patch(
@@ -1753,6 +1764,9 @@ class TestApiClient(object):
             r['CONTENT_LENGTH'] = 0
         
         r.update(kwargs)
+        
+        if DEBUG_API_CLIENT:
+            logger.info('PATCH: %r', r)
         return self.client.request(**r)
 
     def delete(
@@ -1775,6 +1789,8 @@ class TestApiClient(object):
         if authentication is not None:
             kwargs[HTTP_PARAM_AUTH] = authentication
 
+        if DEBUG_API_CLIENT:
+            logger.info('DELETE: %r, %r', uri, kwargs)
         return self.client.delete(uri, **kwargs)
     
 

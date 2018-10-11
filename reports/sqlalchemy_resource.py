@@ -1011,10 +1011,11 @@ class SqlAlchemyResource(IccblBaseResource):
                 # Check cache
                 # Create response "meta" counts
                 
-                logger.info(
-                    'streaming json, use_caching: %r, self.use_cache: %r, '
-                    'limit: %d, %r', 
-                    use_caching, self.use_cache, limit, is_for_detail)
+                if DEBUG_STREAMING:
+                    logger.info(
+                        'streaming json, use_caching: %r, self.use_cache: %r, '
+                        'limit: %d, %r', 
+                        use_caching, self.use_cache, limit, is_for_detail)
                 if ((self.use_cache is True and use_caching is not False)
                         and ( use_caching is True or limit > 0)
                         and is_for_detail is not True):

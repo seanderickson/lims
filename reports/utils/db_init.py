@@ -132,7 +132,7 @@ def post(input_file, extension, obj_url,headers, session=None, authentication=No
             logger.debug('result: %r', r.json())
 
 
-parser = argparse.ArgumentParser(description='url')
+parser = argparse.ArgumentParser(description='DB init Utility')
 parser.add_argument(
     '-u', '--url', required=True,
     help='api url, e.g.: "http://localhost:8000/reports/api/v1')

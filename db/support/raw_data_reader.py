@@ -59,7 +59,6 @@ def read_rows(rowgenerator):
     
     plate_matrix = None
     in_matrix = False
-#     expected_cols = 0
     cols_detected = None
     rows_detected = None
     
@@ -75,7 +74,6 @@ def read_rows(rowgenerator):
             cell0 = row[0]
             if cell0:
                 cell0 = cell0.strip()
-        logger.debug('cell0: %r', cell0)
         if not cell0:
             if in_matrix is False:
                 header_row = []
@@ -260,12 +258,21 @@ def read_text(input_file):
     
 def read_xlsx(input_file):
 
-    wb = xlrd.open_workbook(file_contents=input_file.read())
+    contents = input_file.read()
+    logger.info('input_file read: %d', len(contents))
+    # with open('/tmp/test_read1.log','w') as logfile:
+    # 
+    #     wb = xlrd.open_workbook(file_contents=contents, logfile=logfile, verbosity=10)
+    wb = xlrd.open_workbook(file_contents=contents)
     sheets = xlsutils.workbook_sheets(wb)
+    logger.info('sheets: %r, %d', sheets, wb.nsheets)
     plate_matrices = []
     errors = {}
+    
+    sheet_count = 0
     for sheet in sheets:
-        logger.info('read sheet: %r', sheet)
+        sheet_count += 1
+        logger.info('read sheet: %d, %r', sheet_count, sheet)
         (sheet_plate_matrices,sheet_errors) = read_rows(xlsutils.sheet_rows(sheet))
         logger.info('for sheet: %r, %d matrices read', 
             sheet.name, len(sheet_plate_matrices))
@@ -275,9 +282,11 @@ def read_xlsx(input_file):
         if sheet_errors:
             logger.warn('sheet errors: %r: %r', sheet.name, sheet_errors)
             errors[sheet.name] = sheet_errors
-            
-    if not plate_matrices:
-        errors['No matrices were found']
+
+    if not sheet_count:
+        errors['input_file'] = 'No sheets were read'
+    elif not plate_matrices:
+        errors['input_sheets'] = 'No matrices were found'
     return (plate_matrices, errors)
 
 def read_csv(input_file):

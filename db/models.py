@@ -308,9 +308,9 @@ class UserAgreement(models.Model):
     def __repr__(self):
         return (
             'UserAgreement(screensaver_user=%r, type=%r, '
-            'date_active=%r, date_expired=%r, date_notified=%r )>' 
-            % (self.screensaver_user, self.type, self.date_active, 
-                self.date_expired, self.date_notified )) 
+            'dsl=%r, date_active=%r, date_expired=%r, date_notified=%r )>' 
+            % (self.screensaver_user, self.type, self.data_sharing_level, 
+                self.date_active, self.date_expired, self.date_notified )) 
 
 class CherryPickRequest(models.Model):
     

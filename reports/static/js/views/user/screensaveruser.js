@@ -726,7 +726,11 @@ define([
             uaModel.get('data_sharing_level')));
       } else {
         formFields.set('date_active', new Date());
-        formFields.set('data_sharing_level', uaModel.get('lab_head_data_sharing_level'));
+        var default_dsl = uaModel.get('lab_head_data_sharing_level');
+        if (_.isEmpty(default_dsl)){
+          default_dsl = 3;
+        }
+        formFields.set('data_sharing_level', default_dsl);
       }
       
       if (self.model.get('classification') == appModel.VOCAB_USER_CLASSIFICATION_PI){
@@ -816,13 +820,16 @@ define([
               return false;
             }else{
               var values = form.getValue();
+
+              var headers = {};
+              var comments = values['comments'];
+              headers[appModel.HEADER_APILOG_COMMENT] = comments;
               
               if (_.result(values,'expire')){
                 appModel.showModalError('Manual Expiration not allowed');
                 return 
               }
               else if (_.result(values,'deactivate')){
-                var httpType = 'PATCH';
                 var contentType = 'application/json';
                 var data = JSON.stringify({ 
                   status: 'inactive', type: type });
@@ -831,10 +838,10 @@ define([
                   url: url,    
                   data: data,
                   cache: false,
-                  contentType: contentType,
+                  contentType: 'application/json',
                   dataType: 'json', // what is expected back from the server
                   processData: false,
-                  type: httpType,
+                  type: 'PATCH',
                   headers: headers, 
                   success: function(data){
                     self.showUserAgreements();
@@ -847,7 +854,7 @@ define([
                       body: 'deactivated'
                     });
                   }
-                }).fail(function(){ 
+                }).fail(function(jqXHR, textStatus, errorThrown){ 
                   Iccbl.appModel.jqXHRfail.apply(this,arguments); 
                 }).done(function(model, resp){
                     // TODO: done replaces success as of jq 1.8
@@ -884,10 +891,6 @@ define([
               //  $form = $('#uploadUAButton_form');
               //  $form.append($errorDiv);
               //}
-              var headers = {};
-              var comments = values['comments'];
-              headers[appModel.HEADER_APILOG_COMMENT] = comments;
-              
               var httpType = 'PATCH';
               var contentType = 'application/json';
               var file = $('input[name="fileInput"]')[0].files[0];
@@ -915,44 +918,69 @@ define([
                 data = JSON.stringify(data);
               }
               
-              $.ajax({
-                url: url,    
-                data: data,
-                cache: false,
-                contentType: contentType,
-                dataType: 'json', // what is expected back from the server
-                processData: false,
-                type: httpType,
-                headers: headers, 
-                success: function(data){
-                  self.showUserAgreements();
-                  self.model.fetch({ reset: true }).done(function(){
-                    self.buildMessages();
-                  });
-                  
-                  var messages = {};
-                  messages['data_sharing_level'] =  values['data_sharing_level'];
-                  if (file){
-                    messages['filename'] = file.name;
+              function processPostPatch(patchUrl){
+                $.ajax({
+                  url: patchUrl,
+                  data: data,
+                  cache: false,
+                  contentType: contentType,
+                  dataType: 'json', // what is expected back from the server
+                  processData: false,
+                  type: httpType,
+                  headers: headers, 
+                  success: function(data){
+                    self.showUserAgreements();
+                    self.model.fetch({ reset: true }).done(function(){
+                      self.buildMessages();
+                    });
+                    
+                    var messages = {};
+                    messages['data_sharing_level'] =  values['data_sharing_level'];
+                    if (file){
+                      messages['filename'] = file.name;
+                    }
+                    var meta = _.result(data, 'meta', null);
+                    if (meta) {
+                      _.extend(messages, meta);
+                    }
+                    appModel.showJsonMessages(messages, {
+                      title: 'Update Success'
+                    });
                   }
-                  var meta = _.result(data, 'meta', null);
-                  if (meta) {
-                    _.extend(messages, meta);
+                })
+                .fail(processError)
+                .done(function(model, resp){
+                    // TODO: done replaces success as of jq 1.8
+                });
+              };
+              
+              function processError(jqXHR, textStatus, errorThrown){
+                var jsonError = _.result(jqXHR, 'responseJSON');
+                if (!_.isUndefined(jsonError)){
+                  var error = _.result(jsonError, 'errors');
+                  var overrideFlag = _.result(error,appModel.API_PARAM_OVERRIDE)
+                  if (!_.isUndefined(overrideFlag)){
+                    var bodyMsg = appModel.print_json(error);
+                    body = $('<textarea class="input-full" rows=' 
+                      + appModel.MAX_ROWS_IN_DIALOG_MSG + ' ></textarea>');
+                    body.val(bodyMsg);
+
+                    appModel.showModal({
+                      okText: 'Confirm Override',
+                      title: 'Override Required: New Data Sharing Level will invalidate Lab Member Agreements:',
+                      view: body,
+                      ok: function(){
+                        processPostPatch(url + '?' + appModel.API_PARAM_OVERRIDE + '=true');
+                      }
+                    });
+                    
                   }
-                  appModel.showJsonMessages(messages, {
-                    title: 'Update Success'
-                  });
-//                  appModel.showModalMessage({
-//                    title: formTitle + ' - complete',
-//                    okText: 'ok',
-//                    body: msg
-//                  });
-                }
-              }).fail(function(){ 
-                Iccbl.appModel.jqXHRfail.apply(this,arguments); 
-              }).done(function(model, resp){
-                  // TODO: done replaces success as of jq 1.8
-              });
+                } else {
+                  Iccbl.appModel.jqXHRfail.apply(this,arguments); 
+                }                
+              };
+
+              processPostPatch(url);
               return true;
             }
           }

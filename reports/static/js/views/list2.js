@@ -1183,7 +1183,8 @@ define([
       var _fields = this._options.resource.fields;
       
       _fields = _.omit(_fields, function(value, key, object) {
-        return _.contains(value.visibility, 'api');
+        return (   _.contains(value.visibility, 'api') 
+                || _.contains(value.visibility, 'none'));
       });
       
       var screenModel = _.result(self._options,'screen');

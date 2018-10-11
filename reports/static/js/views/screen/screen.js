@@ -984,8 +984,10 @@ define([
         
         showAddButton.click(function(e) {
           e.preventDefault();
+          
+          var type_choices = appModel.getVocabularySelectOptions('attachedfiletype.screen');
           UploadDataForm.uploadAttachedFileDialog(
-            url, 'attachedfiletype.screen'
+            url, type_choices
           ).done(function(data, textStatus, jqXHR){
             var msg = 'Success';
             if (data) {

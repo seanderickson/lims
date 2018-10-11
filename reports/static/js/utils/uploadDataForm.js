@@ -65,9 +65,9 @@ function($, _, Iccbl, appModel, EditView) {
         template: fieldTemplate
       };
       formSchema['comments'] = {
-        title: 'Comments',
+        title: 'Comments (optional)',
         key: 'comments',
-        validators: ['required'],
+        validators: [],
         type: 'TextArea',
         editorClass: 'input-full',
         template: fieldTemplate
@@ -187,7 +187,7 @@ function($, _, Iccbl, appModel, EditView) {
      * jqXHR.fail(function( jqXHR, textStatus, errorThrown ) {});
      * jqXHR.always(function( data|jqXHR, textStatus, jqXHR|errorThrown ) { });
      */
-    uploadAttachedFileDialog: function(url, vocabulary_ref){
+    uploadAttachedFileDialog: function(url, type_choices){
   
       var self = this;
       
@@ -209,16 +209,7 @@ function($, _, Iccbl, appModel, EditView) {
         '    </div>',
         '  </div>',
       ].join(''));
-      var choiceHash = {}
-      try{
-        var vocabulary = appModel.getVocabulary(vocabulary_ref);
-          _.each(_.keys(vocabulary),function(choice){
-            choiceHash[choice] = vocabulary[choice].title;
-          });
-      }catch(e){
-        console.log('on get vocabulary', e);
-        appModel.error('Error locating vocabulary: ' + vocabulary_ref);
-      }
+      
       var DisabledField = EditView.DisabledField.extend({
         tagName: 'p',
         className: 'form-control-static'
@@ -239,7 +230,7 @@ function($, _, Iccbl, appModel, EditView) {
         type: Backbone.Form.editors.Select.extend({
             className: 'form-control'
           }),
-        options: choiceHash,
+        options: type_choices, 
         template: fieldTemplate
       };
       formSchema['file_date'] = {
@@ -249,9 +240,9 @@ function($, _, Iccbl, appModel, EditView) {
         template: fieldTemplate
       };
       formSchema['comments'] = {
-        title: 'Comments',
+        title: 'Comments (optional)',
         key: 'comments',
-        validators: ['required'],
+        validators: [],
         type: 'TextArea',
         editorClass: 'input-full',
         template: fieldTemplate
@@ -305,9 +296,10 @@ function($, _, Iccbl, appModel, EditView) {
             return false;
           }else{
             var values = form.getValue();
-            var comments = values['comments'];
             var headers = {};
-            headers[appModel.HEADER_APILOG_COMMENT] = comments;
+
+            var comments = values['comments'];
+            if (comments) headers[appModel.HEADER_APILOG_COMMENT] = comments;
             
             var data = new FormData();
             _.each(_.keys(values), function(key){

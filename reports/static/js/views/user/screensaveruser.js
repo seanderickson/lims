@@ -81,6 +81,10 @@ define([
       if (this.model.get('is_staff') != true){
         delete self.tabbed_resources['usergrouppermissions'];
       }
+      
+      if (!this.model.has('screens')){
+        delete self.tabbed_resources['screens'];
+      }
       _.bindAll(this,'addServiceActivity');
     },
 
@@ -1431,8 +1435,13 @@ define([
       });
       uploadAttachedFileButton.click(function(e){
         e.preventDefault();
+        var type_choices = appModel.getVocabularySelectOptions('attachedfiletype.user');
+        // NOTE: do not show user agreement types in generic uploads (JAS)
+        type_choices = _.reject(type_choices, function(choice){
+          return choice.val.match(/user_agreement/gi);
+        });
         UploadDataForm.uploadAttachedFileDialog(
-          url, 'attachedfiletype.user'
+          url, type_choices
         ).done(function(){
           view.collection.fetch({ reset: true });
         }).fail(function(){

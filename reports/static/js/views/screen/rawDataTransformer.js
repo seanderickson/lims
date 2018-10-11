@@ -582,7 +582,7 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
       editForm.$el.find('div[data-fields="assay_positive_controls"]')
         .find('.form-group').append(select_assay_positives_button);
       editForm.$el.find('[name="assay_positive_controls"]').change(function(){
-        // runs schema and model validation, errors not nee
+        // runs schema and model validation, errors not needed
         var errors = editForm.commit({ validate: true }); 
       });
       
@@ -591,7 +591,7 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
       editForm.$el.find('div[data-fields="assay_negative_controls"]')
         .find('.form-group').append(select_assay_negatives_button);
       editForm.$el.find('[name="assay_negative_controls"]').change(function(){
-        // runs schema and model validation, errors not nee
+        // runs schema and model validation, errors not needed
         var errors = editForm.commit({ validate: true }); 
       });
 
@@ -600,7 +600,7 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
       editForm.$el.find('div[data-fields="assay_other_controls"]')
         .find('.form-group').append(select_assay_other_button);
       editForm.$el.find('[name="assay_other_controls"]').change(function(){
-        // runs schema and model validation, errors not nee
+        // runs schema and model validation, errors not needed
         var errors = editForm.commit({ validate: true }); 
       });
       
@@ -610,17 +610,17 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
         editForm.$el.find('div[data-fields="library_controls"]')
           .find('.form-group').append(select_library_controls_button);
         editForm.$el.find('[name="library_controls"]').change(function(){
-          // runs schema and model validation, errors not nee
+          // runs schema and model validation, errors not needed
           var errors = editForm.commit({ validate: true }); 
           // errors not needed; commit will cause to display
         });
       }
       editForm.$el.find('[name="assay_plate_size"]').change(function(){
-        // runs schema and model validation, errors not nee
+        // runs schema and model validation, errors not needed
         var errors = editForm.commit({ validate: true }); 
       });
       editForm.$el.find('[name="library_plate_size"]').change(function(){
-        // runs schema and model validation, errors not nee
+        // runs schema and model validation, errors not needed
         var errors = editForm.commit({ validate: true }); 
       });
 

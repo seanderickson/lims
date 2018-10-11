@@ -711,6 +711,7 @@ function($, _, Backgrid, Iccbl, appModel, genericLayout, palette) {
           console.log('error, no well found', well);
         }
       });
+      if (appModel.DEBUG) console.log('rowCollection', rowCollection)
     },
     
     /**

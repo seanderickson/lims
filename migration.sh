@@ -760,8 +760,6 @@ function main {
   
   restoredb_data
   
-  result_value_cleanup
-  
   maybe_activate_virtualenv
   
   pip install -r requirements.txt >>"$LOGFILE" 2>&1
@@ -821,6 +819,8 @@ function main {
       -a GET "https://dev.screensaver2.med.harvard.edu/db/api/v1/screenresult/1158?page=1&limit=25&offset=0&library_well_type__eq=experimental"
   fi
   
+  result_value_cleanup
+  
   if [[ $MIGRATE_RESULT_VALUE_TABLE -ne 0 ]]; then
     migrate_result_values
   fi
@@ -838,8 +838,6 @@ main "$@"
   
 #  restoredb_data
     
-#  result_value_cleanup
-
 #  maybe_activate_virtualenv
   
 #  pip install -r requirements.txt >>"$LOGFILE" 2>&1
@@ -862,6 +860,8 @@ main "$@"
 #  create_studies
 
 # run_expiration_scripts
+
+#  result_value_cleanup
 
 
 

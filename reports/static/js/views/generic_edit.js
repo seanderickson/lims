@@ -62,7 +62,16 @@ define([
       this.$el.on('blur', function (e) {
         $(this).off('mousewheel.disableScroll')
       });     
-    }
+    },
+    
+    render: function() {
+      Backbone.Form.editors.Number.prototype.render.apply(this);
+      if (this.schema.placeholder) {
+        this.$el.attr('placeholder', this.schema.placeholder);
+      }
+      return this;
+    },
+    
   });
   
   var SIunitEditor = Backbone.Form.editors.Base.extend({

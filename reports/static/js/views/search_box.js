@@ -23,15 +23,22 @@ define([
         "</form>",
         ].join('')),
 
-    fieldTemplate: _.template([
-        '<div class="form-group" key="form-group-<%=key %>" >',
-        '<label title="<%= help %>" for="<%= editorId %>"><%= title %></label>',
-        '<div>',
-        '  <span key="<%=key%>" placeholder="testing.." data-editor></span>',
-    '      <div data-error class="text-danger" ></div>',
-        '</div>',
-        '</div>'
+    searchFormTemplate: _.template([
+        '<form class="iccbl-headerfield-form" >',
+        '  <div data-fieldsets class="col-xs-11" />',
+        '  <div class="col-xs-1">',
+        '    <button type="submit" class="btn btn-default pull-right btn-block"  >&gt;</button>',
+        '  </div>',
+        '  <div id="data-error" class="has-error" ></div>',
+        "</form>",
         ].join('')),
+    
+    fieldTemplate: _.template([
+        '<div key="form-field-<%=key%>" >',
+        '  <span key="<%=key%>" title="<%= help %>" data-editor></span>',
+        '  <div data-error class="col-sm-12 text-danger" ></div>',
+        '</div>',
+    ].join('')),
     
     choiceFieldTemplate: _.template([
       '<div class="form-group" key="form-group-<%=key%>" >',
@@ -66,7 +73,7 @@ define([
         }
       };
       
-      var schema3 = {};
+      var plateCopySchema = {};
       function validatePlateSearch(value, formValues){
         var errors = [];
         var parsedData = Iccbl.parseRawPlateSearch(value,errors);
@@ -82,90 +89,88 @@ define([
           };
         }
       };
-      schema3['searchVal'] = {
-        title: 'Search for Plate & Copy',
+      plateCopySchema['searchVal'] = {
+        help: 'Plate and Copy Search',
         key: 'searchVal',
-        help: 'enter a comma separated list',
-        placeholder: 'e.g. 1000-1005 B\n2000 C',
+        placeholder: 'Plate & Copy...',
         validators: ['required',validatePlateSearch],
         type: EditView.TextArea2,
         template: self.fieldTemplate,
         editorClass: 'form-control'
       };
-      var FormFields3 = Backbone.Model.extend({
-        schema: schema3,
+      var PlateCopyFormModel = Backbone.Model.extend({
+        schema: plateCopySchema,
         validate: function(attrs) {
           var errors = {};
           if (!_.isEmpty(errors)) return errors;
         }
       });
-      var formFields3 = new FormFields3({
+      var plateCopyFormModel = new PlateCopyFormModel({
       });
       
-      var form3 = self.form3 = new Backbone.Form({
-        model: formFields3,
-        template: self.formTemplate,
+      var plateCopyForm = self.plateCopyForm = new Backbone.Form({
+        model: plateCopyFormModel,
+        template: self.searchFormTemplate,
         el: '#search-box-3'
       });
       
       ///// Well search
-      var schema2 = {};
-      schema2['searchVal'] = {
-        title: 'Search for 384-well Plate Wells',
+      var wellsSchema = {};
+      wellsSchema['searchVal'] = {
+        title: 'Find',
         key: 'searchVal',
-        help: 'enter a comma separated list',
-        placeholder: 'e.g. 1000 A08,A09,A10\n1740:D12',
+        help: 'Plate Well Search',
+        placeholder: 'Plate Wells...',
         validators: ['required',validateWellSearch],
         type: EditView.TextArea2,
         template: self.fieldTemplate,
         editorClass: 'form-control'
       };
-      var FormFields2 = Backbone.Model.extend({
-        schema: schema2,
+      var WellsFormModel = Backbone.Model.extend({
+        schema: wellsSchema,
         validate: function(attrs) {
           var errors = {};
           if (!_.isEmpty(errors)) return errors;
         }
       });
-      var formFields2 = new FormFields2({
+      var wellsFormModel = new WellsFormModel({
       });
       
-      var form2 = self.form2 = new Backbone.Form({
-        model: formFields2,
-        template: self.formTemplate,
-        el: '#search-box-2'
+      var wellsForm = self.wellsForm = new Backbone.Form({
+        model: wellsFormModel,
+        template: self.searchFormTemplate,
+        el: '#search-box-2-content'
       });
       
       ///// Compound Name, Facility or Vendor ID
-      var schema2a = {};
-      schema2a['searchVal'] = {
-        title: 'Search for compound name, vendor ID',
+      var compoundSchema = {};
+      compoundSchema['searchVal'] = {
+        help: 'Compound Name, Vendor ID Search',
         key: 'searchVal',
-        help: 'enter each compound name or vendor ID on a separate line',
-        placeholder: 'enter each compound name or vendor ID on a separate line',
+        placeholder: 'Compound Name or Vendor ID...',
         validators: ['required'],
         type: EditView.TextArea2,
         template: self.fieldTemplate,
         editorClass: 'form-control'
       };
-      var FormFields2a = Backbone.Model.extend({
-        schema: schema2a,
+      var CompoundFormModel = Backbone.Model.extend({
+        schema: compoundSchema,
         validate: function(attrs) {
           var errors = {};
           if (!_.isEmpty(errors)) return errors;
         }
       });
-      var formFields2a = new FormFields2a({
+      var compoundFormModel = new CompoundFormModel({
       });
       
-      var form2a = self.form2a = new Backbone.Form({
-        model: formFields2a,
-        template: self.formTemplate,
+      var compoundNameForm = self.compoundNameForm = new Backbone.Form({
+        model: compoundFormModel,
+        template: self.searchFormTemplate,
         el: '#search-box-2a'
       });
       
       ///// Screening Inquiry
-      var schema5 = {};
+      var screeningInqurySchema = {};
       function validateScreeningInquiry(value, formValues){
         var errors = [];
         var parsedData = Iccbl.parseRawScreeningInquiry(value,errors);
@@ -181,58 +186,56 @@ define([
           };
         }
       };
-      schema5['searchVal'] = {
-        title: 'Screening Inquiry',
+      screeningInqurySchema['searchVal'] = {
+        help: 'Screening Inquiry Search (enter Screen, Plates, Volume and Replicates desired)',
         key: 'searchVal',
-        help: 'Enter a screening inquiry, e.g. &quot;(Screen #) 1000-2000,2015,3017 100 nL x 2&quot;',
-        placeholder: 'e.g. (Screen #) 1000-2000,2015,3017 100 nL x 2',
+        placeholder: 'Screening Inquiry...',
         validators: ['required',validateScreeningInquiry],
         type: EditView.TextArea2,
         template: self.fieldTemplate,
         editorClass: 'form-control'
       };
-      var FormFields5 = Backbone.Model.extend({
-        schema: schema5,
+      var ScreeningInquryFormModel = Backbone.Model.extend({
+        schema: screeningInqurySchema,
         validate: function(attrs) {
           var errors = {};
           if (!_.isEmpty(errors)) return errors;
         }
       });
-      var formFields5 = new FormFields5({
+      var screeningInquiryModel = new ScreeningInquryFormModel({
       });
       
-      var form5 = self.form5 = new Backbone.Form({
-        model: formFields5,
-        template: self.formTemplate,
+      var screeningInquiryForm = self.screeningInquiryForm = new Backbone.Form({
+        model: screeningInquiryModel,
+        template: self.searchFormTemplate,
         el: '#search-box-5'
       });      
       
       ///// Cherry Pick Request
-      var schema4 = {};
-      schema4['searchVal'] = {
-        title: 'CPR #',
+      var cprSchema = {};
+      cprSchema['searchVal'] = {
+        help: 'Cherry Pick Request Search',
         key: 'searchVal',
-        help: 'enter a Cherry Pick ID',
-        placeholder: 'e.g. 44443',
+        placeholder: 'Cherry Pick Request...',
         key:  'search_value', // TODO: "key" not needed>?
         type: EditView.NumberEditor,
         template: self.fieldTemplate,
         editorClass: 'form-control'
       };
-      var FormFields4 = Backbone.Model.extend({
-        schema: schema4,
+      var CprFormModel = Backbone.Model.extend({
+        schema: cprSchema,
         validate: function(attrs) {
           var errors = {};
           if (!_.isEmpty(errors)) return errors;
         }
       });
-      var formFields4 = new FormFields4({
+      var cprFormModel = new CprFormModel({
         cpr: null
       });
       
-      var form4 = self.form4 = new Backbone.Form({
-        model: formFields4,
-        template: self.formTemplate,
+      var cprForm = self.cprForm = new Backbone.Form({
+        model: cprFormModel,
+        template: self.searchFormTemplate,
         el: '#search-box-4'
       });
       
@@ -358,16 +361,16 @@ define([
         });
       });
       if (this.form2_data){
-        this.form2.setValue('searchVal', this.form2_data);
+        this.wellsForm.setValue('searchVal', this.form2_data);
       }
       if (this.form2a_data){
-        this.form2a.setValue('searchVal', this.form2a_data);
+        this.compoundNameForm.setValue('searchVal', this.form2a_data);
       }
-      if (this.form3_data){
-        this.form3.setValue('searchVal', this.form3_data);
+      if (this.plateCopyForm_data){
+        this.plateCopyForm.setValue('searchVal', this.plateCopyForm_data);
       }
       if (this.form5_data){
-        this.form5.setValue('searchVal', this.form5_data);
+        this.screeningInquiryForm.setValue('searchVal', this.form5_data);
       }
     },
     
@@ -403,25 +406,22 @@ define([
       //});
       
       ///// CopyPlate search 3 - perform search on server
-      var form3 = this.form3;
-      var $form3 = this.form3.render().$el;
-      $('#search-box-3').html($form3);
-      $form3.append([
-          '<button type="submit" ',
-          'class="btn btn-default btn-xs" style="width: 3em; " >ok</input>',
-          ].join(''));
+      var plateCopyForm = this.plateCopyForm;
+      var $plateCopyForm = this.plateCopyForm.render().$el;
+      $('#search-box-3').html($plateCopyForm);
 
-      $form3.find('[ type="submit" ]').click(function(e){
+      $plateCopyForm.find('[ type="submit" ]').click(function(e){
         e.preventDefault();
         self.$('[data-error]').empty();
-        var errors = form3.commit({ validate: true }); 
+        var errors = plateCopyForm.commit({ validate: true }); 
         if(!_.isEmpty(errors)){
-          $form3.find('[name="searchVal"]').addClass(self.errorClass);
+          $plateCopyForm.find('[name="searchVal"]').addClass(self.errorClass);
+          $plateCopyForm.find('[data-error]').html(errors.join('<br/>'));
           return;
         }else{
-          $form3.find('[name="searchVal"]').removeClass(self.errorClass);
+          $plateCopyForm.find('[name="searchVal"]').removeClass(self.errorClass);
         }
-        var errors = self.processCopyPlateSearch(self.form3.getValue('searchVal'));
+        var errors = self.processCopyPlateSearch(self.plateCopyForm.getValue('searchVal'));
         if (!_.isEmpty(errors)){
           throw 'Unexpected errors after submit: ' + errors.join(', ');
         }
@@ -429,85 +429,44 @@ define([
       });      
       
       ///// Well/Reagent search 2 - perform search on server
-      var form2 = this.form2;
-      var $form2 = this.form2.render().$el;
-      $('#search-box-2').html($form2);
-      $form2.append([
-          '<button type="submit" ',
-          'class="btn btn-default btn-xs" style="width: 3em; " >ok</input>',
-          ].join(''));
+      var wellsForm = this.wellsForm;
+      var $wellsForm = this.wellsForm.render().$el;
+      $('#search-box-2-content').html($wellsForm);
 
-      $form2.find('[ type="submit" ]').click(function(e){
+      $wellsForm.find('[ type="submit" ]').click(function(e){
         e.preventDefault();
         self.$('[data-error]').empty();
-        var errors = form2.commit({ validate: true }); 
+        var errors = wellsForm.commit({ validate: true }); 
         if(!_.isEmpty(errors)){
-          $form2.find('[name="searchVal"]').addClass(self.errorClass);
+          $wellsForm.find('[name="searchVal"]').addClass(self.errorClass);
           return;
         }else{
-          $form2.find('[name="searchVal"]').removeClass(self.errorClass);
+          $wellsForm.find('[name="searchVal"]').removeClass(self.errorClass);
         }
         
-        var errors = self.processWellSearch(self.form2.getValue('searchVal'));
+        var errors = self.processWellSearch(self.wellsForm.getValue('searchVal'));
         if (!_.isEmpty(errors)){
-          $form2.find('[name="searchVal"]').addClass(self.errorClass);
-          $form2.find('[data-error]').html(errors.join('<br/>'));
+          $wellsForm.find('[name="searchVal"]').addClass(self.errorClass);
+          $wellsForm.find('[data-error]').html(errors.join('<br/>'));
           return;
         }
       });
-      var $help = $('<a>', {
-        title: 'Help'
-      }).text('?');
-      $help.click(function(e){
-        e.preventDefault();
-        appModel.showModalMessage({
-          title: 'Searching for wells',
-          okText: 'Ok',
-          body: [
-            '<b>Search for single wells:</b>',
-            '50001:P24, 50002:A01, 50002:A23',
-            '<b>Equivalent search:</b>',
-            '50001P24, 50002A1, 50002A23',
-            '<b>Search for multiple wells in a plate:</b>',
-            '50001P24 A1 A23',
-            '50001 P24 A1 A23',
-            '50001 P24,A1,A23',
-            '<b>Search for multiple wells in a plate range:</b>',
-            '50001-50020 A1,A2,A3',
-            '50001-50020 A1 A2 A3',
-            '<b>Search for many wells:</b>',
-            '50001:P21','50001:P22','50001:P23','50001:P24',
-            '<b>Search for all wells in a plate or plate range:</b>',
-            '50001 50002 50003',
-            '50010-50020',
-          ].join('<br/>'),
-          ok: function(e){
-            e.preventDefault();
-          }
-        });
-      });
-      $form2.find('[key="form-group-searchVal"]').find('label').append('&nbsp;').append($help);
-
+      
       ///// Compound name, Vendor ID search- perform search on server
-      var form2a = this.form2a;
-      var $form2a = this.form2a.render().$el;
-      $('#search-box-2a').html($form2a);
-      $form2a.append([
-          '<button type="submit" ',
-          'class="btn btn-default btn-xs" style="width: 3em; " >ok</input>',
-          ].join(''));
-
-      $form2a.find('[ type="submit" ]').click(function(e){
+      var compoundNameForm = this.compoundNameForm;
+      var $compoundNameForm = this.compoundNameForm.render().$el;
+      $('#search-box-2a').html($compoundNameForm);
+      $compoundNameForm.find('[ type="submit" ]').click(function(e){
         e.preventDefault();
         self.$('[data-error]').empty();
-        var errors = form2a.commit({ validate: true }); 
+        var errors = compoundNameForm.commit({ validate: true }); 
         if(!_.isEmpty(errors)){
-          $form2a.find('[name="searchVal"]').addClass(self.errorClass);
+          $compoundNameForm.find('[name="searchVal"]').addClass(self.errorClass);
           return;
         }else{
-          $form2a.find('[name="searchVal"]').removeClass(self.errorClass);
+          $compoundNameForm.find('[name="searchVal"]').removeClass(self.errorClass);
         }
-        var errors = self.processCompoundSearch(self.form2a.getValue()['searchVal']);
+        var errors = self.processCompoundSearch(self.compoundNameForm.getValue()['searchVal']);
         if (!_.isEmpty(errors)){
           throw 'Unexpected errors after submit: ' + errors.join(', ');
         }
@@ -515,26 +474,21 @@ define([
       
       ///// Screening Inquiry
       if (appModel.hasPermission('libraryscreening', 'read')){
-        var form5 = this.form5;
-        var $form5 = this.form5.render().$el;
-        $('#search-box-5').html($form5);
-        $form5.append([
-            '<button type="submit" ',
-            'class="btn btn-default btn-xs" style="width: 3em; " >ok</input>',
-            ].join(''));
-  
-        $form5.find('[ type="submit" ]').click(function(e){
+        var screeningInquiryForm = this.screeningInquiryForm;
+        var $screeningInquiryForm = this.screeningInquiryForm.render().$el;
+        $('#search-box-5').html($screeningInquiryForm);
+        $screeningInquiryForm.find('[ type="submit" ]').click(function(e){
           e.preventDefault();
           self.$('[data-error]').empty();
-          var errors = form5.commit({ validate: true }); 
+          var errors = screeningInquiryForm.commit({ validate: true }); 
           if(!_.isEmpty(errors)){
-            $form5.find('[name="searchVal"]').addClass(self.errorClass);
+            $screeningInquiryForm.find('[name="searchVal"]').addClass(self.errorClass);
             return;
           }else{
-            $form5.find('[name="searchVal"]').removeClass(self.errorClass);
+            $screeningInquiryForm.find('[name="searchVal"]').removeClass(self.errorClass);
           }
   
-          var searchValue = form5.getValue('searchVal');
+          var searchValue = screeningInquiryForm.getValue('searchVal');
           var errors = [];
           var parsedSearch = Iccbl.parseRawScreeningInquiry(searchValue,errors);
           if (!_.isEmpty(errors)){
@@ -553,26 +507,21 @@ define([
 
       ///// CPR
       if (appModel.hasPermission('cherrypickrequest', 'read')){
-        var form4 = this.form4;
-        var $form4 = this.form4.render().$el;
-        $('#search-box-4').html($form4);
-        $form4.append([
-            '<button type="submit" ',
-            'class="btn btn-default btn-xs" style="width: 3em; " >ok</input>',
-            ].join(''));
-  
-        $form4.find('[ type="submit" ]').click(function(e){
+        var cprForm = this.cprForm;
+        var $cprForm = this.cprForm.render().$el;
+        $('#search-box-4').html($cprForm);
+        $cprForm.find('[ type="submit" ]').click(function(e){
           e.preventDefault();
           self.$('[data-error]').empty();
-          var errors = form4.commit({ validate: true }); 
+          var errors = cprForm.commit({ validate: true }); 
           if(!_.isEmpty(errors)){
-            console.log('form4 errors, abort submit: ' + JSON.stringify(errors));
-            $form4.find('#cpr').addClass(self.errorClass);
+            console.log('cprForm errors, abort submit: ' + JSON.stringify(errors));
+            $cprForm.find('#cpr').addClass(self.errorClass);
             return;
           }else{
-            $form4.find('#cpr').removeClass(self.errorClass);
+            $cprForm.find('#cpr').removeClass(self.errorClass);
           }
-          var cpr_id = self.form4.getValue()['searchVal'];
+          var cpr_id = self.cprForm.getValue()['searchVal'];
           var resource = appModel.getResource('cherrypickrequest');
           appModel.getModelFromResource(resource, cpr_id, function(model){
             var uriStack = ['screen', model.get('screen_facility_id'), 
@@ -581,6 +530,47 @@ define([
           });
         });      
       }
+
+      $('#search-help').click(function(e){
+        appModel.showModalMessage({
+          title: 'Searching',
+          okText: 'Ok',
+          body: [
+            '<br/><strong>Plate Well searching:</strong><br/>',
+            '<b>Search for single wells:</b>',
+            '50001:P24, 50002:A01, 50002:A23',
+            '<b>Equivalent search:</b>',
+            '50001P24, 50002A1, 50002A23',
+            '<b>Search for multiple wells in a plate:</b>',
+            '50001P24 A1 A23',
+            '50001 P24 A1 A23',
+            '50001 P24,A1,A23',
+            '<b>Search for multiple wells in a plate range:</b>',
+            '50001-50020 A1,A2,A3',
+            '50001-50020 A1 A2 A3',
+            '<b>Search for many wells:</b>',
+            '50001:P21','50001:P22','50001:P23','50001:P24',
+            '<b>Search for all wells in a plate or plate range:</b>',
+            '50001 50002 50003',
+            '50010-50020',
+            '<br/><strong>Plate and Copy searching:</strong><br/>',
+            '<b>Search for copies and plate range:</b>',
+            '50001-50005 A',
+            '50001-50005 A B C D',
+            '50001,50002,50004 A B C D',
+            '<br/><strong>Screening Inquiry (find available Plate Copies)</strong><br/>',
+            'Syntax: &quot;(Screen #) &lt;plate numbers and ranges&gt; &lt;vol required&gt; nL x &lt;replicate count&gt;&quot;',
+            'e.g.',
+            '(1409) 3411-3414, 3448-3467, 3580 100 nL x 2',
+            '(1292) 3560-3567, 1795-1811 100 nL x 2',
+            'Note: text is ignored at the beginning:',
+            'Tester Name (1292) 3535-3559 100 nL x 2'
+          ].join('<br/>'),
+          ok: function(e){
+            e.preventDefault();
+          }
+        });
+      });
 
       this.uriStackChange();
     },
@@ -627,9 +617,9 @@ define([
           parsedData = _.map(parsedData, function(parsedLine){
             return parsedLine.combined.join(' ');
           }).join('\n');
-          this.form3.setValue('searchVal', parsedData);
-          // form3 may not be rendered yet, store the value
-          this.form3_data = parsedData;
+          this.plateCopyForm.setValue('searchVal', parsedData);
+          // plateCopyForm may not be rendered yet, store the value
+          this.plateCopyForm_data = parsedData;
         }else if (_.contains(
           ['silencingreagent','smallmoleculereagent','reagent'], uiResourceId)) {
           var errors = [];
@@ -642,8 +632,8 @@ define([
           parsedData = _.map(parsedData, function(parsedLine){
             return parsedLine.combined.join(' ');
           }).join('\n');
-          this.form2.setValue('searchVal', parsedData);
-          // form3 may not be rendered yet, store the value
+          this.wellsForm.setValue('searchVal', parsedData);
+          // plateCopyForm may not be rendered yet, store the value
           this.form2_data = parsedData;
         }else if (uiResourceId == 'compound_search') {
           var search_data = complex_search[appModel.API_PARAM_SEARCH];
@@ -653,14 +643,14 @@ define([
             return;
           }
           parsedData = parsedData.join('\n');
-          this.form2a.setValue('searchVal', parsedData);
+          this.compoundNameForm.setValue('searchVal', parsedData);
           this.form2a_data = parsedData;
         } else {
           throw 'unknown resource for search: ' + uiResourceId;
         }
         return;
       }
-      else if (self.form5 && uiResourceId == 'screen') {
+      else if (self.screeningInquiryForm && uiResourceId == 'screen') {
         var screenId = uriStack.shift();
         if (_.contains(uriStack, 'plateranges')){
           // TODO: 20180312 - screening inquiry: using URI_PATH_SEARCH: 
@@ -682,8 +672,8 @@ define([
             parsedData += plateRangeSearchData.plate_search;
             parsedData += ' ' + si_formatter.fromRaw(plateRangeSearchData.volume_required);
             parsedData += ' x' + plateRangeSearchData.replicate_count;
-            self.form5.setValue('searchVal',parsedData);
-            // form2 may not be rendered yet, store the value
+            self.screeningInquiryForm.setValue('searchVal',parsedData);
+            // wellsForm may not be rendered yet, store the value
             self.form5_data = parsedData;
           }
         }
@@ -800,11 +790,11 @@ define([
     
     // Backbone layoutmanager callback
     cleanup: function(){
-      this.form3.setValue('searchVal', null);
-      this.form2.setValue('searchVal', null);
-      this.form2a.setValue('searchVal', null);
-      this.form4.setValue('searchVal', null);
-      this.form5.setValue('searchVal', null)
+      this.plateCopyForm.setValue('searchVal', null);
+      this.wellsForm.setValue('searchVal', null);
+      this.compoundNameForm.setValue('searchVal', null);
+      this.cprForm.setValue('searchVal', null);
+      this.screeningInquiryForm.setValue('searchVal', null)
     },
     
   });

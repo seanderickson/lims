@@ -308,7 +308,7 @@
   "smallmoleculereagent": {
     "key": "smallmoleculereagent",
     "header_message": "Small Molecule search",
-    "title": "Small Molecule Reagent",
+    "title": "Small Molecules",
     "listing_title": "Small Molecule Reagents",
     "listView": "LibraryWellsView",
     "detailView": "LibraryWellView",
@@ -323,7 +323,7 @@
   "silencingreagent": {
     "key": "silencingreagent",
     "header_message": "RNAi Reagent search",
-    "title": "RNAi Reagent",
+    "title": "RNAi",
     "listing_title": "RNAi Reagents",
     "listView": "LibraryWellsView",
     "detailView": "LibraryWellView",

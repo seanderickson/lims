@@ -69,10 +69,14 @@ define([
         this.updateTopMenu(ui_resource_id);
 
         this.$('li').removeClass('active');
-        if(_.isEmpty(uriStack)) return; // Home, for now
-
         var menus = appModel.getMenu();
         this.collapseAll(menus);
+
+        if(_.isEmpty(uriStack)){
+          this.render();
+          return; // Home, for now
+        }
+
         var found_menus = this.find_submenu_path(menus, ui_resource_id);
         if(_.isUndefined(found_menus)){
           console.log('unknown submenu: ' + ui_resource_id);

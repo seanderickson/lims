@@ -1760,13 +1760,18 @@ define([
       }
       
       function displayUserChecklist(collection) {
-        view = new ListView({ 
+        var CListView = ListView.extend({
+          afterRender: function(){
+            ListView.prototype.afterRender.apply(this, arguments);
+            this.$el.find('table').addClass('checklist');
+          }
+        })
+        view = new CListView({ 
           uriStack: _.clone(delegateStack),
           resource: resource,
           url: url,
           collection: collection,
           extraControls: [showSaveButton, showHistoryButton],
-          tableClass: 'left-align'
         });
         view.grid.columns.on('update', function(){
           view.$el.find('td').removeClass('edited');

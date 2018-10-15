@@ -258,27 +258,69 @@ define([
       
       var detailView = DetailView.extend({
         afterRender: function(){
+          var detailSelf = this;
           DetailView.prototype.afterRender.apply(this,arguments);
           if(appModel.hasPermission('screensaveruser', 'write')){
-            
-            var addLabMemberButton = $([
-              '<div class="pull-down">',
-              '<a class="btn btn-default btn-sm" ',
-                'title="Create a new user as a member of this lab" ',
-                'role="button" id="add_lab_member_button" href="#">',
-                'Add Lab Member</a>',
-                '</div>'
-              ].join(''));
-            this.$el.find('#lab_member_ids').append(addLabMemberButton);
-            addLabMemberButton.click(function(e){
-              e.preventDefault();
-              self.addLabMember();
-            });
-            
+
+            if (self.model.get('classification')==appModel.VOCAB_USER_CLASSIFICATION_PI){
+              console.log('set up lab members div...');
+              var memberButtonsDiv = $('<div class="pull-down"/>');
+              var addLabMemberButton = $([
+                '<a class="btn btn-default btn-sm" ',
+                  'title="Create a new user as a member of this lab" ',
+                  'role="button" id="add_lab_member_button" href="#">',
+                  'Add Lab Member</a>'
+                ].join(''));
+              var browseLabMemberButton = $([
+                '<a class="btn btn-default btn-sm" ',
+                  'title="show lab members" ',
+                  'role="button" id="browse_lab_member_button" href="#">',
+                  'Browse</a>'
+                ].join(''));
+              memberButtonsDiv.append(browseLabMemberButton);
+              memberButtonsDiv.append(addLabMemberButton);
+              var toggleMembersControl = $([
+                '<div class="pull-up">',
+                '<a id="toggle-members-control">',
+                  'Show &gt;&gt;</a>',
+                  '</div>'
+                ].join(''));
+              
+              var state = false;
+              var labMemberDiv = $('<div id="lab-member-div"/>');
+              labMemberDiv.append(this.$el.find('#lab_member_ids').html());
+              labMemberDiv.hide();
+              this.$el.find('#lab_member_ids').empty();
+              this.$el.find('#lab_member_ids').append(toggleMembersControl);
+              this.$el.find('#lab_member_ids').append(labMemberDiv);
+              toggleMembersControl.click(function(e){
+                e.preventDefault();
+                state = !state;
+                labMemberDiv.toggle(state);
+                if (state){
+                  toggleMembersControl.html('Hide &lt;&lt;');
+                } else {
+                  toggleMembersControl.html('Show &gt;&gt;');
+                }
+              });
+              this.$el.find('#lab_member_ids').append(memberButtonsDiv);
+              browseLabMemberButton.click(function(e){
+                e.preventDefault();
+                var uriStack = ['screensaveruser',
+                  'includes','-lab_head_id,lab_name',
+                  appModel.URI_PATH_SEARCH,
+                  'lab_head_id=' + self.model.get('screensaver_user_id')];
+                console.log('route: ', uriStack);
+                appModel.setUriStack(uriStack);
+                
+              });
+              addLabMemberButton.click(function(e){
+                e.preventDefault();
+                self.addLabMember();
+              });
+            }
           }
-          
           self.showUserAgreements();
-          
         }
       });
  

@@ -152,7 +152,10 @@ define([
         resource.fields['lab_member_ids']['visibility'] = ['d'];
         resource.fields['lab_member_ids'].vocabulary = {};
         if (self.model.has('lab_member_ids')){
+          // Note lab member data are provided in three separate sorted arrays
           var lab_member_ids = self.model.get('lab_member_ids');
+          var ids_with_email = [];
+          var ids_no_email = [];
           var lab_member_names = self.model.get('lab_member_names');
           var lab_member_emails = self.model.get('lab_member_emails');
           for (var i=0; i<lab_member_ids.length; i++){
@@ -160,8 +163,15 @@ define([
             var email = lab_member_emails[i];
             if (!_.isEmpty(email) && email != 'null'){
               name += ' &lt;' + email + '&gt;';
+              ids_with_email.push(lab_member_ids[i]);
+            } else {
+              ids_no_email.push(lab_member_ids[i]);
             }
             resource.fields['lab_member_ids'].vocabulary[lab_member_ids[i]] = name;
+          }
+          if (!_.isEmpty(ids_no_email)){
+            // reorder so no-email entries are last
+            self.model.set('lab_member_ids', ids_with_email.concat(ids_no_email));
           }
         }
       } else {
@@ -1608,6 +1618,7 @@ define([
               }
             } else {
               text = 'Activated';
+              this.$el.addClass('active');
             }
             this.$el.text(text);
             this.delegateEvents();

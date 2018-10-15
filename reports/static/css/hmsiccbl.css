@@ -250,7 +250,7 @@ table.selector_table tr.selected {
   background-color: rgba(0, 255, 37, 0.33);
 }
 
-td.active {
+.checklist td.active {
   background-color: #ffffb3;
 }
 

@@ -20295,7 +20295,7 @@ class ScreensaverUserResource(DbApiResource):
         kwargs_for_user = {
             'exact_fields': ['screensaver_user_id', 'is_active',
                 'sm_data_sharing_level', 'rnai_data_sharing_level',
-                'lab_head_id', 'username','classification'] 
+                'lab_head_id', 'username','ecommons_id', 'classification'] 
         }
         kwargs_for_user['screensaver_user_id'] = screensaver_user_id
         original_user_data = self._get_detail_response_internal(**kwargs_for_user)
@@ -20338,10 +20338,11 @@ class ScreensaverUserResource(DbApiResource):
         if user_data.get('is_active') is not True:
             if user_agreement_data.get('date_active') is not None \
                     and user_agreement_data.get('date_expired') is None:
-                if not original_user_data.get('username'):
+                if not original_user_data.get('username')\
+                    and not original_user_data.get('ecommons_id'):
                     extra_meta['Note'] = \
                         'Login capability not set: User must have an '\
-                        'eCommons ID or password to enable login.'
+                        'eCommons ID or Username to enable login.'
                 else:
                     logger.info('UserAgreement is active: %r, add login access for user')
                     # NOTE: is_active is a reports.user property and will only be 

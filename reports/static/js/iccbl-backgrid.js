@@ -1622,6 +1622,71 @@ var parseComments = Iccbl.parseComments = function(comment_array){
     }).join('\n===== end comment =====\n');
 };
 
+/*** Create a collapsible/expandible div for text ***/
+var collapsibleText = Iccbl.collapsibleText = function collapsibleText(text, len){
+  
+  var finalText = "";
+  if (text.length < len){
+    // NOTE: convert all text to line-based html, as in generic_detail_stickit
+    // (needed because this replaces text from generic_detail_stickit)
+    // ( NOTE: another option is to modify white-space as in:
+    //   var expandedDiv = $('<div  style="white-space: pre-wrap;" />');
+    return text.replace(/(\r\n|\n|\r)/gm,"<br/>");
+  } else {
+  
+    var state = false;
+    var container = $('<div id="comments-div" />');
+    var collapsedDiv = $('<div/>');
+    var expandedDiv = $('<div/>');
+    /* ascii code for the ellipsis character */
+    var link = $('<a>&nbsp;<strong>\u2026</strong></a>'); 
+  
+    // split text on lines
+    var totalLen = 0;
+    _.find(text.split(/\r\n|\n|\r/g), function(word){
+      console.log('word: "' + word + '"');
+      if (totalLen + word.length < len){
+        if (totalLen > 0) finalText += '\n';
+        totalLen += word.length;
+        finalText += word;
+      }else{
+        return true;
+      }
+    });
+    if (_.isEmpty(finalText)){
+      // if splitting on lines fails, split text on words
+      var finalText = "";
+      var totalLen = 0;
+      _.find(text.split(/\b/g), function(word){
+        if(totalLen + word.length < len){
+          totalLen += word.length;
+          finalText += word;
+        }else{
+          return true;
+        }
+      });
+    }
+    
+    // NOTE: convert all text to line-based html, as in generic_detail_stickit
+    collapsedDiv.html(finalText.replace(/(\r\n|\n|\r)/gm,"<br/>"));
+    collapsedDiv.append(link);
+    expandedDiv.html(text.replace(/(\r\n|\n|\r)/gm,"<br/>"));
+    
+    container.append(collapsedDiv);
+    container.append(expandedDiv);
+  
+    expandedDiv.toggle(state);
+    container.click(function(e){
+      e.preventDefault();
+      state = !state;
+      collapsedDiv.toggle(!state);
+      expandedDiv.toggle(state);
+    });
+    
+    return container;
+  }
+}
+
 /**
  * Create a comment icon with a link to display (parsed) comments in a
  * modal dialog.
@@ -5441,8 +5506,10 @@ var createBackgridColModel = Iccbl.createBackgridColModel =
           return orderSearch.test(orderkey);
         }))
       {
-        colModel[i] = column;
-        i++;
+        if (!_.contains(manualIncludes, '-'+key)){
+          colModel[i] = column;
+          i++;
+        }
       }
     }
   });

@@ -355,10 +355,12 @@ define([
       var detailView = DetailView.extend({
         afterRender: function() {
           var dview = DetailView.prototype.afterRender.apply(this,arguments);
+
           
-          if (!_.isEmpty(model.get('study_type'))) {
-            // do nothing for studies here
-          } else {
+          $('#comments').empty();
+          $('#comments').append(Iccbl.collapsibleText(self.model.get('comments'), 240));
+          
+          if (_.isEmpty(model.get('study_type'))) {
             if(self.model.get('user_access_level_granted') == 3 ){
               self.createStatusHistoryTable($('#detail_extra_information'));
               self.createActivitySummary($('#detail_extra_information'));
@@ -1596,6 +1598,10 @@ define([
           template: _.template(detailOneColTemplate),
           afterRender: function() {
             var dview = DetailView.prototype.afterRender.apply(this,arguments);
+            //$('#publishable_protocol').empty();
+            //$('#publishable_protocol').append(
+            //  Iccbl.collapsibleText(self.model.get('publishable_protocol'), 350));
+          
             self.createPublicationTable(this.$el.find('#publications'));
           }
         });

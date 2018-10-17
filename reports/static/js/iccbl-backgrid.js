@@ -1626,6 +1626,7 @@ var parseComments = Iccbl.parseComments = function(comment_array){
 var collapsibleText = Iccbl.collapsibleText = function collapsibleText(text, len){
   
   var finalText = "";
+  if (!text) return text;
   if (text.length < len){
     // NOTE: convert all text to line-based html, as in generic_detail_stickit
     // (needed because this replaces text from generic_detail_stickit)

@@ -567,3 +567,10 @@ table.backgrid.left-align td{
 {
     opacity:0.5 !important;
 }
+
+.pull-right button{
+  float: right !important;
+}
+.pull-left button{
+  float: left !important;
+}

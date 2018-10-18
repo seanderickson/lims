@@ -398,6 +398,7 @@ define([
           var fields = self.model.resource.fields;
           fields['requested_by_id'].choiceHash = 
             appModel._get_screen_member_choices(self.screen);
+          
           // TODO: resource/cherrypickrequest/write
           appModel.getAdminUserOptions(function(options){
             fields['volume_approved_by_username'].choiceHash = options;
@@ -764,7 +765,7 @@ define([
               '<span title="Set the plating activity date for the selected plates"/>'
             );
             var setPlatedButton = $([
-              '<a class="btn btn-default btn-sm pull-down disabled" ',
+              '<a class="btn btn-default btn-sm disabled" ',
               'role="button" id="set_plated_button" ',
               'href="#">',
               'Set Plated</a>'
@@ -775,7 +776,7 @@ define([
               '<span title="Set the plating activity date for the selected plates"/>'
             );
             var setScreenedButton = $([
-              '<a class="btn btn-default btn-sm pull-down disabled" ',
+              '<a class="btn btn-default btn-sm disabled" ',
               'role="button" id="set_screened_button" ',
               'title="set the screening activity date for the selected plates" href="#">',
               'Set Screened</a>'
@@ -858,13 +859,13 @@ define([
           extraControls = [];
         }
         var downloadPlateMappingButton = $([
-          '<a class="btn btn-default btn-sm pull-down" ',
+          '<a class="btn btn-default btn-sm" ',
             'role="button" id="plate_mapping_file" href="#">',
             'Download Plate Mapping files</a>'
           ].join(''));
         extraControls.push(downloadPlateMappingButton);
         var showPlateMappingButton = $([
-          '<a class="btn btn-default btn-sm pull-down" ',
+          '<a class="btn btn-default btn-sm" ',
              'title="Show the plate mapping in a grid (available if plates are assigned)"',
             'role="button" id="plate_mapping_grid" href="#">',
             'Show Plate Mapping</a>'
@@ -1224,14 +1225,14 @@ define([
                    'lab_cherry_pick_plating'].join('/');
         // NOTE: 201703 - display showPlateMapping
         var downloadPlateMappingButton = $([
-          '<a class="btn btn-default btn-sm pull-down" ',
+          '<a class="btn btn-default btn-sm" ',
              'title="Download plate mapping file (available if plates are assigned)"',
             'role="button" id="plate_mapping_file" href="#">',
             'Download Plate Mapping files</a>'
           ].join(''));
         plate_mapping_controls.push(downloadPlateMappingButton);
         var showPlateMappingButton = $([
-          '<a class="btn btn-default btn-sm pull-down" ',
+          '<a class="btn btn-default btn-sm" ',
              'title="Show the plate mapping in a grid (available if plates are assigned)"',
             'role="button" id="plate_mapping_grid" href="#">',
             'Show Plate Mapping</a>'
@@ -1257,7 +1258,7 @@ define([
         self.listenTo(view, 'afterRender', function(event) {
           
           if (!_.isEmpty(plate_mapping_controls)){
-            view.$el.find('#list-container').prepend(plate_mapping_controls);
+            view.$el.find('#list_controls').prepend(plate_mapping_controls);
           }
         });
       };
@@ -1272,7 +1273,7 @@ define([
       }
 
       var checkboxDiv = $([
-          '<div id="show_input_group" class="input-group"></div>'
+          '<div id="show_input_group" class="input-group pull-down pull-left"></div>'
         ].join(''));
       var showCopyWellsControl = $([
           '<label class="checkbox-inline" ', 
@@ -1316,31 +1317,33 @@ define([
       checkboxDiv.append(showInsufficientWellsControl);
       checkboxDiv.append(showManuallySelectedWellsControl);
       checkboxDiv.prepend('<label for="show_input_group">show</label>');
-      extraControls.push(checkboxDiv);
+      
+      var extraListControls = [checkboxDiv];
+//      extraControls.push(checkboxDiv);
       
       var setSelectedLcpButton = $([
-        '<a class="btn btn-default btn-sm pull-down pull-right" ',
+        '<a class="btn btn-default btn-sm" ',
           'style="display: none; " ',
           'role="button" id="save_button_lcp_selected" href="#">',
           'Save Selections</a>'
         ].join(''));
       extraControls.push(setSelectedLcpButton);
       var updateSelectedLcpButton = $([
-        '<a class="btn btn-default btn-sm pull-down pull-right" ',
+        '<a class="btn btn-default btn-sm" ',
           'style="display: none; " ',
           'role="button" id="update_selected_button" href="#">',
           'Update Selections</a>'
         ].join(''));
       extraControls.push(updateSelectedLcpButton);
       var cancelSelectedButton = $([
-        '<a class="btn btn-default btn-sm pull-down pull-right" ',
+        '<a class="btn btn-default btn-sm" ',
           'style="display: none; " ',
           'role="button" id="cancel_selected_button" href="#">',
           'Cancel Selections</a>'
         ].join(''));
       extraControls.push(cancelSelectedButton);
       var reserveAndMapSelectedButton = $([
-        '<a class="btn btn-default btn-sm pull-down pull-right" ',
+        '<a class="btn btn-default btn-sm" ',
           'style="display: none; " ',
           'role="button" id="reserve_map_selected_button" href="#">',
           'Reserve Selections and Map to Plates</a>'
@@ -1349,7 +1352,7 @@ define([
         extraControls.push(reserveAndMapSelectedButton);
       }
       var deleteLcpsButton = $([
-          '<a class="btn btn-default btn-sm pull-down pull-right" ',
+          '<a class="btn btn-default btn-sm" ',
           'style="display: none; " ',
           'role="button" id="deleteLcpsButton" href="#">',
           'Delete Lab Cherry Picks</a>'
@@ -1358,7 +1361,7 @@ define([
         extraControls.push(deleteLcpsButton);
       }
       var cancelReservation = $([
-          '<a class="btn btn-default btn-sm pull-down" ',
+          '<a class="btn btn-default btn-sm" ',
           'style="display: none; " ',
           'role="button" id="cancel_reservation" href="#">',
           'Cancel Reservation and Delete Plating assignments</a>'
@@ -1504,7 +1507,8 @@ define([
         resource: resource,
         url: url,
         row: SelectedLcpRow,
-        extraControls: extraControls
+        extraControls: extraControls,
+        extraListControls: extraListControls
       });
       Backbone.Layout.setupView(view);
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
@@ -1512,8 +1516,8 @@ define([
       self.listenTo(view, 'afterRender', function(event) {
         view.$el.find('#list-title').show().append(
           '<H4 id="title">Lab Cherry Picks for : ' + self.model.key + '</H4>');
-        view.$el.find('#extra_controls').removeClass().addClass('col-sm-10');
-        view.$el.find('#list_controls').removeClass().addClass('col-sm-2');
+//        view.$el.find('#extra_controls').removeClass().addClass('col-sm-10');
+//        view.$el.find('#list_controls').removeClass().addClass('col-sm-2');
       });
     
       var initialSearchHash = view.listModel.get(appModel.URI_PATH_SEARCH);
@@ -2361,7 +2365,7 @@ define([
       
       var extraControls = [];
       var checkboxDiv = $([
-          '<div id="show_input_group" class="input-group"></div>'
+          '<div id="show_input_group" class="input-group pull-down pull-left"></div>'
         ].join(''));
       var showOtherReagentsControl = $([
           '<label class="checkbox-inline" ',
@@ -2383,7 +2387,7 @@ define([
       extraControls.push(checkboxDiv);
 
       var deleteScpsButton = $([
-          '<a class="btn btn-default btn-sm pull-down" ',
+          '<a class="btn btn-default btn-sm" ',
           'style="display: none; " ',
           'role="button" id="deleteScpsButton" href="#">',
           'Delete Screener Cherry Picks</a>'
@@ -2395,14 +2399,14 @@ define([
         setLcpsButtonTitle = 'Set Pool Lab Cherry Picks';
       }
       var setLcpsButton = $([
-        '<a class="btn btn-default btn-sm pull-down" ',
+        '<a class="btn btn-default btn-sm" ',
           'style="display: none; " ',
           'role="button" id="setLcpsButton" href="#">',
           setLcpsButtonTitle + '</a>'
         ].join(''));
       extraControls.push(setLcpsButton);
       var setDuplexLcpsButton = $([
-        '<a class="btn btn-default btn-sm pull-down" ',
+        '<a class="btn btn-default btn-sm" ',
           'style="display: none; " ',
           'role="button" id="setDuplexLcpsButton" href="#">',
           'Set Duplex Lab Cherry Picks</a>'
@@ -2410,14 +2414,14 @@ define([
       extraControls.push(setDuplexLcpsButton);
       // Set up the grid to record edits of the "selected" column
       var setSelectedButton = $([
-        '<a class="btn btn-default btn-sm pull-down" ',
+        '<a class="btn btn-default btn-sm" ',
           'style="display: none; " ',
           'role="button" id="save_button_selected" href="#">',
           'Save Selections</a>'
         ].join(''));
       extraControls.push(setSelectedButton);
       var cancelSelectedButton = $([
-        '<a class="btn btn-default btn-sm pull-down" ',
+        '<a class="btn btn-default btn-sm" ',
           'style="display: none; " ',
           'role="button" id="cancel_selected_button" href="#">',
           'Cancel Selections</a>'
@@ -2437,9 +2441,6 @@ define([
       }
       if(self.model.get('has_alternate_screener_cherry_pick_selections') === true){
         schemaResult['fields']['searched_well_id']['visibility'] = ['l','d'];
-//        if(self.model.get('total_number_lcps') == 0){
-//          schemaResult['fields']['selected']['visibility'] = ['l','d'];
-//        }
         showAlternateSelectionsControl.show();
       } else {
         showAlternateSelectionsControl.hide();
@@ -2500,6 +2501,7 @@ define([
           return this;
         }
       });
+      
       // Set SCP List View
       var ListViewSelect = ListView.extend({
         afterRender: function(){

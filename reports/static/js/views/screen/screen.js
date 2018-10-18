@@ -1350,6 +1350,9 @@ define([
       if (self.model.get('screen_type') == 'small_molecule'){
         defaults['transfer_volume_per_well_requested'] = '0.0000016';
         defaults['transfer_volume_per_well_approved'] = '0.0000016';
+      }else{
+        defaults['transfer_volume_per_well_requested'] = null;
+        defaults['transfer_volume_per_well_approved'] = null;
       }
       
       var newModel = appModel.createNewModel('cherrypickrequest', defaults);

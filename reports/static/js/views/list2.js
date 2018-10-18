@@ -48,6 +48,11 @@ define([
       } else {
         self._options.extraControls = _.clone(self._options.extraControls);
       }
+      if (!self._options.extraListControls){
+        self._options.extraListControls = [];
+      } else {
+        self._options.extraListControls = _.clone(self._options.extraListControls);
+      }
 
       var ListModel = Backbone.Model.extend({
         defaults: {
@@ -1025,9 +1030,9 @@ define([
       });
       
       if (!_.isEmpty(self.listModel.get(appModel.URI_PATH_COMPLEX_SEARCH))){
-        self._options.extraControls.unshift($modifySearch);
+        self._options.extraListControls.unshift($modifySearch);
       }else if (! _.isEmpty(self.listModel.get(appModel.URI_PATH_ENCODED_SEARCH))){
-        self._options.extraControls.unshift($modifySearch);
+        self._options.extraListControls.unshift($modifySearch);
       }
 
       if(_.has(self._options,'extraControls')){
@@ -1043,7 +1048,7 @@ define([
       }
       if(_.has(self._options,'extraListControls')){
         _.each(self._options.extraListControls, function(control){
-          self.$('#list_controls').prepend(control);
+          self.$('#list_controls').append(control);
         });
       }
 

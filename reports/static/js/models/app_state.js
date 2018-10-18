@@ -1756,7 +1756,6 @@ define([
       }
     },
     
-    
     /**
      * Show a JSON object in a modal dialog:
      * - transform the object into a table using a depth-first traversal:
@@ -2799,7 +2798,7 @@ define([
   
   // API Param elements are used by the API
   appState.API_PARAM_SEARCH_ID = 'search_id'
-  appState.API_PARAM_NESTED_SEARCH = 'nested_search';
+  appState.API_PARAM_NESTED_SEARCH = 'nested_search_data';
   appState.API_PARAM_SEARCH = 'search';
   appState.API_PARAM_ENCODED_SEARCH = 'esearch';
   

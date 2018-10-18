@@ -52,6 +52,7 @@ function($, _, Backgrid, Backbone, Iccbl, appModel,
        * attributes.
        */
       function buildTree(collection, treeAttributes, chKey) {
+        console.log('buildTree...');
         var dataTree = {}
         
         function makeNodes(dataTree, attrs, i, model){
@@ -119,6 +120,7 @@ function($, _, Backgrid, Backbone, Iccbl, appModel,
           return html;
         }
         html = makeList(dataTree);
+        console.log('buildTree finished.');
         return { dataTree: dataTree, html: html };
       }; // buildTree
       self.treeData = buildTree(
@@ -126,7 +128,11 @@ function($, _, Backgrid, Backbone, Iccbl, appModel,
       
       console.log('initialized TreeSelector');
     },
-    
+    beforeRender: function(){
+      var self = this;
+      self.model_title = $("#modal_title").html();
+      $("#modal_title").append('&nbsp;(rendering...<div id="loading"></div>)');
+    },
     afterRender: function(){
       var self = this;
       var chKey = this.PROP_CHECK_KEY;
@@ -190,6 +196,9 @@ function($, _, Backgrid, Backbone, Iccbl, appModel,
         handleDuplicateCheckboxes: true,         
         createInputs: 'checkbox'
       });
+      
+      $("#modal_title").html(self.model_title);
+
       var bonsaiSelected = $selectedTreeControl.data('bonsai');
 
       function toggleExpanded(){

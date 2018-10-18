@@ -319,13 +319,21 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel, ListView, Det
       var initfun = function() {
         var plateLocationTree = appModel.getPlateLocationTree();
         
+        var formTemplate = appModel._form_template;
+        var fieldTemplate= _.template([
+          '<div class="form-group" >',
+          '  <label class="control-label col-sm-5" for="<%= editorId %> "title="<%= help %>" ><%= title %></label>',
+          '  <div class="col-sm-7" >',
+          '    <div data-editor  style="min-height: 0px; padding-top: 0px; margin-bottom: 0px;" />',
+          '    <div data-error class="text-danger" ></div>',
+          '  </div>',
+          '</div>',
+        ].join(''));
         
         function make_plate_location_form(){
           
           console.log('construct the batch edit form, ', plateLocationTree );
           var formSchema = {};
-          var fieldTemplate = appModel._field_template;
-          var formTemplate = appModel._form_template;
           formSchema['room'] = {
             title: 'Room',
             key: 'room',
@@ -426,8 +434,6 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel, ListView, Det
         
         function make_plate_batch_form() {
           var formSchema = {};
-          var fieldTemplate = appModel._field_template;
-          var formTemplate = appModel._form_template;
           
           formSchema['status'] = {
             title: 'Status',
@@ -474,7 +480,7 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel, ListView, Det
             title: 'mg/ml Concentration',
             key: 'mg_ml_concentration',
             validators: [EditView.CheckPositiveNonZeroValidator],
-            type: Backbone.Form.editors.Number,
+            type: EditView.NumberEditor,
             editorClass: 'form-control',
             template: fieldTemplate 
           };
@@ -492,8 +498,8 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel, ListView, Det
           formSchema['screening_count'] = {
             title: 'Screening Count',
             key: 'screening_count',
-            validators: [EditView.CheckPositiveNonZeroValidator],
-            type: Backbone.Form.editors.Number,
+            validators: [EditView.CheckPositiveValidator],
+            type: EditView.NumberEditor,
             editorClass: 'form-control',
             template: fieldTemplate 
           };

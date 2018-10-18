@@ -1670,6 +1670,8 @@ define([
         str = str.replace(/^\s*,\s*$/gm,'')
         // remove empty lines
         str = str.replace(/^\s*$\n+/gm,'');
+
+        str = str.replace(/[\t ]/g,'&nbsp;');
       }catch(e){
         console.log('print_json', e, obj);
         str = '' + obj;
@@ -2675,14 +2677,61 @@ define([
       } else {
         $('#modal_footer').hide();
       }
+      
+      $.fn.drags = function(opt) {
+        // Makes the target "handle" element draggable
+        // See: https://css-tricks.com/snippets/jquery/draggable-without-jquery-ui/
+        opt = $.extend({handle:"",cursor:"move"}, opt);
+
+        if(opt.handle === "") {
+            var $el = this;
+        } else {
+            var $el = this.find(opt.handle);
+        }
+
+        return $el.css('cursor', opt.cursor).on("mousedown", function(e) {
+            if(opt.handle === "") {
+                var $drag = $(this).addClass('draggable');
+            } else {
+                var $drag = $(this).addClass('active-handle').parent().addClass('draggable');
+            }
+            var z_idx = $drag.css('z-index'),
+                drg_h = $drag.outerHeight(),
+                drg_w = $drag.outerWidth(),
+                pos_y = $drag.offset().top + drg_h - e.pageY,
+                pos_x = $drag.offset().left + drg_w - e.pageX;
+            $drag.css('z-index', 1000).parents().on("mousemove", function(e) {
+                $('.draggable').offset({
+                    top:e.pageY + pos_y - drg_h,
+                    left:e.pageX + pos_x - drg_w
+                }).on("mouseup", function() {
+                    $(this).removeClass('draggable').css('z-index', z_idx);
+                });
+            });
+            e.preventDefault(); // disable selection
+        }).on("mouseup", function() {
+            if(opt.handle === "") {
+                $(this).removeClass('draggable');
+            } else {
+                $(this).removeClass('active-handle').parent().removeClass('draggable');
+            }
+        });
+
+      };
+      
       $modal.one('shown.bs.modal', function () {
+        console.log('shown...');
         $('#modal').find('.form').find('input').first().focus();
+        $("#modal").drags({
+            handle: ".modal-header"
+        });
       });
       $modal.modal({
         backdrop: 'static',
         keyboard: false, // prevent the escape key from closing the modal
         show: true
       });
+      
       //$('#modal').one('hidden.bs.modal', '.modal', function () {
       //  console.log('hidden.bs.modal', arguments);
       //});
@@ -2717,7 +2766,6 @@ define([
     '    <div class="" >',
     '      <div data-editor key="<%=key%>" style="min-height: 0px; padding-top: 0px; margin-bottom: 0px;" />',
     '      <div data-error class="text-danger" ></div>',
-//    '      <div><%= help %></div>',
     '    </div>',
     '  </div>',
   ].join(''));
@@ -2728,6 +2776,7 @@ define([
       </div>\
     </div>\
   ');
+  
   appState._horizontal_form_field_template = _.template([
     '<div class="form-group" >',
     '  <label class="control-label col-sm-6" for="<%= editorId %> "title="<%= help %>" ><%= title %></label>',

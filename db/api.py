@@ -188,6 +188,7 @@ DEBUG_DC_ACCESS = False or logger.isEnabledFor(logging.DEBUG)
 DEBUG_RV_CREATE = False or logger.isEnabledFor(logging.DEBUG)
 DEBUG_SCREENRESULT = logger.isEnabledFor(logging.DEBUG)
 DEBUG_LIB_LOAD = False or logger.isEnabledFor(logging.DEBUG)
+DEBUG_PLATE_EDIT = False or logger.isEnabledFor(logging.DEBUG)
     
 def _get_raw_time_string():
   return timezone.now().strftime("%Y%m%d%H%M%S")
@@ -1048,8 +1049,6 @@ class PlateLocationResource(DbApiResource):
         return all_plates
 
 class LibraryCopyPlateResource(DbApiResource):
-    retired_statuses = [
-        'retired','discarded','lost','given_away','discarded_volume_transferred']
 
     class Meta:
         queryset = Plate.objects.all() 
@@ -1121,7 +1120,8 @@ class LibraryCopyPlateResource(DbApiResource):
     @staticmethod
     def parse_plate_copy_search(plate_search_data):
         '''
-        Create a plate search data structure:
+        Using raw plate copy search data, separated by lines,
+        create a plate search data structure:
             {   
                 plates, plate_ranges, copies, 
                 plate_numbers_expected, 
@@ -1134,10 +1134,14 @@ class LibraryCopyPlateResource(DbApiResource):
         if DEBUG_PLATE_COPY_SEARCH:
             logger.info('raw plate_search_data: %r', plate_search_data)
         # Use unquote to decode form data from a post
-        if not isinstance(plate_search_data, (list,tuple)):
+        if isinstance(plate_search_data, basestring):
             plate_search_data = urllib.unquote(plate_search_data)
-        else:
+        elif isinstance(plate_search_data, (list,tuple)):
             plate_search_data = [urllib.unquote(x) for x in plate_search_data]
+        else:
+            logger.warn('plate_search_data must be either a string or list of strings')
+            return plate_search_data
+        
         if DEBUG_PLATE_COPY_SEARCH:
             logger.info('plate_search_data: %r', plate_search_data)
         parsed_searches = []
@@ -1218,30 +1222,36 @@ class LibraryCopyPlateResource(DbApiResource):
                 logger.info('parsed: %r', parsed_search)
             parsed_searches.append(parsed_search)
         
+        if not parsed_searches:
+            raise ValidationError(
+                key='plate_copy_search',
+                msg='no input recognized')
+        
         logger.debug('parsed searches: %r', parsed_searches)
         return parsed_searches
         
     @classmethod
-    def find_plates(cls, plate_search_data):
+    def find_plates(cls, parsed_searches):
         ''' 
+        @param plate_search_data parsed_plate_search data structure 
+                @see parse_plate_copy_search
         @return 
             set() of LibraryCopyPlate objects matching the
                 plate_search_data (raw user search text)
-            parsed_plate_search data structure 
-                @see parse_plate_copy_search
             array of plates and/or plate_copy_keys expected but not found
         '''
         DEBUG_FIND_PLATES = False or logger.isEnabledFor(logging.DEBUG)
-        if not plate_search_data:
-            return []
-        
         errors = set()
         plates = set()
         
-        parsed_searches = cls.parse_plate_copy_search(plate_search_data)
-        
+        if DEBUG_FIND_PLATES:
+            logger.info('find_plates: %r', parsed_searches);
+
         if not parsed_searches:
-            return []
+            return ([], errors)
+
+        if isinstance(parsed_searches, dict):
+            parsed_searches = [parsed_searches,]
         
         for parsed_search in parsed_searches:
             if DEBUG_FIND_PLATES:
@@ -1273,8 +1283,8 @@ class LibraryCopyPlateResource(DbApiResource):
                     logger.info('plate-copies found: %r, expected: %r', 
                         sorted(plate_copy_keys_found), 
                         sorted(parsed_search['plate_copy_keys_expected']) )
-                for plate_copy_key in not_found:
-                    errors.add(plate_copy_key)
+                if not_found:    
+                    errors.add('plate/copy not found:' + ', '.join(not_found))
             else:
                 plate_numbers_found = set([plate.plate_number 
                     for plate in plate_query.all() ])
@@ -1285,15 +1295,15 @@ class LibraryCopyPlateResource(DbApiResource):
                     logger.info('plates found: %r, expected: %r', 
                         sorted(plate_numbers_found), 
                         sorted(parsed_search['plate_numbers_expected']) )
-                for plate_number in not_found:
-                    errors.add(str(plate_number))
+                if not_found:
+                    errors.add('plates not found: ' + ', '.join(map(str, not_found))) #(plate_number))
             plates.update(plate_query.all())
         
         if not plates:
             errors.add('No plates found')
         if DEBUG_FIND_PLATES:
             logger.info('plates found: %d, errors: %r', len(plates), errors)
-        return (plates, parsed_searches, [x for x in sorted(errors)])
+        return (plates, [x for x in sorted(errors)])
 
     @read_authorization
     def get_detail(self, request, **kwargs):
@@ -1352,7 +1362,7 @@ class LibraryCopyPlateResource(DbApiResource):
             extra_filters = {k:v for k,v in filter_hash.items()
                 if k in ['plate_number', 'copy_name']}
             if extra_filters:
-                logger.info('extra filters: %r', extra_filters)
+                logger.debug('extra filters: %r', extra_filters)
                 plate_table = (
                     select([literal_column(x) for x in plate_table.columns.keys()])
                     .select_from(Alias(plate_table))
@@ -1818,6 +1828,8 @@ class LibraryCopyPlateResource(DbApiResource):
         
     def build_list_response(self, request, schema=None, **kwargs):
 
+        meta = kwargs.get('meta', {})
+
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
         
@@ -1832,7 +1844,6 @@ class LibraryCopyPlateResource(DbApiResource):
             raise Exception('schema not initialized')
         
         manual_field_includes = set(param_hash.get('includes', []))
-        logger.info('manual_field_includes: %r', manual_field_includes)
 
         # FIXME: plates_screened has been replaced by 
         # librarycopyplate.build_screened_plate_response?
@@ -1887,376 +1898,379 @@ class LibraryCopyPlateResource(DbApiResource):
         if plate_ids is not None:
             if isinstance(plate_ids,basestring):
                 plate_ids = [int(x) for x in plate_ids.split(',')]
-        plate_search_data = param_hash.pop(SCHEMA.API_PARAM_SEARCH, None)
-        logger.info('plate raw_search_data: %r', plate_search_data)
         
+        raw_plate_search_data = param_hash.pop(SCHEMA.API_PARAM_SEARCH, None)
         if len(filter(lambda x: x is not None, 
             [cherry_pick_request_id, for_screen_facility_id, 
-                library_screening_id, plate_ids, plate_search_data]))>1:
+                library_screening_id, plate_ids, raw_plate_search_data]))>1:
             raise BadRequestError(
                 key='filters', 
                 msg='Mutually exclusive params: %r'
                     % ['cherry_pick_request_id', 'for_screen_facility_id', 
-                    'library_screening_id', 'plate_ids','plate_search_data'])
+                    'library_screening_id', 'plate_ids',SCHEMA.API_PARAM_SEARCH])
             
+        # If querying in the context of a library, copy, or plate, construct a
+        # log key to use for the comment subquery.
         log_key = '/'.join(str(x) if x is not None else '%' 
             for x in [library_short_name,copy_name,plate_number])
         if log_key == '%/%/%':
             log_key = None
 
-        try:
-            # Use cherry_pick_request_id, screen_id, library_screening_id, or 
-            # search data to pre-filter for plate_ids
-            # TODO: grab keys as well for log query performance
-            
-            if cherry_pick_request_id is not None:
-                _lcp = self.bridge['lab_cherry_pick']
-                _well = self.bridge['well']
-                _p = self.bridge['plate']
-                cpr_plates = (
-                    select([distinct(_p.c.plate_id).label('plate_id')])
-                    .select_from(
-                        _lcp.join(_well,_lcp.c.source_well_id==_well.c.well_id)
-                            .join(_p,and_(
-                                _p.c.plate_number==_well.c.plate_number,
-                                _p.c.copy_id==_lcp.c.copy_id)))
-                    .where(_lcp.c.cherry_pick_request_id==cherry_pick_request_id)
-                    #.where(_lcp.c.selected==True)
-                )
-                with get_engine().connect() as conn:
-                    plate_ids = [x[0] for x in 
-                        conn.execute(cpr_plates)]
-            
-            # FIXME: plates_screened has been replaced by 
-            # librarycopyplate.build_screened_plate_response?
-            if for_screen_facility_id:
-                manual_field_includes.add('assay_plate_count')
-                # plates screened
-                with get_engine().connect() as conn:
-                    plate_ids = [x[0] for x in 
-                        conn.execute(
-                            self.get_screen_librarycopyplate_subquery(
-                                for_screen_facility_id))]
-            if library_screening_id is not None:
-                manual_field_includes.add('assay_plate_count')
-                with get_engine().connect() as conn:
-                    plate_ids = [x[0] for x in 
-                        conn.execute(
-                            self.get_libraryscreening_plate_subquery(
-                                library_screening_id))]
+        # Use cherry_pick_request_id, screen_id, library_screening_id, or 
+        # search data to pre-filter for plate_ids
+        # TODO: grab keys as well for log query performance
+        
+        if cherry_pick_request_id is not None:
+            _lcp = self.bridge['lab_cherry_pick']
+            _well = self.bridge['well']
+            _p = self.bridge['plate']
+            cpr_plates = (
+                select([distinct(_p.c.plate_id).label('plate_id')])
+                .select_from(
+                    _lcp.join(_well,_lcp.c.source_well_id==_well.c.well_id)
+                        .join(_p,and_(
+                            _p.c.plate_number==_well.c.plate_number,
+                            _p.c.copy_id==_lcp.c.copy_id)))
+                .where(_lcp.c.cherry_pick_request_id==cherry_pick_request_id)
+                #.where(_lcp.c.selected==True)
+            )
+            with get_engine().connect() as conn:
+                plate_ids = [x[0] for x in 
+                    conn.execute(cpr_plates)]
+        
+        # FIXME: plates_screened has been replaced by 
+        # librarycopyplate.build_screened_plate_response?
+        if for_screen_facility_id:
+            manual_field_includes.add('assay_plate_count')
+            # plates screened
+            with get_engine().connect() as conn:
+                plate_ids = [x[0] for x in 
+                    conn.execute(
+                        self.get_screen_librarycopyplate_subquery(
+                            for_screen_facility_id))]
+        if library_screening_id is not None:
+            manual_field_includes.add('assay_plate_count')
+            with get_engine().connect() as conn:
+                plate_ids = [x[0] for x in 
+                    conn.execute(
+                        self.get_libraryscreening_plate_subquery(
+                            library_screening_id))]
 
-            # Parse plate search OR-clauses:
-            # POST data: line delimited plate-range text entered by the user
-            # Embedded plate_search url params: array of plate-ranges
-            plate_search_errors = set()
+        # Parse plate search OR-clauses:
+        # POST data: line delimited plate-range text entered by the user
+        # Embedded plate_search url params: array of plate-ranges
+        plate_search_errors = set()
+        if raw_plate_search_data:
+            logger.info('plate raw_search_data: %r', raw_plate_search_data)
+            plate_search_data = self.parse_plate_copy_search(raw_plate_search_data)
+            logger.info('parsed plate search data: %r', plate_search_data)
+        
             if plate_search_data is not None:
-                (plates,parsed_searches, errors) = self.find_plates(plate_search_data)
+                (plates, errors) = self.find_plates(plate_search_data)
                 plate_search_errors.update(errors)
                 plate_ids = [p.plate_id for p in plates]
-                
-            # general setup
-            (filter_expression, filter_hash, readable_filter_hash) = \
-                SqlAlchemyResource.build_sqlalchemy_filters(
-                    schema, param_hash=param_hash)
-            filename = self._get_filename(
-                readable_filter_hash, schema, is_for_detail)
-            filter_expression = \
-                self._meta.authorization.filter(request.user,filter_expression)
+                logger.info('found plates %r for search: %r', 
+                    plate_ids, plate_search_data)
             
-            order_params = set(param_hash.get('order_by', []))
+        # general setup
+        (filter_expression, filter_hash, readable_filter_hash) = \
+            SqlAlchemyResource.build_sqlalchemy_filters(
+                schema, param_hash=param_hash)
+        filename = self._get_filename(
+            readable_filter_hash, schema, is_for_detail)
+        filter_expression = \
+            self._meta.authorization.filter(request.user,filter_expression)
+        
+        order_params = set(param_hash.get('order_by', []))
             
-            if 'location' in order_params or '-location' in order_params:
-                temp = []
-                for v in order_params:
-                    if v == 'location':
-                        temp.extend(['room','freezer','shelf','bin'])
-                    elif v == '-location':
-                        temp.extend(['-room','-freezer','-shelf','-bin'])
-                    else:
-                        temp.append(v)
-                order_params = temp
-            
-            field_hash = self.get_visible_fields(
-                schema['fields'], filter_hash.keys(), manual_field_includes,
-                param_hash.get('visibilities'),
-                exact_fields=set(param_hash.get('exact_fields', [])),
-                order_params=order_params)
-            order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
-                order_params, field_hash)
-             
-            rowproxy_generator = None
-            if use_vocab is True:
-                rowproxy_generator = \
-                    DbApiResource.create_vocabulary_rowproxy_generator(field_hash)
-                # use "use_vocab" as a proxy to also adjust siunits for viewing
-                rowproxy_generator = DbApiResource.create_siunit_rowproxy_generator(
-                    field_hash, rowproxy_generator)
-            rowproxy_generator = \
-                self._meta.authorization.get_row_property_generator(
-                    request.user, field_hash, rowproxy_generator)
- 
-            # specific setup 
- 
-            _apilog = self.bridge['reports_apilog']
-            _diff = self.bridge['reports_logdiff']
-            _p = self.bridge['plate']
-            _well = self.bridge['well']
-            _pl = self.bridge['plate_location']
-            _c = self.bridge['copy']
-            _l = self.bridge['library']
-            _ls = self.bridge['library_screening']
-            _a = self.bridge['activity']
-            _ap = self.bridge['assay_plate']
-            _screen = self.bridge['screen']
-            _plate_cte = (
-                self.get_librarycopyplate_cte(
-                    filter_hash=filter_hash,
-                    library_id=library_id, copy_id=copy_id, plate_ids=plate_ids)
-                        .cte('plate_cte'))
-            _plate_statistics = (
-                self.get_plate_copywell_statistics_cte(
-                    filter_hash=filter_hash,
-                    library_id=library_id, copy_id=copy_id, plate_ids=plate_ids)
-                        .cte('plate_statistics'))
-            _plate_screening_statistics = (
-                self.get_plate_screening_statistics_cte(
-                    filter_hash=filter_hash,
-                    library_id=library_id, copy_id=copy_id, plate_ids=plate_ids)
-                        .cte('plate_screening_statistics'))
-            
-            # Status Date/performedBy: Use window function for performance:
-            #   SELECT DISTINCT ON (reports_apilog.key)
-            #   last_value(date_time) OVER wnd as date_time,
-            #   last_value(reports_apilog.id) OVER wnd as id,
-            #   reports_apilog.key
-            #  FROM reports_apilog
-            #  where ref_resource_name = 'librarycopyplate'
-            #  WINDOW wnd AS (
-            #    PARTITION BY reports_apilog.id ORDER BY date_time
-            #    ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING )
-            w_params = { 
-                'order_by': _apilog.c.date_time,
-                'partition_by': _apilog.c.id }
-            status_apilogs = (
-                select([
-                    func.last_value(_apilog.c.date_time).over(**w_params).label('date_time'),
-                    func.last_value(_apilog.c.id).over(**w_params).label('id'),
-                    _apilog.c.key
-                    ])
-                .select_from(_apilog.join(_diff, _apilog.c.id==_diff.c.log_id))
-                .where(_apilog.c.ref_resource_name==self._meta.resource_name)
-                .where(_diff.c.field_key=='status')
-                .distinct(_apilog.c.key)
-                )
-            if log_key:
-                status_apilogs = status_apilogs.where(_apilog.c.key.ilike(log_key))
-            status_updated_apilogs = status_apilogs.cte('updated_apilogs')
-            _user_cte = ScreensaverUserResource.get_user_cte().cte('user_cte')
-            _status_apilogs = (
-                select([
-                    _apilog.c.date_time,
-                    _apilog.c.key,
-                    _user_cte.c.username,
-                    _user_cte.c.name,                    
-                    ])
-                .select_from(_apilog.join(
-                    status_updated_apilogs,
-                        _apilog.c.id==status_updated_apilogs.c.id)
-                    .join(_user_cte, _apilog.c.username==_user_cte.c.username))
-                )
-            _comment_apilogs = ApiLogResource.get_resource_comment_subquery(
-                self._meta.resource_name)
-            if log_key:
-                _status_apilogs = _status_apilogs.where(_apilog.c.key.ilike(log_key))
-                _comment_apilogs = _comment_apilogs.where(_apilog.c.key.ilike(log_key))
-            _status_apilogs = _status_apilogs.cte('_status_apilogs')
-            _comment_apilogs = _comment_apilogs.cte('_comment_apilogs')
-
-            _library_comment_apilogs = \
-                ApiLogResource.get_resource_comment_subquery('library')
-            if library_short_name is not None:
-                _library_comment_apilogs = _library_comment_apilogs.where(
-                    _apilog.c.key==library_short_name)
-            _library_comment_apilogs = \
-                _library_comment_apilogs.cte('_library_comment_apilogs')
-
-            
-            custom_columns = {
-                'assay_plate_count': (
-                    select([func.count(None)])
-                        .select_from(_ap)
-                        .where(_ap.c.plate_id==_plate_cte.c.plate_id)),
-                'librarycopyplate_id': (
-                    _concat(_l.c.short_name,'/',_c.c.name,'/', 
-                        cast(_p.c.plate_number, sqlalchemy.sql.sqltypes.Text))),
-                'copyplate_id': (
-                    _concat(_c.c.name,'/',
-                        cast(_p.c.plate_number, sqlalchemy.sql.sqltypes.Text))),
-                'remaining_well_volume': _plate_statistics.c.remaining_well_volume,
-                'avg_remaining_volume': _plate_statistics.c.avg_well_remaining_volume,
-                'min_remaining_volume': _plate_statistics.c.min_well_remaining_volume,
-                'max_remaining_volume': _plate_statistics.c.max_well_remaining_volume,
-                'min_molar_concentration': _plate_statistics.c.min_molar_concentration,
-                'max_molar_concentration': _plate_statistics.c.max_molar_concentration,
-                'min_mg_ml_concentration': _plate_statistics.c.min_mg_ml_concentration,
-                'max_mg_ml_concentration': _plate_statistics.c.max_mg_ml_concentration,
-                'first_date_screened': _plate_screening_statistics.c.first_date_screened,
-                'last_date_screened': _plate_screening_statistics.c.last_date_screened,
-                'status_date': _status_apilogs.c.date_time,
-                'status_performed_by': _status_apilogs.c.name,
-                'status_performed_by_username': _status_apilogs.c.username,
-                'experimental_copy_well_count': (
-                    select([func.count(None)])
-                    .select_from(_well)
-                    .where(_well.c.plate_number==_p.c.plate_number)
-                    .where(_well.c.library_well_type==WELL_TYPE.EXPERIMENTAL)),
-
-                'comment_array': (
-                    select([func.array_to_string(
-                        func.array_agg(
-                            _concat(                            
-                                cast(_comment_apilogs.c.name,
-                                    sqlalchemy.sql.sqltypes.Text),
-                                LIST_DELIMITER_SUB_ARRAY,
-                                cast(_comment_apilogs.c.date_time,
-                                    sqlalchemy.sql.sqltypes.Text),
-                                LIST_DELIMITER_SUB_ARRAY,
-                                _comment_apilogs.c.comment)
-                        ), 
-                        LIST_DELIMITER_SQL_ARRAY) ])
-                    .select_from(_comment_apilogs)
-                    .where(_comment_apilogs.c.key==_plate_cte.c.key)
-                    ),
-                'library_comment_array': (
-                    select([func.array_to_string(
-                        func.array_agg(
-                            _concat(                            
-                                cast(_library_comment_apilogs.c.name,
-                                    sqlalchemy.sql.sqltypes.Text),
-                                LIST_DELIMITER_SUB_ARRAY,
-                                cast(_library_comment_apilogs.c.date_time,
-                                    sqlalchemy.sql.sqltypes.Text),
-                                LIST_DELIMITER_SUB_ARRAY,
-                                _library_comment_apilogs.c.comment)
-                        ), 
-                        LIST_DELIMITER_SQL_ARRAY) ])
-                    .select_from(_library_comment_apilogs)
-                    .where(_library_comment_apilogs.c.key==_l.c.short_name)
-                    ),
-            }
-
-            base_query_tables = ['plate', 'copy', 'plate_location', 'library']
-
-            columns = self.build_sqlalchemy_columns(
-                field_hash.values(), base_query_tables=base_query_tables,
-                custom_columns=custom_columns)
-            # build the query statement
-
-            j = join(_plate_cte, _p, _p.c.plate_id == _plate_cte.c.plate_id)
-            j = j.join(_c, _p.c.copy_id == _c.c.copy_id)
-            j = j.join(
-                _pl, _p.c.plate_location_id == _pl.c.plate_location_id,
-                isouter=True)
-            j = j.join(_l, _c.c.library_id == _l.c.library_id)
-
-            if set(['status_date','status_performed_by',
-                'status_performed_by_username']) | set(field_hash.keys()):
-                j = j.outerjoin(_status_apilogs,_plate_cte.c.key==_status_apilogs.c.key)
-            if set(['avg_remaining_volume','min_remaining_volume',
-                'max_remaining_volume']) | set(field_hash.keys()):
-                j = j.outerjoin(_plate_statistics,_p.c.plate_id==_plate_statistics.c.plate_id)     
-            if (set(['first_date_screened', 'last_date_screened'])
-                | set(field_hash.keys()) ):
-                j = j.outerjoin(_plate_screening_statistics,
-                    _p.c.plate_id==_plate_screening_statistics.c.plate_id)
-
-            # FIXME: replaced by build_screened_plate_response? 20170912
-            if for_screen_facility_id is not None:
-                custom_columns['screening_count'] = (
-                    select([distinct(_ls.c.activity_id)])
-                        .select_from(_ap.join(
-                            _screen, _ap.c.screen_id==_screen.c.screen_id))
-                        .where(_ap.c.plate_id==_plate_cte.c.plate_id)
-                        .where(_screen.c.facility_id==for_screen_facility_id)
-                )
-                custom_columns['assay_plate_count'] = (
-                    select([func.count(None)])
-                        .select_from(_ap.join(
-                            _screen, _ap.c.screen_id==_screen.c.screen_id))
-                        .where(_ap.c.plate_id==_plate_cte.c.plate_id)
-                        .where(_screen.c.facility_id==for_screen_facility_id)
-                )
-                custom_columns['first_date_screened'] = (
-                    select([func.min(_a.c.date_of_activity)])
-                        .select_from(
-                            _ap.join(_screen, _ap.c.screen_id==_screen.c.screen_id)
-                               .join(_a, _ap.c.library_screening_id==_a.c.activity_id)
-                            )
-                        .where(_ap.c.plate_id==_plate_cte.c.plate_id)
-                        .where(_screen.c.facility_id==for_screen_facility_id)
-                    )
-                custom_columns['last_date_screened'] = (
-                    select([func.max(_a.c.date_of_activity)])
-                        .select_from(
-                            _ap.join(_screen, _ap.c.screen_id==_screen.c.screen_id)
-                               .join(_a, _ap.c.library_screening_id==_a.c.activity_id)
-                            )
-                        .where(_ap.c.plate_id==_plate_cte.c.plate_id)
-                        .where(_screen.c.facility_id==for_screen_facility_id)
-                    )
-                
-            if library_screening_id is not None:
-                custom_columns['assay_plate_count'] = (
-                    select([func.count(None)])
-                        .select_from(_ap)
-                        .where(_ap.c.plate_id==_plate_cte.c.plate_id)
-                        .where(_ap.c.library_screening_id==library_screening_id)
-                ),
-                
-            stmt = select(columns.values()).select_from(j)
-            
-            if plate_ids is not None:
-                stmt = stmt.where(_p.c.plate_id.in_(plate_ids))
-            if library_id is not None:
-                stmt = stmt.where(_l.c.library_id==library_id)
-            if copy_id is not None:
-                stmt = stmt.where(_p.c.copy_id==copy_id)
-
-            # general setup
-             
-            (stmt, count_stmt) = self.wrap_statement(
-                stmt, order_clauses, filter_expression)
- 
-            if not order_clauses:
-                stmt = stmt.order_by("plate_number", "copy_name")
-
-            # compiled_stmt = str(stmt.compile(
-            #     dialect=postgresql.dialect(),
-            #     compile_kwargs={"literal_binds": True}))
-            # logger.info('compiled_stmt %s', compiled_stmt)
+        if 'location' in order_params or '-location' in order_params:
+            temp = []
+            for v in order_params:
+                if v == 'location':
+                    temp.extend(['room','freezer','shelf','bin'])
+                elif v == '-location':
+                    temp.extend(['-room','-freezer','-shelf','-bin'])
+                else:
+                    temp.append(v)
+            order_params = temp
+        
+        logger.info('filter hash keys: %r', filter_hash.keys())
+        field_hash = self.get_visible_fields(
+            schema['fields'], filter_hash.keys(), manual_field_includes,
+            param_hash.get('visibilities'),
+            exact_fields=set(param_hash.get('exact_fields', [])),
+            order_params=order_params)
+        order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
+            order_params, field_hash)
          
-            title_function = None
-            if use_titles is True:
-                def title_function(key):
-                    return field_hash[key]['title']
-            if is_data_interchange:
-                title_function = DbApiResource.datainterchange_title_function(
-                    field_hash,schema['id_attribute'])
+        rowproxy_generator = None
+        if use_vocab is True:
+            rowproxy_generator = \
+                DbApiResource.create_vocabulary_rowproxy_generator(field_hash)
+            # use "use_vocab" as a proxy to also adjust siunits for viewing
+            rowproxy_generator = DbApiResource.create_siunit_rowproxy_generator(
+                field_hash, rowproxy_generator)
+        rowproxy_generator = \
+            self._meta.authorization.get_row_property_generator(
+                request.user, field_hash, rowproxy_generator)
+ 
+        # specific setup 
+ 
+        _apilog = self.bridge['reports_apilog']
+        _diff = self.bridge['reports_logdiff']
+        _p = self.bridge['plate']
+        _well = self.bridge['well']
+        _pl = self.bridge['plate_location']
+        _c = self.bridge['copy']
+        _l = self.bridge['library']
+        _ls = self.bridge['library_screening']
+        _a = self.bridge['activity']
+        _ap = self.bridge['assay_plate']
+        _screen = self.bridge['screen']
+        _plate_cte = (
+            self.get_librarycopyplate_cte(
+                filter_hash=filter_hash,
+                library_id=library_id, copy_id=copy_id, plate_ids=plate_ids)
+                    .cte('plate_cte'))
+        _plate_statistics = (
+            self.get_plate_copywell_statistics_cte(
+                filter_hash=filter_hash,
+                library_id=library_id, copy_id=copy_id, plate_ids=plate_ids)
+                    .cte('plate_statistics'))
+        _plate_screening_statistics = (
+            self.get_plate_screening_statistics_cte(
+                filter_hash=filter_hash,
+                library_id=library_id, copy_id=copy_id, plate_ids=plate_ids)
+                    .cte('plate_screening_statistics'))
             
-            meta = kwargs.get('meta', {})
-            if plate_search_errors:
-                meta['SCHEMA.API_MSG_WARNING'] = \
-                    'Plates not found: %s' % ', '.join(sorted(plate_search_errors))
-            return self.stream_response_from_statement(
-                request, stmt, count_stmt, filename,
-                field_hash=field_hash, param_hash=param_hash,
-                is_for_detail=is_for_detail,
-                rowproxy_generator=rowproxy_generator,
-                title_function=title_function, meta=meta)
-                        
-        except Exception, e:
-            logger.exception('on get list')
-            raise e   
+        # Status Date/performedBy: Use window function for performance:
+        #   SELECT DISTINCT ON (reports_apilog.key)
+        #   last_value(date_time) OVER wnd as date_time,
+        #   last_value(reports_apilog.id) OVER wnd as id,
+        #   reports_apilog.key
+        #  FROM reports_apilog
+        #  where ref_resource_name = 'librarycopyplate'
+        #  WINDOW wnd AS (
+        #    PARTITION BY reports_apilog.id ORDER BY date_time
+        #    ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING )
+        w_params = { 
+            'order_by': _apilog.c.date_time,
+            'partition_by': _apilog.c.id }
+        status_apilogs = (
+            select([
+                func.last_value(_apilog.c.date_time).over(**w_params).label('date_time'),
+                func.last_value(_apilog.c.id).over(**w_params).label('id'),
+                _apilog.c.key
+                ])
+            .select_from(_apilog.join(_diff, _apilog.c.id==_diff.c.log_id))
+            .where(_apilog.c.ref_resource_name==self._meta.resource_name)
+            .where(_diff.c.field_key=='status')
+            .distinct(_apilog.c.key)
+            )
+        if log_key:
+            status_apilogs = status_apilogs.where(_apilog.c.key.ilike(log_key))
+        status_updated_apilogs = status_apilogs.cte('updated_apilogs')
+        _user_cte = ScreensaverUserResource.get_user_cte().cte('user_cte')
+        _status_apilogs = (
+            select([
+                _apilog.c.date_time,
+                _apilog.c.key,
+                _user_cte.c.username,
+                _user_cte.c.name,                    
+                ])
+            .select_from(_apilog.join(
+                status_updated_apilogs,
+                    _apilog.c.id==status_updated_apilogs.c.id)
+                .join(_user_cte, _apilog.c.username==_user_cte.c.username))
+            )
+        _comment_apilogs = ApiLogResource.get_resource_comment_subquery(
+            self._meta.resource_name)
+        if log_key:
+            _status_apilogs = _status_apilogs.where(_apilog.c.key.ilike(log_key))
+            _comment_apilogs = _comment_apilogs.where(_apilog.c.key.ilike(log_key))
+        _status_apilogs = _status_apilogs.cte('_status_apilogs')
+        _comment_apilogs = _comment_apilogs.cte('_comment_apilogs')
+
+        _library_comment_apilogs = \
+            ApiLogResource.get_resource_comment_subquery('library')
+        if library_short_name is not None:
+            _library_comment_apilogs = _library_comment_apilogs.where(
+                _apilog.c.key==library_short_name)
+        _library_comment_apilogs = \
+            _library_comment_apilogs.cte('_library_comment_apilogs')
+
+        custom_columns = {
+            'assay_plate_count': (
+                select([func.count(None)])
+                    .select_from(_ap)
+                    .where(_ap.c.plate_id==_plate_cte.c.plate_id)),
+            'librarycopyplate_id': (
+                _concat(_l.c.short_name,'/',_c.c.name,'/', 
+                    cast(_p.c.plate_number, sqlalchemy.sql.sqltypes.Text))),
+            'copyplate_id': (
+                _concat(_c.c.name,'/',
+                    cast(_p.c.plate_number, sqlalchemy.sql.sqltypes.Text))),
+            'remaining_well_volume': _plate_statistics.c.remaining_well_volume,
+            'avg_remaining_volume': _plate_statistics.c.avg_well_remaining_volume,
+            'min_remaining_volume': _plate_statistics.c.min_well_remaining_volume,
+            'max_remaining_volume': _plate_statistics.c.max_well_remaining_volume,
+            'min_molar_concentration': _plate_statistics.c.min_molar_concentration,
+            'max_molar_concentration': _plate_statistics.c.max_molar_concentration,
+            'min_mg_ml_concentration': _plate_statistics.c.min_mg_ml_concentration,
+            'max_mg_ml_concentration': _plate_statistics.c.max_mg_ml_concentration,
+            'first_date_screened': _plate_screening_statistics.c.first_date_screened,
+            'last_date_screened': _plate_screening_statistics.c.last_date_screened,
+            'status_date': _status_apilogs.c.date_time,
+            'status_performed_by': _status_apilogs.c.name,
+            'status_performed_by_username': _status_apilogs.c.username,
+            'experimental_copy_well_count': (
+                select([func.count(None)])
+                .select_from(_well)
+                .where(_well.c.plate_number==_p.c.plate_number)
+                .where(_well.c.library_well_type==WELL_TYPE.EXPERIMENTAL)),
+
+            'comment_array': (
+                select([func.array_to_string(
+                    func.array_agg(
+                        _concat(                            
+                            cast(_comment_apilogs.c.name,
+                                sqlalchemy.sql.sqltypes.Text),
+                            LIST_DELIMITER_SUB_ARRAY,
+                            cast(_comment_apilogs.c.date_time,
+                                sqlalchemy.sql.sqltypes.Text),
+                            LIST_DELIMITER_SUB_ARRAY,
+                            _comment_apilogs.c.comment)
+                    ), 
+                    LIST_DELIMITER_SQL_ARRAY) ])
+                .select_from(_comment_apilogs)
+                .where(_comment_apilogs.c.key==_plate_cte.c.key)
+                ),
+            'library_comment_array': (
+                select([func.array_to_string(
+                    func.array_agg(
+                        _concat(                            
+                            cast(_library_comment_apilogs.c.name,
+                                sqlalchemy.sql.sqltypes.Text),
+                            LIST_DELIMITER_SUB_ARRAY,
+                            cast(_library_comment_apilogs.c.date_time,
+                                sqlalchemy.sql.sqltypes.Text),
+                            LIST_DELIMITER_SUB_ARRAY,
+                            _library_comment_apilogs.c.comment)
+                    ), 
+                    LIST_DELIMITER_SQL_ARRAY) ])
+                .select_from(_library_comment_apilogs)
+                .where(_library_comment_apilogs.c.key==_l.c.short_name)
+                ),
+        }
+
+        base_query_tables = ['plate', 'copy', 'plate_location', 'library']
+
+        columns = self.build_sqlalchemy_columns(
+            field_hash.values(), base_query_tables=base_query_tables,
+            custom_columns=custom_columns)
+        # build the query statement
+
+        j = join(_plate_cte, _p, _p.c.plate_id == _plate_cte.c.plate_id)
+        j = j.join(_c, _p.c.copy_id == _c.c.copy_id)
+        j = j.join(
+            _pl, _p.c.plate_location_id == _pl.c.plate_location_id,
+            isouter=True)
+        j = j.join(_l, _c.c.library_id == _l.c.library_id)
+
+        if set(['status_date','status_performed_by',
+            'status_performed_by_username']) | set(field_hash.keys()):
+            j = j.outerjoin(_status_apilogs,_plate_cte.c.key==_status_apilogs.c.key)
+        if set(['avg_remaining_volume','min_remaining_volume',
+            'max_remaining_volume']) | set(field_hash.keys()):
+            j = j.outerjoin(_plate_statistics,_p.c.plate_id==_plate_statistics.c.plate_id)     
+        if (set(['first_date_screened', 'last_date_screened'])
+            | set(field_hash.keys()) ):
+            j = j.outerjoin(_plate_screening_statistics,
+                _p.c.plate_id==_plate_screening_statistics.c.plate_id)
+
+        # FIXME: replaced by build_screened_plate_response? 20170912
+        if for_screen_facility_id is not None:
+            custom_columns['screening_count'] = (
+                select([distinct(_ls.c.activity_id)])
+                    .select_from(_ap.join(
+                        _screen, _ap.c.screen_id==_screen.c.screen_id))
+                    .where(_ap.c.plate_id==_plate_cte.c.plate_id)
+                    .where(_screen.c.facility_id==for_screen_facility_id)
+            )
+            custom_columns['assay_plate_count'] = (
+                select([func.count(None)])
+                    .select_from(_ap.join(
+                        _screen, _ap.c.screen_id==_screen.c.screen_id))
+                    .where(_ap.c.plate_id==_plate_cte.c.plate_id)
+                    .where(_screen.c.facility_id==for_screen_facility_id)
+            )
+            custom_columns['first_date_screened'] = (
+                select([func.min(_a.c.date_of_activity)])
+                    .select_from(
+                        _ap.join(_screen, _ap.c.screen_id==_screen.c.screen_id)
+                           .join(_a, _ap.c.library_screening_id==_a.c.activity_id)
+                        )
+                    .where(_ap.c.plate_id==_plate_cte.c.plate_id)
+                    .where(_screen.c.facility_id==for_screen_facility_id)
+                )
+            custom_columns['last_date_screened'] = (
+                select([func.max(_a.c.date_of_activity)])
+                    .select_from(
+                        _ap.join(_screen, _ap.c.screen_id==_screen.c.screen_id)
+                           .join(_a, _ap.c.library_screening_id==_a.c.activity_id)
+                        )
+                    .where(_ap.c.plate_id==_plate_cte.c.plate_id)
+                    .where(_screen.c.facility_id==for_screen_facility_id)
+                )
+                
+        if library_screening_id is not None:
+            custom_columns['assay_plate_count'] = (
+                select([func.count(None)])
+                    .select_from(_ap)
+                    .where(_ap.c.plate_id==_plate_cte.c.plate_id)
+                    .where(_ap.c.library_screening_id==library_screening_id)
+            ),
+                
+        stmt = select(columns.values()).select_from(j)
+        
+        if plate_ids is not None:
+            stmt = stmt.where(_p.c.plate_id.in_(plate_ids))
+        if library_id is not None:
+            stmt = stmt.where(_l.c.library_id==library_id)
+        if copy_id is not None:
+            stmt = stmt.where(_p.c.copy_id==copy_id)
+
+        # general setup
+             
+        (stmt, count_stmt) = self.wrap_statement(
+            stmt, order_clauses, filter_expression)
+ 
+        if not order_clauses:
+            stmt = stmt.order_by("plate_number", "copy_name")
+
+        # compiled_stmt = str(stmt.compile(
+        #     dialect=postgresql.dialect(),
+        #     compile_kwargs={"literal_binds": True}))
+        # logger.info('compiled_stmt %s', compiled_stmt)
+         
+        title_function = None
+        if use_titles is True:
+            def title_function(key):
+                return field_hash[key]['title']
+        if is_data_interchange:
+            title_function = DbApiResource.datainterchange_title_function(
+                field_hash,schema['id_attribute'])
+            
+        if plate_search_errors:
+            meta[SCHEMA.API_MSG_WARNING] = ', '.join(sorted(plate_search_errors))
+        
+        logger.info('stream LibraryCopyPlate...')
+        return self.stream_response_from_statement(
+            request, stmt, count_stmt, filename,
+            field_hash=field_hash, param_hash=param_hash,
+            is_for_detail=is_for_detail,
+            rowproxy_generator=rowproxy_generator,
+            title_function=title_function, meta=meta)
 
     @classmethod
     def get_screen_librarycopyplate_subquery(cls, for_screen_facility_id):
@@ -2304,65 +2318,61 @@ class LibraryCopyPlateResource(DbApiResource):
         Batch edit is a POST operation:
         
         librarycopyplate batch_edit uses a POST form to send both
-        the search data (3 types of search filter: "nested_search_data",  
-        SCHEMA.API_PARAM_SEARCH, and GET search params),
+        the search data (3 types of search filter: SCHEMA.API_PARAM_NESTED_SEARCH,  
+        SCHEMA.API_PARAM_SEARCH, and ordinary 'GET' search params),
         as well as the update data (in the form of "plate_info" and "plate_location")
         (Instead of sending all plates to be PATCHED);
         '''
         schema = kwargs.pop('schema', None)
         if not schema:
             raise Exception('schema not initialized')
-        # NOTE: authentication is being performed by wrap_view
-        # self.is_authenticated(request)
-        # if not self._meta.authorization._is_resource_authorized(
-        #         self._meta.resource_name,request.user,'write'):
-        #     raise ImmediateHttpResponse(
-        #         response=HttpForbidden(
-        #             'user: %s, permission: %s/%s not found' 
-        #             % (request.user,self._meta.resource_name,'write')))
         convert_request_method_to_put(request)
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
         
         logger.info('batch_edit plates...')
-        logger.info('param_hash: %r', param_hash)
+        if DEBUG_PLATE_EDIT:
+            logger.info('param_hash: %r', param_hash)
         
         plate_info_data = param_hash.pop('plate_info', None)
         if plate_info_data: 
             plate_info_data = json.loads(plate_info_data)
-        logger.info('plate_info: %r', plate_info_data)
+        if DEBUG_PLATE_EDIT:
+            logger.info('plate_info: %r', plate_info_data)
         
         location_data = param_hash.pop('plate_location', None)
         if location_data:
             location_data = json.loads(location_data)
-
-        if plate_info_data is not None and location_data is not None:
-            msg = 'batch info: edit only one of %r' % ['plate_info', 'plate_location']
-            raise ValidationError({
-                'plate_info': msg,
-                'plate_location': msg })
-        elif plate_info_data is None and location_data is None:
+        if DEBUG_PLATE_EDIT:
+            logger.info('plate_location: %r', location_data)
+        if plate_info_data is None and location_data is None:
             msg = '"data" must contain one of %r' % ['plate_info', 'plate_location']
             raise ValidationError({
                 'plate_info': msg, 'plate_location': msg })
         
         # Use the rest of the POST data for the plate search
-        nested_search_data = param_hash.pop(SCHEMA.API_PARAM_NESTED_SEARCH, None)
         plate_kwargs = param_hash.copy()
+
+        nested_search_data = param_hash.pop(SCHEMA.API_PARAM_NESTED_SEARCH, None)
         if nested_search_data:
+            if DEBUG_PLATE_EDIT:
+                logger.info('nested_search_data: %r', nested_search_data)
             plate_kwargs[SCHEMA.API_PARAM_NESTED_SEARCH] = json.loads(nested_search_data)
         
-        logger.info('plate_kwargs: %r', plate_kwargs)
+        if DEBUG_PLATE_EDIT:
+            logger.info('batch_edit: plate_kwargs: %r', plate_kwargs)
         
-        if plate_info_data is not None:
-            # Find all of the plates
+        meta = { SCHEMA.API_MSG_RESULT: {} }
+        if plate_info_data:
+            logger.info('batch_edit: Get the original plate data...')
             plate_kwargs['includes'] = ['plate_id']
             original_data = self._get_list_response_internal(**plate_kwargs)
             if not original_data:
                 raise Http404
             logger.info('got the plate objects for search data: %d', len(original_data))
-            logger.debug('plates %r', ['{copy_name}/{plate_number}'.format(**lcp)
-                for lcp in original_data])
+            if DEBUG_PLATE_EDIT:
+                logger.info('plates %r', ['{copy_name}/{plate_number}'.format(**lcp)
+                    for lcp in original_data])
             
             plate_ids = [x['plate_id'] for x in original_data]
 
@@ -2374,13 +2384,13 @@ class LibraryCopyPlateResource(DbApiResource):
                         key=key, msg='is not editable')
                 query.update(**{ key: value })
                 if key=='status':
-                    if value == 'available':
+                    if value == SCHEMA.VOCAB.plate.status.AVAILABLE:
                         query.update(**{ 'date_plated': _now()})
                         # query.update(**{ 'date_retired': None})
-                    elif value in self.retired_statuses:
+                    elif value in SCHEMA.VOCAB.plate.status.retired_statuses:
                         query.update(**{ 'date_retired': _now()})
                     
-            logger.info('batch update complete, logging...')
+            logger.info('batch update complete, get new state for logging...')
             
             new_data = self._get_list_response_internal(**plate_kwargs)
             
@@ -2393,19 +2403,14 @@ class LibraryCopyPlateResource(DbApiResource):
             patch_count = len(logs)
             update_count = len([x for x in logs if x.diffs ])
             unchanged_count = patch_count - update_count
-            meta = { 
-                SCHEMA.API_MSG_RESULT: { 
-                    SCHEMA.API_MSG_SUBMIT_COUNT : patch_count, 
-                    SCHEMA.API_MSG_UPDATED: update_count, 
-                    SCHEMA.API_MSG_UNCHANGED: unchanged_count, 
-                    SCHEMA.API_MSG_COMMENTS: parent_log.comment
-                }
+            meta[SCHEMA.API_MSG_RESULT]['plate'] = { 
+                SCHEMA.API_MSG_SUBMIT_COUNT : patch_count, 
+                SCHEMA.API_MSG_UPDATED: update_count, 
+                SCHEMA.API_MSG_UNCHANGED: unchanged_count, 
+                SCHEMA.API_MSG_COMMENTS: parent_log.comment
             }
-            return self.build_response(
-                request, {API_RESULT_META: meta }, response_class=HttpResponse, 
-                **kwargs)
             
-        if location_data is not None:
+        if location_data:
             plate_location_fields = ['room', 'freezer', 'shelf', 'bin']
             if (not location_data 
                     or not set(plate_location_fields) | set(location_data.keys())):
@@ -2421,29 +2426,23 @@ class LibraryCopyPlateResource(DbApiResource):
                 location_data['copy_plate_ranges'] = \
                     original_location_data.get('copy_plate_ranges',None)
     
-            # Find all of the plates
+            logger.info('batch_edit location: Get the original plate data...')
             original_data = self._get_list_response_internal(**plate_kwargs)
             if not original_data:
                 raise Http404
             logger.info('got the plate objects for search data: %d',
                 len(original_data))
-            logger.debug('plates for batch edit %r', 
-                ['{copy_name}/{plate_number}'.format(**lcp)
-                    for lcp in original_data])
+            if DEBUG_PLATE_EDIT:
+                logger.info('plates for batch edit %r', 
+                    ['{copy_name}/{plate_number}'.format(**lcp)
+                        for lcp in original_data])
             
-            logger.info('convert the plates into ranges...')
-            library_copy_ranges = {}
+            library_copy_ranges = defaultdict(list)
             for plate_data in original_data:
                 library_copy = '{library_short_name}:{copy_name}'.format(**plate_data)
-                plate_range = library_copy_ranges.get(library_copy, [])
-                plate_range.append(int(plate_data['plate_number']))
-                library_copy_ranges[library_copy] = plate_range
+                library_copy_ranges[library_copy].append(int(plate_data['plate_number']))
             copy_plate_ranges = []
             for library_copy,plate_range in library_copy_ranges.items():
-                if not plate_range:
-                    raise ValidationError(
-                        key='library_copy', 
-                        msg='no plates found for %r' % library_copy)
                 plate_range = sorted(plate_range)
                 copy_plate_ranges.append(
                     '%s:%s-%s' 
@@ -2478,17 +2477,15 @@ class LibraryCopyPlateResource(DbApiResource):
             _data = self.get_serializer().deserialize(
                 LimsSerializer.get_content(response), JSON_MIMETYPE)
             results = _data[API_RESULT_META][SCHEMA.API_MSG_RESULT]
-            logger.info('results plate location patch: %r', results)
-            meta = { 
-                SCHEMA.API_MSG_RESULT: { 
-                    'Plate Location Result: %s' % plate_location_name: results,
-                    'Plate Copy Ranges patched': ','.join(copy_plate_ranges),
-                    'Plate Copy Count': len(original_data)
-                }
+            meta[SCHEMA.API_MSG_RESULT]['plate_location'] = { 
+                'Plate Location Result: %s' % plate_location_name: results,
+                'Plate Copy Ranges patched': ','.join(copy_plate_ranges),
+                'Plate Copy Count': len(original_data)
             }
-            return self.build_response(
-                request, {API_RESULT_META: meta }, response_class=HttpResponse, 
-                **kwargs)
+        logger.info('results plate location patch: %r', meta)
+        return self.build_response(
+            request, {API_RESULT_META: meta }, response_class=HttpResponse, 
+            **kwargs)
     
     def validate(self, _dict, patch=False, schema=None):
         errors = DbApiResource.validate(self, _dict, patch=patch, schema=schema)
@@ -2496,7 +2493,7 @@ class LibraryCopyPlateResource(DbApiResource):
         if set(['status','is_active']) | set(_dict.keys()):
             
             if _dict.get('is_active',False) is True:
-                if _dict.get('status', None) != 'available':
+                if _dict.get('status', None) != SCHEMA.VOCAB.plate.status.AVAILABLE:
                     errors['is_active'] = 'Requires status == "available"'
         
         return errors
@@ -2535,15 +2532,15 @@ class LibraryCopyPlateResource(DbApiResource):
             if hasattr(plate, key):
                 setattr(plate, key, val)
             if key=='status':
-                if val == 'available':
+                if val == SCHEMA.VOCAB.plate.status.AVAILABLE:
                     plate.date_plated = _now()
                     # plate.date_retired = None
-                elif val in self.retired_statuses:
+                elif val in SCHEMA.VOCAB.plate.status.retired_statuses:
                     plate.date_retired = _now() 
         if initializer_dict:
             
             # New 20170407 - is_active check
-            if plate.status != 'available':
+            if plate.status != SCHEMA.VOCAB.plate.status.AVAILABLE:
                 plate.is_active = False
             
             plate.save()
@@ -9376,7 +9373,7 @@ class CherryPickRequestResource(DbApiResource):
         eligible_lab_cherry_pick_copywells = [
             lcp for lcp in eligible_lab_cherry_pick_copywells
             if not (lcp['source_plate_type']=='cherry_pick_source_plates'
-                    and lcp['source_plate_status']=='retired' )]   
+                    and lcp['source_plate_status']==SCHEMA.VOCAB.plate.status.RETIRED )]   
         
         logger.info('found %d eligible copy-wells for %d lab cherry picks', 
             len(eligible_lab_cherry_pick_copywells), 
@@ -10940,7 +10937,7 @@ class LabCherryPickResource(DbApiResource):
                     _copyplates_available = \
                         _copyplates_available.where(and_(
                             _copy.c.usage_type=='cherry_pick_source_plates',
-                            _p.c.status=='available'))
+                            _p.c.status==SCHEMA.VOCAB.plate.status.AVAILABLE))
                 else:
                     # NOTE: show retired cherry pick plates: make sure not to
                     # consider these when automatically mapping
@@ -10952,10 +10949,10 @@ class LabCherryPickResource(DbApiResource):
                         _copyplates_available.where(or_(
                             _copy.c.usage_type=='cherry_pick_source_plates',
                             and_(_copy.c.usage_type=='library_screening_plates',
-                                _p.c.status=='retired')))
+                                _p.c.status==SCHEMA.VOCAB.plate.status.RETIRED)))
                     
                 _copyplates_available = _copyplates_available.where(
-                    _p.c.status.in_(['available','retired']))
+                    _p.c.status.in_([SCHEMA.VOCAB.plate.status.AVAILABLE,SCHEMA.VOCAB.plate.status.RETIRED]))
                 _copyplates_available = _copyplates_available.cte('copy_plates_available')
                 
                 j = j.join(_copyplates_available,
@@ -12112,7 +12109,7 @@ class LibraryCopyResource(DbApiResource):
                     
                     if initial_plate_status:
                         p.status = initial_plate_status
-                        if p.status == 'available':
+                        if p.status == SCHEMA.VOCAB.plate.status.AVAILABLE:
                             p.date_plated = _now()
                             # TODO: set retired if retired status
                     p.save()
@@ -14454,9 +14451,9 @@ class LibraryScreeningResource(ActivityResource):
         show_retired_plates = parse_val(
             param_hash.get('show_retired_plates'),
             'show_retired_plates','boolean')
-        plate_status_types = ['available']
+        plate_status_types = [SCHEMA.VOCAB.plate.status.AVAILABLE]
         if show_retired_plates:
-            plate_status_types.append('retired')
+            plate_status_types.append(SCHEMA.VOCAB.plate.status.RETIRED)
         show_first_copy_only = parse_val(
             param_hash.get('show_first_copy_only',None),
             'show_first_copy_only','boolean')    
@@ -14487,8 +14484,10 @@ class LibraryScreeningResource(ActivityResource):
         searched_plate_ids = []
         plate_search_errors = []
         if plate_search_data:
-            (plates,parsed_searches, errors) = \
-                self.get_librarycopyplate_resource().find_plates(plate_search_data)
+            parsed_searches = self.get_librarycopyplate_resource()\
+                .parse_plate_copy_search(plate_search_data)
+            (plates,errors) = \
+                self.get_librarycopyplate_resource().find_plates(parsed_searches)
             if errors:
                 logger.info('errors: %r', errors)
                 plate_search_errors.append(
@@ -16422,13 +16421,14 @@ class RawDataTransformerResource(DbApiResource):
         plate_ranges = initializer_dict['plate_ranges']
         logger.info('plate ranges: %r', plate_ranges)
         lcp_resource = self.get_lcp_resource()
-        (plates,parsed_searches, errors) = lcp_resource.find_plates(plate_ranges)
+        parsed_searches = lcp_resource.parse_plate_copy_search(plate_ranges)
+        logger.info('parsed_searches: %r', parsed_searches[0]['plate_numbers_in_order_listed'])
+        (plates,errors) = lcp_resource.find_plates(parsed_searches)
+        plate_numbers = parsed_searches[0]['plate_numbers_in_order_listed']
         if errors:
             raise ValidationError(
                 key='plate_ranges', 
                 msg = 'Plates not found: %s' % ', '.join(sorted(errors)))
-        logger.info('parsed_searches: %r', parsed_searches[0]['plate_numbers_in_order_listed'])
-        plate_numbers = parsed_searches[0]['plate_numbers_in_order_listed']
         # check for duplicates
         plate_check_set = set()
         duplicate_plates = set()
@@ -21011,6 +21011,7 @@ class ScreensaverUserResource(DbApiResource):
         fields = schema['fields']
 
         id_kwargs = self.get_id(deserialized, schema=schema, **kwargs)
+        logger.info('id_kwargs: %r', id_kwargs)
         screensaver_user = None
         is_patch = False
         if 'screensaver_user_id' in id_kwargs:

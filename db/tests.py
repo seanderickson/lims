@@ -2329,11 +2329,13 @@ class LibraryResource(DBResourceTestCase):
             API_RESULT_META in post_response, '%r' % post_response)
         meta = post_response[API_RESULT_META]
         self.assertTrue(SCHEMA.API_MSG_RESULT in meta, '%r' % post_response)
+        self.assertTrue('plate' in meta[SCHEMA.API_MSG_RESULT])
+        meta = meta[SCHEMA.API_MSG_RESULT]['plate']
         self.assertTrue(
-            SCHEMA.API_MSG_SUBMIT_COUNT in meta[SCHEMA.API_MSG_RESULT], 
+            SCHEMA.API_MSG_SUBMIT_COUNT in meta, 
             '%r' % post_response)
         self.assertTrue(
-            meta[SCHEMA.API_MSG_RESULT][SCHEMA.API_MSG_SUBMIT_COUNT]==6, 
+            meta[SCHEMA.API_MSG_SUBMIT_COUNT]==6, 
             'Wrong "%r" count: %r' 
                 % (SCHEMA.API_MSG_SUBMIT_COUNT, meta))
         logger.info('post_response: %r', post_response)
@@ -2396,9 +2398,11 @@ class LibraryResource(DBResourceTestCase):
             API_RESULT_META in post_response, '%r' % post_response)
         meta = post_response[API_RESULT_META]
         self.assertTrue(SCHEMA.API_MSG_RESULT in meta, '%r' % post_response)
+        self.assertTrue('plate' in meta[SCHEMA.API_MSG_RESULT])
+        meta = meta[SCHEMA.API_MSG_RESULT]['plate']
         self.assertTrue(
-            SCHEMA.API_MSG_SUBMIT_COUNT in meta[SCHEMA.API_MSG_RESULT], '%r' % post_response)
-        self.assertTrue(meta[SCHEMA.API_MSG_RESULT][SCHEMA.API_MSG_SUBMIT_COUNT]==6, 
+            SCHEMA.API_MSG_SUBMIT_COUNT in meta, '%r' % post_response)
+        self.assertTrue(meta[SCHEMA.API_MSG_SUBMIT_COUNT]==6, 
             'Wrong "%r" count: %r' 
             % (SCHEMA.API_MSG_SUBMIT_COUNT, meta))
         logger.info('post_response: %r', post_response)
@@ -2478,12 +2482,15 @@ class LibraryResource(DBResourceTestCase):
             API_RESULT_META in post_response, '%r' % post_response)
         meta = post_response[API_RESULT_META]
         self.assertTrue(SCHEMA.API_MSG_RESULT in meta, '%r' % post_response)
-        logger.info('meta: %r', meta)
+        self.assertTrue('plate_location' in meta[SCHEMA.API_MSG_RESULT])
+        meta = meta[SCHEMA.API_MSG_RESULT]['plate_location']
+        logger.info('meta: %r', meta)    
         plate_location_msg = \
             'Plate Location Result: {room}-{freezer}-{shelf}-{bin}'\
                 .format(**plate_location_input)
-        self.assertTrue(plate_location_msg in meta[SCHEMA.API_MSG_RESULT])
-        plate_location_result = meta[SCHEMA.API_MSG_RESULT][plate_location_msg]
+        
+        self.assertTrue(plate_location_msg in meta)
+        plate_location_result = meta[plate_location_msg]
         self.assertTrue(
             SCHEMA.API_MSG_UPDATED in plate_location_result, '%r' % plate_location_result)
         self.assertTrue(plate_location_result[SCHEMA.API_MSG_UPDATED]==6, 

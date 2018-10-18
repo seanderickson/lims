@@ -39,6 +39,7 @@ from reports.serialize.streaming_serializers import sdf_generator, \
     cursor_generator, image_generator, closing_iterator_wrapper
 from reports.serializers import LimsSerializer
 
+
 logger = logging.getLogger(__name__)
 
 DEBUG_FILTERS = False or logger.isEnabledFor(logging.DEBUG)
@@ -532,11 +533,9 @@ class SqlAlchemyResource(IccblBaseResource):
                     compile_kwargs={"literal_binds": True}))
                 logger.info('Initial compiled filter expression %s', compiled_stmt)
 
-        # 20170511 - nested search_data not used 
-        # (for well, plate, or screening inquiry)
         # Treat the nested "nested_search_data" as sets of params to be
         # OR'd together,  then AND'd with the regular filters (if any)
-        nested_search_data = param_hash.get('nested_search_data', None)
+        nested_search_data = param_hash.get(SCHEMA.API_PARAM_NESTED_SEARCH, None)
         if nested_search_data:
             logger.info('nested_search_data: %r', nested_search_data)
             if isinstance(nested_search_data, basestring):
@@ -1061,7 +1060,8 @@ class SqlAlchemyResource(IccblBaseResource):
                 if rowproxy_generator:
                     result = rowproxy_generator(result)
                     
-                logger.debug('is for detail: %r, count: %r', is_for_detail, count)
+                if DEBUG_STREAMING:
+                    logger.info('is for detail: %r, count: %r', is_for_detail, count)
                 if is_for_detail and count == 0:
                     logger.info('detail not found')
                     conn.close()
@@ -1110,7 +1110,6 @@ class SqlAlchemyResource(IccblBaseResource):
             else:
                 content_type = \
                     self.get_serializer().get_accept_content_type(request)
-            logger.debug('content_type: %s',content_type)
             
             image_keys = [key for key,field in field_hash.items()
                 if field.get('display_type', None) == 'image']

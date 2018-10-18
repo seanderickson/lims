@@ -113,11 +113,11 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel, ListView, Det
       
       var extraIncludes = [];
       var commentColumns = ['library_comment_array','comment_array','copy_comments'];
-      var showEditLocationButton = $([
-        '<a class="btn btn-default btn-sm pull-down" ',
-          'role="button" id="batch_edit_locations_button" href="#">',
-          'Edit Locations</a>'
-        ].join(''));
+//      var showEditLocationButton = $([
+//        '<a class="btn btn-default btn-sm pull-down" ',
+//          'role="button" id="batch_edit_locations_button" href="#">',
+//          'Edit Locations</a>'
+//        ].join(''));
       var showEditPlatesButton = $([
         '<a class="btn btn-default btn-sm pull-down" ',
           'role="button" id="batch_edit_plates_button" href="#">',
@@ -149,9 +149,7 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel, ListView, Det
         //extraControls = extraControls.concat([
         // showEditLocationButton, showEditPlatesButton, showHistoryButton,
         // showUploadButton]);
-        extraControls = extraControls.concat([
-         showEditLocationButton, showEditPlatesButton, 
-         showUploadButton]);
+        extraControls = extraControls.concat([ showEditPlatesButton, showUploadButton]);
       }
       extraControls.push(showCommentsControl);
       
@@ -270,13 +268,9 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel, ListView, Det
         });
       
       var view = new ListView(options);
-      showEditLocationButton.click(function(e) {
-        e.preventDefault();
-        self.batchEditLocationsDialog(view);
-      });
       showEditPlatesButton.click(function(e) {
         e.preventDefault();
-        self.batchEditPlatesDialog(view);
+        self.batchEditCombinedDialog(view);
       });
       showUploadButton.click(function(e){
         
@@ -318,375 +312,268 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel, ListView, Det
       self.setView('#resource_content', view ).render();
     },
     
-    batchEditPlatesDialog: function(listView) {
-      var self = this;
-      console.log('batch edit plates dialog...');
-
-      // Construct the form
-      
-      var initfun = function() {
-        var formSchema = {};
-        var fieldTemplate = appModel._field_template;
-        var formTemplate = appModel._form_template;
-        
-        formSchema['status'] = {
-          title: 'Status',
-          key: 'status',
-          type: EditView.ChosenSelect,
-          editorClass: 'form-control chosen-select',
-          options: appModel.getVocabularySelectOptions('plate.status'),
-          template: fieldTemplate 
-        };
-        formSchema['plate_type'] = {
-          title: 'Plate Type',
-          key: 'plate_type',
-          type: EditView.ChosenSelect,
-          editorClass: 'form-control chosen-select',
-          options: appModel.getVocabularySelectOptions('plate.type'),
-          template: fieldTemplate 
-        };
-        formSchema['remaining_well_volume'] = {
-          title: 'Remaining Well Volume',
-          key: 'well_volume',
-          validators: [EditView.CheckPositiveNonZeroValidator],
-          type: EditView.SIunitEditor,
-          template: fieldTemplate 
-        };
-        _.extend(
-          formSchema['remaining_well_volume'],
-          self.resource['fields']['remaining_well_volume']['display_options']);
-        if (self.copy && self.copy.get('has_copywell_volumes')) {
-          delete formSchema['remaining_well_volume'];
-        }
-        
-        formSchema['molar_concentration'] = {
-          title: 'Molar Concentration',
-          key: 'molar_concentration',
-          validators: [EditView.CheckPositiveNonZeroValidator],
-          type: EditView.SIunitEditor,
-          template: fieldTemplate 
-        };
-        _.extend(
-          formSchema['molar_concentration'],
-          self.resource['fields']['molar_concentration']['display_options']);
-        
-        formSchema['mg_ml_concentration'] = {
-          title: 'mg/ml Concentration',
-          key: 'mg_ml_concentration',
-          validators: [EditView.CheckPositiveNonZeroValidator],
-          type: Backbone.Form.editors.Number,
-          editorClass: 'form-control',
-          template: fieldTemplate 
-        };
-        _.extend(
-          formSchema['mg_ml_concentration'],
-          self.resource['fields']['mg_ml_concentration']['display_options']);
-        if (self.copy && self.copy.get('has_copywell_concentrations')) {
-          delete formSchema['molar_concentration'];
-          delete formSchema['mg_ml_concentration'];
-        }
-        
-        formSchema['screening_count'] = {
-          title: 'Screening Count',
-          key: 'screening_count',
-          validators: [EditView.CheckPositiveNonZeroValidator],
-          type: Backbone.Form.editors.Number,
-          editorClass: 'form-control',
-          template: fieldTemplate 
-        };
-        _.extend(
-          formSchema['screening_count'],
-          self.resource['fields']['screening_count']['display_options']);
-        
-        formSchema['comments'] = {
-          title: 'Comments',
-          key: 'comments',
-          validators: ['required'],
-          type: 'TextArea',
-          editorClass: 'input-full',
-          template: fieldTemplate
-        };
-        
-        var FormFields = Backbone.Model.extend({
-          schema: formSchema,
-          validate: function(attrs) {
-            var errs = {};
-            if (_.isEmpty(attrs)) {
-              errs['error'] = 'Must enter values';
-            }
-            var mgml = attrs['mg_ml_concentration'];
-            var molar = attrs['molar_concentration'];
-            if(_.isNumber(mgml) && mgml != 0 
-                && _.isNumber(molar) && molar != 0){
-              var msg = 'Must enter either (mg/ml) or (molar)';
-              errs['mg_ml_concentration'] = msg;
-              errs['molar_concentration'] = msg;
-            }
-            if (!_.isEmpty(errs)) return errs;
-          }
-        });
-        var formFields = new FormFields({
-          'screening_count': null,
-          'remaining_well_volume': null,
-          'mg_ml_concentration': null,
-          'molar_concentration': null
-        });
-        
-        var form = new Backbone.Form({
-          model: formFields,
-          template: formTemplate
-        });
-        var formview = form.render();
-        var _form_el = formview.el;
-        var $form = formview.$el;
-        
-        function submitForm(values, callback) {
-          var headers = {};
-          headers[appModel.HEADER_APILOG_COMMENT] = values['comments'];
-          
-          delete values['comments']
-          
-          console.log('values', values);
-          
-          // Batch edit is a POST operation:
-          // Instead of sending all plates to be PATCHED:
-          // - send plate search data in the form of (raw_search_data, 
-          // nested_search_data, URL params for the sqlalchemy filters);
-          // - and send the (plate_location data or plate_info data) with the data
-          // to modify for all of the plates matching the search
-          var post_data = new FormData();
-          post_data.append('plate_info', JSON.stringify(values));
-          
-          var search_data_found = false;
-          var search_data = listView.getSearchData();
-          if (!_.isUndefined(search_data)){
-            post_data.append(appModel.API_PARAM_SEARCH, search_data);
-            search_data_found = true;
-          }
-          var nested_search_data = {};
-          if (self.library){
-            nested_search_data['library_short_name'] = self.library.get('short_name');
-          }
-          if (self.copy){
-            nested_search_data['copy_name'] = self.copy.get('copy_name');
-          }
-          if (!_.isEmpty(nested_search_data)){
-            post_data.append(appModel.API_PARAM_NESTED_SEARCH, JSON.stringify(nested_search_data));
-            search_data_found = true;
-          }
-          
-          if (search_data_found !== true){
-            appModel.showModalError('No search data provided for batch edit');
-            return;
-          }
-          
-          var url = self.resource.apiUri + '/batch_edit';
-          
-          var listParamString = listView.getCollectionUrl();
-          if(!_.isUndefined(listParamString)
-              && listParamString.indexOf('?')>-1) {
-            url += '?' + listParamString.split('?')[1];
-          }
-          $.ajax({
-            url: url,    
-            cache: false,
-            contentType: false,
-            processData: false,
-            dataType: 'json', // what is expected back from the server
-            data: post_data,
-            type: 'POST',
-            headers: headers
-          })
-          .fail(function() { Iccbl.appModel.jqXHRfail.apply(this,arguments); })
-          .done(function(data) {
-            appModel.showConnectionResult(data, {
-              title: 'Batch Edit Plates Success'
-            });
-
-            listView.collection.fetch();
-            
-            if (callback) {
-              callback();
-            }
-          });
-        }
-        
-        var dialog = appModel.showModal({
-          okText: 'Submit',
-          view: _form_el,
-          title: 'Batch edit plate information',
-          ok: function(e) {
-            e.preventDefault();
-            var errors = form.commit({ validate: true }) || {}; 
-            var values = form.getValue();
-            
-            if (_.result(values, 'status', null) == null){
-              delete values['status']
-            }
-            if (_.result(values, 'mg_ml_concentration', null) == null){
-              delete values['mg_ml_concentration']
-            }
-            if (_.result(values, 'molar_concentration', null) == null){
-              delete values['molar_concentration']
-            }
-            if (_.result(values, 'screening_count', null) == null){
-              delete values['screening_count']
-            }
-            if (_.result(values, 'remaining_well_volume', null) == null){
-              delete values['remaining_well_volume']
-            }
-            if (_.result(values, 'plate_type', null) == null){
-              delete values['plate_type']
-            }
-            var valueTest = _.clone(values);
-            delete valueTest['comments']
-            if (_.isEmpty(valueTest)){
-              errors['_others'] = [{'error': 'Must fill in at least one value'}];
-            }
-            form.$el.find('.form-group').removeClass('has-error');
-            if (!_.isEmpty(errors) ) {
-              _.each(_.keys(errors), function(key) {
-                form.$el.find('[name="'+key +'"]').parents('.form-group').addClass('has-error');
-                if (key=='_others') {
-                  form.$el.append('<div class="text-danger">' + errors[key][0]['error'] + '</div>');
-                }
-              });
-              return false;
-            }            
-            
-            submitForm(values);
-          }
-        });
-      };    
- 
-      console.log('call init...');
-      $(this).queue([initfun]);
-    },
-    
-    batchEditLocationsDialog: function(listView) {
+    batchEditCombinedDialog: function(listView){
       var self = this;
       console.log('batch edit locations dialog...');
       // Construct the form
       var initfun = function() {
         var plateLocationTree = appModel.getPlateLocationTree();
-        console.log('construct the batch edit form, ', plateLocationTree );
-        var formSchema = {};
-        var fieldTemplate = appModel._field_template;
-        var formTemplate = appModel._form_template;
-        formSchema['room'] = {
-          title: 'Room',
-          key: 'room',
-          editorClass: 'form-control',
-          type: Backbone.Form.editors.Text,
-          validators: ['required'],
-          template: fieldTemplate 
-        };
-        formSchema['freezer'] = {
-          title: 'Freezer',
-          key: 'freezer',
-          editorClass: 'form-control',
-          type: Backbone.Form.editors.Text,
-          validators: ['required'],
-          template: fieldTemplate 
-        };
-        formSchema['shelf'] = {
-          title: 'Shelf',
-          key: 'shelf',
-          editorClass: 'form-control',
-          type: Backbone.Form.editors.Text,
-          validators: ['required'],
-          template: fieldTemplate 
-        };
-        formSchema['bin'] = {
-          title: 'Bin',
-          key: 'bin',
-          editorClass: 'form-control',
-          type: Backbone.Form.editors.Text,
-          validators: ['required'],
-          template: fieldTemplate 
-        };
-        formSchema['comments'] = {
-          title: 'Comments',
-          key: 'comments',
-          validators: ['required'],
-          type: 'TextArea',
-          editorClass: 'input-full',
-          template: fieldTemplate
-        };
-        var FormFields = Backbone.Model.extend({
-          schema: formSchema,
-          validate: function(attrs) {
-            var errs = {};
-            if (!_.isEmpty(errs)) return errs;
+        
+        
+        function make_plate_location_form(){
+          
+          console.log('construct the batch edit form, ', plateLocationTree );
+          var formSchema = {};
+          var fieldTemplate = appModel._field_template;
+          var formTemplate = appModel._form_template;
+          formSchema['room'] = {
+            title: 'Room',
+            key: 'room',
+            editorClass: 'form-control',
+            type: Backbone.Form.editors.Text,
+            validators: ['required'],
+            template: fieldTemplate 
+          };
+          formSchema['freezer'] = {
+            title: 'Freezer',
+            key: 'freezer',
+            editorClass: 'form-control',
+            type: Backbone.Form.editors.Text,
+            validators: ['required'],
+            template: fieldTemplate 
+          };
+          formSchema['shelf'] = {
+            title: 'Shelf',
+            key: 'shelf',
+            editorClass: 'form-control',
+            type: Backbone.Form.editors.Text,
+            validators: ['required'],
+            template: fieldTemplate 
+          };
+          formSchema['bin'] = {
+            title: 'Bin',
+            key: 'bin',
+            editorClass: 'form-control',
+            type: Backbone.Form.editors.Text,
+            validators: ['required'],
+            template: fieldTemplate 
+          };
+          var FormFields = Backbone.Model.extend({
+            schema: formSchema,
+            validate: function(attrs) {
+              var errs = {};
+              if (!_.isEmpty(errs)) return errs;
+            }
+          });
+          var formFields = new FormFields();
+          
+          var form = new Backbone.Form({
+            model: formFields,
+            template: formTemplate
+          });
+          form.render();
+          var $form = form.$el;
+          var subKey = 'room';
+          $form.find('[name="'+subKey +'"]').typeahead({
+            autoSelect: false,
+            delay: 1,
+            minLength: 0,
+            items: 'all',
+            source: _.keys(plateLocationTree),
+            afterSelect: function(roomVal) {
+              var subKey = 'freezer';
+              form.setValue(subKey,null);
+              form.setValue('shelf',null);
+              form.setValue('bin',null);
+              $form.find('[name="'+subKey +'"]').typeahead('destroy')
+              $form.find('[name="'+subKey +'"]').typeahead({
+                autoSelect: false,
+                delay: 1,
+                minLength: 0,
+                items: 'all',
+                source: _.keys(plateLocationTree[roomVal]),
+                afterSelect: function(freezerVal) {
+                  var subKey = 'shelf';
+                  form.setValue(subKey,null);
+                  form.setValue('bin',null);
+                  $form.find('[name="'+subKey +'"]').typeahead('destroy')
+                  $form.find('[name="'+subKey +'"]').typeahead({
+                    autoSelect: false,
+                    delay: 1,
+                    minLength: 0,
+                    items: 'all',
+                    source: _.keys(plateLocationTree[roomVal][freezerVal]),
+                    afterSelect: function(shelfVal) {
+                      var subKey = 'bin';
+                      form.setValue(subKey,null);
+                      $form.find('[name="'+subKey +'"]').typeahead('destroy')
+                      $form.find('[name="'+subKey +'"]').typeahead({
+                        autoSelect: false,
+                        delay: 1,
+                        minLength: 0,
+                        items: 'all',
+                        source: _.keys(plateLocationTree[roomVal][freezerVal][shelfVal])
+                      });// bin
+                    }
+                  });// shelf
+                }
+              });//freezer
+            }
+          });//room
+          
+          return form;
+        };// make_plate_location_form
+        
+        function make_plate_batch_form() {
+          var formSchema = {};
+          var fieldTemplate = appModel._field_template;
+          var formTemplate = appModel._form_template;
+          
+          formSchema['status'] = {
+            title: 'Status',
+            key: 'status',
+            type: EditView.ChosenSelect,
+            editorClass: 'form-control chosen-select',
+            options: appModel.getVocabularySelectOptions('plate.status'),
+            template: fieldTemplate 
+          };
+          formSchema['plate_type'] = {
+            title: 'Plate Type',
+            key: 'plate_type',
+            type: EditView.ChosenSelect,
+            editorClass: 'form-control chosen-select',
+            options: appModel.getVocabularySelectOptions('plate.type'),
+            template: fieldTemplate 
+          };
+          formSchema['remaining_well_volume'] = {
+            title: 'Remaining Well Volume',
+            key: 'well_volume',
+            validators: [EditView.CheckPositiveNonZeroValidator],
+            type: EditView.SIunitEditor,
+            template: fieldTemplate 
+          };
+          _.extend(
+            formSchema['remaining_well_volume'],
+            self.resource['fields']['remaining_well_volume']['display_options']);
+          if (self.copy && self.copy.get('has_copywell_volumes')) {
+            delete formSchema['remaining_well_volume'];
           }
-        });
-        var formFields = new FormFields();
-        
-        var form = new Backbone.Form({
-          model: formFields,
-          template: formTemplate
-        });
-        var formview = form.render();
-        var _form_el = formview.el;
-        var $form = formview.$el;
-        
-        var subKey = 'room';
-        $form.find('[name="'+subKey +'"]').typeahead({
-          autoSelect: false,
-          delay: 1,
-          minLength: 0,
-          items: 'all',
-          source: _.keys(plateLocationTree),
-          afterSelect: function(roomVal) {
-            var subKey = 'freezer';
-            form.setValue(subKey,null);
-            form.setValue('shelf',null);
-            form.setValue('bin',null);
-            $form.find('[name="'+subKey +'"]').typeahead('destroy')
-            $form.find('[name="'+subKey +'"]').typeahead({
-              autoSelect: false,
-              delay: 1,
-              minLength: 0,
-              items: 'all',
-              source: _.keys(plateLocationTree[roomVal]),
-              afterSelect: function(freezerVal) {
-                var subKey = 'shelf';
-                form.setValue(subKey,null);
-                form.setValue('bin',null);
-                $form.find('[name="'+subKey +'"]').typeahead('destroy')
-                $form.find('[name="'+subKey +'"]').typeahead({
-                  autoSelect: false,
-                  delay: 1,
-                  minLength: 0,
-                  items: 'all',
-                  source: _.keys(plateLocationTree[roomVal][freezerVal]),
-                  afterSelect: function(shelfVal) {
-                    var subKey = 'bin';
-                    form.setValue(subKey,null);
-                    $form.find('[name="'+subKey +'"]').typeahead('destroy')
-                    $form.find('[name="'+subKey +'"]').typeahead({
-                      autoSelect: false,
-                      delay: 1,
-                      minLength: 0,
-                      items: 'all',
-                      source: _.keys(plateLocationTree[roomVal][freezerVal][shelfVal])
-                    });// bin
-                  }
-                });// shelf
+          
+          formSchema['molar_concentration'] = {
+            title: 'Molar Concentration',
+            key: 'molar_concentration',
+            validators: [EditView.CheckPositiveNonZeroValidator],
+            type: EditView.SIunitEditor,
+            template: fieldTemplate 
+          };
+          _.extend(
+            formSchema['molar_concentration'],
+            self.resource['fields']['molar_concentration']['display_options']);
+          
+          formSchema['mg_ml_concentration'] = {
+            title: 'mg/ml Concentration',
+            key: 'mg_ml_concentration',
+            validators: [EditView.CheckPositiveNonZeroValidator],
+            type: Backbone.Form.editors.Number,
+            editorClass: 'form-control',
+            template: fieldTemplate 
+          };
+          _.extend(
+            formSchema['mg_ml_concentration'],
+            self.resource['fields']['mg_ml_concentration']['display_options']);
+          if (self.copy && self.copy.get('has_copywell_concentrations')) {
+            // ICCB rule: if library has well concentrations defined, do not allow
+            // edit of the concentrations at the plate level from the UI
+            // (may still perform on the API).
+            delete formSchema['molar_concentration'];
+            delete formSchema['mg_ml_concentration'];
+          }
+          
+          formSchema['screening_count'] = {
+            title: 'Screening Count',
+            key: 'screening_count',
+            validators: [EditView.CheckPositiveNonZeroValidator],
+            type: Backbone.Form.editors.Number,
+            editorClass: 'form-control',
+            template: fieldTemplate 
+          };
+          _.extend(
+            formSchema['screening_count'],
+            self.resource['fields']['screening_count']['display_options']);
+          
+          formSchema['comments'] = {
+            title: 'Comments',
+            key: 'comments',
+            validators: [],
+            type: 'TextArea',
+            editorClass: 'input-full',
+            template: fieldTemplate
+          };
+          
+          var FormFields = Backbone.Model.extend({
+            schema: formSchema,
+            validate: function(attrs) {
+              var errs = {};
+              if (_.isEmpty(attrs)) {
+                errs['error'] = 'Must enter values';
               }
-            });//freezer
-          }
-        });//room
+              var mgml = attrs['mg_ml_concentration'];
+              var molar = attrs['molar_concentration'];
+              if(_.isNumber(mgml) && mgml != 0 
+                  && _.isNumber(molar) && molar != 0){
+                var msg = 'Must enter either (mg/ml) or (molar)';
+                errs['mg_ml_concentration'] = msg;
+                errs['molar_concentration'] = msg;
+              }
+              if (!_.isEmpty(errs)) return errs;
+            }
+          });
+          var formFields = new FormFields({
+            'screening_count': null,
+            'remaining_well_volume': null,
+            'mg_ml_concentration': null,
+            'molar_concentration': null
+          });
+          
+          var form = new Backbone.Form({
+            model: formFields,
+            template: formTemplate
+          });
+          form.render();
+          return form;
+        };
+        
+        var location_form = make_plate_location_form();
+        var plate_form = make_plate_batch_form();
+        
+        var combinedFormDiv = $([
+          '<div>',
+          ' <div class="panel panel-default">',
+          '   <div class="panel-heading">Location</div>',
+          '   <div id="location_panel_body" class="panel-body"/>',
+          ' </div> ',
+          ' <div class="panel panel-default">',
+          '   <div class="panel-heading">Plate</div>',
+          '   <div id="plate_panel_body" class="panel-body"/>',
+          ' </div> ',
+          '</div>'
+          ].join(''));
+        combinedFormDiv.find('#location_panel_body').append(location_form.$el);
+        combinedFormDiv.find('#plate_panel_body').append(plate_form.$el);
         
         function findPlateLocation(room, freezer, shelf, bin) {
           return _.result(_.result(_.result(_.result(
             plateLocationTree, room),freezer),shelf),bin);
         }
         
-        function submitForm(values, callback) {
-          var headers = {};
-          headers[appModel.HEADER_APILOG_COMMENT] = values['comments'];
+        function submitForm(plate_values, location_values, comments, callback) {
           
+          
+          var headers = {};
+          
+          if (comments){
+            headers[appModel.HEADER_APILOG_COMMENT] = comments;
+          }
           // Batch edit is a POST operation:
           // Instead of sending all plates to be PATCHED:
           // - send plate search data in the form of (appModel.API_PARAM_SEARCH, 
@@ -694,7 +581,13 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel, ListView, Det
           // - and send the (plate_location data or plate_info data) with the data
           // to modify for all of the plates matching the search
           var post_data = new FormData();
-          post_data.append('plate_location', JSON.stringify(values));
+          
+          if (location_values) {
+            post_data.append('plate_location', JSON.stringify(location_values));
+          }
+          if (plate_values){
+            post_data.append('plate_info', JSON.stringify(plate_values));
+          }
           
           var search_data_found = false;
           var search_data = listView.getSearchData();
@@ -738,7 +631,7 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel, ListView, Det
           .fail(function() { Iccbl.appModel.jqXHRfail.apply(this,arguments); })
           .done(function(data) {
             appModel.showConnectionResult(data, {
-              title: 'Batch Edit Locations Success'
+              title: 'Batch Edit Success'
             });
             listView.collection.fetch();
             
@@ -746,45 +639,558 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel, ListView, Det
               callback();
             }
           });
-        }
+        }; // submitForm
         
         var dialog = appModel.showModal({
           okText: 'Submit',
-          view: _form_el,
+          view: combinedFormDiv,
           title: 'Batch edit plates',
           ok: function(e) {
             e.preventDefault();
-            var errors = form.commit({ validate: true }) || {}; 
-            if (!_.isEmpty(errors) ) {
-              _.each(_.keys(errors), function(key) {
-                form.$el.find('[name="'+key +'"]').parents('.form-group').addClass('has-error');
+            
+            var plate_errors = plate_form.commit({ validate: true }) || {}; 
+            var plate_values = plate_form.getValue();
+            var comments;
+            
+            if (_.result(plate_values, 'status', null) == null){
+              delete plate_values['status']
+            }
+            if (_.result(plate_values, 'mg_ml_concentration', null) == null){
+              delete plate_values['mg_ml_concentration']
+            }
+            if (_.result(plate_values, 'molar_concentration', null) == null){
+              delete plate_values['molar_concentration']
+            }
+            if (_.result(plate_values, 'screening_count', null) == null){
+              delete plate_values['screening_count']
+            }
+            if (_.result(plate_values, 'remaining_well_volume', null) == null){
+              delete plate_values['remaining_well_volume']
+            }
+            if (_.result(plate_values, 'plate_type', null) == null){
+              delete plate_values['plate_type']
+            }
+            if (_.result(plate_values, 'comments', null) != null){
+              comments = plate_values['comments'];
+            }
+            delete plate_values['comments'];
+            
+            if (_.isEmpty(plate_values)){
+              plate_errors['_others'] = [{'error': 'Must fill in at least one value'}];
+              plate_values = null;
+            }
+            plate_form.$el.find('.form-group').removeClass('has-error');
+            
+            var location_errors = location_form.commit({ validate: true }) || {}; 
+
+            if (!_.isEmpty(plate_errors) && !_.isEmpty(location_errors) ) {
+              _.each(_.keys(plate_errors), function(key) {
+                plate_form.$el.find('[name="'+key +'"]').parents('.form-group').addClass('has-error');
+                if (key=='_others') {
+                  plate_form.$el.append('<div class="text-danger">' + plate_errors[key][0]['error'] + '</div>');
+                }
+              });
+              _.each(_.keys(location_errors), function(key) {
+                location_form.$el.find('[name="'+key +'"]').parents('.form-group').addClass('has-error');
               });
               return false;
             }            
-            var values = form.getValue()
             
-            if (_.isUndefined(findPlateLocation(
-                values['room'],values['freezer'],values['shelf'],values['bin']))) {
+            var location_values = null;
+            if (_.isEmpty(location_errors)){
+              location_values = location_form.getValue();
+            }
+            
+            if (_.isEmpty(location_errors) && _.isUndefined(findPlateLocation(
+                location_values['room'],location_values['freezer'],location_values['shelf'],location_values['bin']))) {
               $('#modal').modal('hide');
               appModel.showModal({
                 title: 'Plate location will be created',
                 body: Iccbl.formatString(
-                  'Plate location: {room}-{freezer}-{shelf}-{bin}',values),
+                  'Plate location: {room}-{freezer}-{shelf}-{bin}',location_values),
                 ok: function(e) {
-                  submitForm(values, function(){
+                  submitForm(plate_values, location_values, comments, function(){
                     appModel.getPlateLocationTree(null, { flush:true });
                   });
                 }
               });
               return false; // signal early exit for modal
             } else {
-              submitForm(values);
+              submitForm(plate_values, location_values, comments);
             }
           }
         });
       };
       $(this).queue([appModel.getPlateLocationTree,initfun]);
-    }
+      
+    },
+    
+//    batchEditPlatesDialog: function(listView) {
+//      var self = this;
+//      console.log('batch edit plates dialog...');
+//
+//      // Construct the form
+//      
+//      var initfun = function() {
+//        var formSchema = {};
+//        var fieldTemplate = appModel._field_template;
+//        var formTemplate = appModel._form_template;
+//        
+//        formSchema['status'] = {
+//          title: 'Status',
+//          key: 'status',
+//          type: EditView.ChosenSelect,
+//          editorClass: 'form-control chosen-select',
+//          options: appModel.getVocabularySelectOptions('plate.status'),
+//          template: fieldTemplate 
+//        };
+//        formSchema['plate_type'] = {
+//          title: 'Plate Type',
+//          key: 'plate_type',
+//          type: EditView.ChosenSelect,
+//          editorClass: 'form-control chosen-select',
+//          options: appModel.getVocabularySelectOptions('plate.type'),
+//          template: fieldTemplate 
+//        };
+//        formSchema['remaining_well_volume'] = {
+//          title: 'Remaining Well Volume',
+//          key: 'well_volume',
+//          validators: [EditView.CheckPositiveNonZeroValidator],
+//          type: EditView.SIunitEditor,
+//          template: fieldTemplate 
+//        };
+//        _.extend(
+//          formSchema['remaining_well_volume'],
+//          self.resource['fields']['remaining_well_volume']['display_options']);
+//        if (self.copy && self.copy.get('has_copywell_volumes')) {
+//          delete formSchema['remaining_well_volume'];
+//        }
+//        
+//        formSchema['molar_concentration'] = {
+//          title: 'Molar Concentration',
+//          key: 'molar_concentration',
+//          validators: [EditView.CheckPositiveNonZeroValidator],
+//          type: EditView.SIunitEditor,
+//          template: fieldTemplate 
+//        };
+//        _.extend(
+//          formSchema['molar_concentration'],
+//          self.resource['fields']['molar_concentration']['display_options']);
+//        
+//        formSchema['mg_ml_concentration'] = {
+//          title: 'mg/ml Concentration',
+//          key: 'mg_ml_concentration',
+//          validators: [EditView.CheckPositiveNonZeroValidator],
+//          type: Backbone.Form.editors.Number,
+//          editorClass: 'form-control',
+//          template: fieldTemplate 
+//        };
+//        _.extend(
+//          formSchema['mg_ml_concentration'],
+//          self.resource['fields']['mg_ml_concentration']['display_options']);
+//        if (self.copy && self.copy.get('has_copywell_concentrations')) {
+//          // ICCB rule: if library has well concentrations defined, do not allow
+//          // edit of the concentrations at the plate level from the UI
+//          // (may still perform on the API).
+//          delete formSchema['molar_concentration'];
+//          delete formSchema['mg_ml_concentration'];
+//        }
+//        
+//        formSchema['screening_count'] = {
+//          title: 'Screening Count',
+//          key: 'screening_count',
+//          validators: [EditView.CheckPositiveNonZeroValidator],
+//          type: Backbone.Form.editors.Number,
+//          editorClass: 'form-control',
+//          template: fieldTemplate 
+//        };
+//        _.extend(
+//          formSchema['screening_count'],
+//          self.resource['fields']['screening_count']['display_options']);
+//        
+//        formSchema['comments'] = {
+//          title: 'Comments',
+//          key: 'comments',
+//          validators: [],
+//          type: 'TextArea',
+//          editorClass: 'input-full',
+//          template: fieldTemplate
+//        };
+//        
+//        var FormFields = Backbone.Model.extend({
+//          schema: formSchema,
+//          validate: function(attrs) {
+//            var errs = {};
+//            if (_.isEmpty(attrs)) {
+//              errs['error'] = 'Must enter values';
+//            }
+//            var mgml = attrs['mg_ml_concentration'];
+//            var molar = attrs['molar_concentration'];
+//            if(_.isNumber(mgml) && mgml != 0 
+//                && _.isNumber(molar) && molar != 0){
+//              var msg = 'Must enter either (mg/ml) or (molar)';
+//              errs['mg_ml_concentration'] = msg;
+//              errs['molar_concentration'] = msg;
+//            }
+//            if (!_.isEmpty(errs)) return errs;
+//          }
+//        });
+//        var formFields = new FormFields({
+//          'screening_count': null,
+//          'remaining_well_volume': null,
+//          'mg_ml_concentration': null,
+//          'molar_concentration': null
+//        });
+//        
+//        var form = new Backbone.Form({
+//          model: formFields,
+//          template: formTemplate
+//        });
+//        var formview = form.render();
+//        var _form_el = formview.el;
+//        var $form = formview.$el;
+//        
+//        function submitForm() {
+//          var errors = form.commit({ validate: true }) || {}; 
+//          var values = form.getValue();
+//          
+//          if (_.result(values, 'status', null) == null){
+//            delete values['status']
+//          }
+//          if (_.result(values, 'mg_ml_concentration', null) == null){
+//            delete values['mg_ml_concentration']
+//          }
+//          if (_.result(values, 'molar_concentration', null) == null){
+//            delete values['molar_concentration']
+//          }
+//          if (_.result(values, 'screening_count', null) == null){
+//            delete values['screening_count']
+//          }
+//          if (_.result(values, 'remaining_well_volume', null) == null){
+//            delete values['remaining_well_volume']
+//          }
+//          if (_.result(values, 'plate_type', null) == null){
+//            delete values['plate_type']
+//          }
+//          var valueTest = _.clone(values);
+//          delete valueTest['comments']
+//          if (_.isEmpty(valueTest)){
+//            errors['_others'] = [{'error': 'Must fill in at least one value'}];
+//          }
+//          form.$el.find('.form-group').removeClass('has-error');
+//          if (!_.isEmpty(errors) ) {
+//            _.each(_.keys(errors), function(key) {
+//              form.$el.find('[name="'+key +'"]').parents('.form-group').addClass('has-error');
+//              if (key=='_others') {
+//                form.$el.append('<div class="text-danger">' + errors[key][0]['error'] + '</div>');
+//              }
+//            });
+//            return false;
+//          }            
+//
+//          var headers = {};
+//          headers[appModel.HEADER_APILOG_COMMENT] = values['comments'];
+//          
+//          delete values['comments']
+//          
+//          console.log('values', values);
+//          
+//          // Batch edit is a POST operation:
+//          // Instead of sending all plates to be PATCHED:
+//          // - send plate search data in the form of (raw_search_data, 
+//          // nested_search_data, URL params for the sqlalchemy filters);
+//          // - and send the (plate_location data or plate_info data) with the data
+//          // to modify for all of the plates matching the search
+//          var post_data = new FormData();
+//          post_data.append('plate_info', JSON.stringify(values));
+//          
+//          var search_data_found = false;
+//          var search_data = listView.getSearchData();
+//          if (!_.isUndefined(search_data)){
+//            post_data.append(appModel.API_PARAM_SEARCH, search_data);
+//            search_data_found = true;
+//          }
+//          var nested_search_data = {};
+//          if (self.library){
+//            nested_search_data['library_short_name'] = self.library.get('short_name');
+//          }
+//          if (self.copy){
+//            nested_search_data['copy_name'] = self.copy.get('copy_name');
+//          }
+//          if (!_.isEmpty(nested_search_data)){
+//            post_data.append(appModel.API_PARAM_NESTED_SEARCH, JSON.stringify(nested_search_data));
+//            search_data_found = true;
+//          }
+//          
+//          if (search_data_found !== true){
+//            appModel.showModalError('No search data provided for batch edit');
+//            return;
+//          }
+//          
+//          var url = self.resource.apiUri + '/batch_edit';
+//          
+//          var listParamString = listView.getCollectionUrl();
+//          if(!_.isUndefined(listParamString)
+//              && listParamString.indexOf('?')>-1) {
+//            url += '?' + listParamString.split('?')[1];
+//          }
+//          $.ajax({
+//            url: url,    
+//            cache: false,
+//            contentType: false,
+//            processData: false,
+//            dataType: 'json', // what is expected back from the server
+//            data: post_data,
+//            type: 'POST',
+//            headers: headers
+//          })
+//          .fail(function() { Iccbl.appModel.jqXHRfail.apply(this,arguments); })
+//          .done(function(data) {
+//            appModel.showConnectionResult(data, {
+//              title: 'Batch Edit Plates Success'
+//            });
+//
+//            listView.collection.fetch();
+//          });
+//        }
+//        
+//        var dialog = appModel.showModal({
+//          okText: 'Submit',
+//          view: _form_el,
+//          title: 'Batch edit plate information',
+//          ok: function(e) {
+//            e.preventDefault();
+//            return submitForm();
+//          }
+//        });
+//      };    
+// 
+//      console.log('call init...');
+//      $(this).queue([initfun]);
+//    },
+//    
+//    batchEditLocationsDialog: function(listView) {
+//      var self = this;
+//      console.log('batch edit locations dialog...');
+//      // Construct the form
+//      var initfun = function() {
+//        var plateLocationTree = appModel.getPlateLocationTree();
+//        console.log('construct the batch edit form, ', plateLocationTree );
+//        var formSchema = {};
+//        var fieldTemplate = appModel._field_template;
+//        var formTemplate = appModel._form_template;
+//        formSchema['room'] = {
+//          title: 'Room',
+//          key: 'room',
+//          editorClass: 'form-control',
+//          type: Backbone.Form.editors.Text,
+//          validators: ['required'],
+//          template: fieldTemplate 
+//        };
+//        formSchema['freezer'] = {
+//          title: 'Freezer',
+//          key: 'freezer',
+//          editorClass: 'form-control',
+//          type: Backbone.Form.editors.Text,
+//          validators: ['required'],
+//          template: fieldTemplate 
+//        };
+//        formSchema['shelf'] = {
+//          title: 'Shelf',
+//          key: 'shelf',
+//          editorClass: 'form-control',
+//          type: Backbone.Form.editors.Text,
+//          validators: ['required'],
+//          template: fieldTemplate 
+//        };
+//        formSchema['bin'] = {
+//          title: 'Bin',
+//          key: 'bin',
+//          editorClass: 'form-control',
+//          type: Backbone.Form.editors.Text,
+//          validators: ['required'],
+//          template: fieldTemplate 
+//        };
+//        formSchema['comments'] = {
+//          title: 'Comments',
+//          key: 'comments',
+//          validators: ['required'],
+//          type: 'TextArea',
+//          editorClass: 'input-full',
+//          template: fieldTemplate
+//        };
+//        var FormFields = Backbone.Model.extend({
+//          schema: formSchema,
+//          validate: function(attrs) {
+//            var errs = {};
+//            if (!_.isEmpty(errs)) return errs;
+//          }
+//        });
+//        var formFields = new FormFields();
+//        
+//        var form = new Backbone.Form({
+//          model: formFields,
+//          template: formTemplate
+//        });
+//        var formview = form.render();
+//        var _form_el = formview.el;
+//        var $form = formview.$el;
+//        
+//        var subKey = 'room';
+//        $form.find('[name="'+subKey +'"]').typeahead({
+//          autoSelect: false,
+//          delay: 1,
+//          minLength: 0,
+//          items: 'all',
+//          source: _.keys(plateLocationTree),
+//          afterSelect: function(roomVal) {
+//            var subKey = 'freezer';
+//            form.setValue(subKey,null);
+//            form.setValue('shelf',null);
+//            form.setValue('bin',null);
+//            $form.find('[name="'+subKey +'"]').typeahead('destroy')
+//            $form.find('[name="'+subKey +'"]').typeahead({
+//              autoSelect: false,
+//              delay: 1,
+//              minLength: 0,
+//              items: 'all',
+//              source: _.keys(plateLocationTree[roomVal]),
+//              afterSelect: function(freezerVal) {
+//                var subKey = 'shelf';
+//                form.setValue(subKey,null);
+//                form.setValue('bin',null);
+//                $form.find('[name="'+subKey +'"]').typeahead('destroy')
+//                $form.find('[name="'+subKey +'"]').typeahead({
+//                  autoSelect: false,
+//                  delay: 1,
+//                  minLength: 0,
+//                  items: 'all',
+//                  source: _.keys(plateLocationTree[roomVal][freezerVal]),
+//                  afterSelect: function(shelfVal) {
+//                    var subKey = 'bin';
+//                    form.setValue(subKey,null);
+//                    $form.find('[name="'+subKey +'"]').typeahead('destroy')
+//                    $form.find('[name="'+subKey +'"]').typeahead({
+//                      autoSelect: false,
+//                      delay: 1,
+//                      minLength: 0,
+//                      items: 'all',
+//                      source: _.keys(plateLocationTree[roomVal][freezerVal][shelfVal])
+//                    });// bin
+//                  }
+//                });// shelf
+//              }
+//            });//freezer
+//          }
+//        });//room
+//        
+//        function findPlateLocation(room, freezer, shelf, bin) {
+//          return _.result(_.result(_.result(_.result(
+//            plateLocationTree, room),freezer),shelf),bin);
+//        }
+//        
+//        function submitForm(values, callback) {
+//          var headers = {};
+//          headers[appModel.HEADER_APILOG_COMMENT] = values['comments'];
+//          
+//          // Batch edit is a POST operation:
+//          // Instead of sending all plates to be PATCHED:
+//          // - send plate search data in the form of (appModel.API_PARAM_SEARCH, 
+//          // nested_search_data, URL params for the sqlalchemy filters);
+//          // - and send the (plate_location data or plate_info data) with the data
+//          // to modify for all of the plates matching the search
+//          var post_data = new FormData();
+//          post_data.append('plate_location', JSON.stringify(values));
+//          
+//          var search_data_found = false;
+//          var search_data = listView.getSearchData();
+//          if (!_.isUndefined(search_data)){
+//            post_data.append(appModel.API_PARAM_SEARCH, search_data);
+//            search_data_found = true;
+//          }
+//          var nested_search_data = {};
+//          if (self.library){
+//            nested_search_data['library_short_name'] = self.library.get('short_name');
+//          }
+//          if (self.copy){
+//            nested_search_data['copy_name'] = self.copy.get('copy_name');
+//          }
+//          if (!_.isEmpty(nested_search_data)){
+//            post_data.append(appModel.API_PARAM_NESTED_SEARCH, JSON.stringify(nested_search_data));
+//            search_data_found = true;
+//          }
+//          
+//          if (search_data_found !== true){
+//            appModel.showModalError('No search data provided for batch edit');
+//            return;
+//          }
+//          var url = self.resource.apiUri + '/batch_edit';
+//          
+//          var listParamString = listView.getCollectionUrl();
+//          if(!_.isUndefined(listParamString)
+//              && listParamString.indexOf('?')>-1) {
+//            url += '?' + listParamString.split('?')[1];
+//          }
+//          $.ajax({
+//            url: url,    
+//            cache: false,
+//            contentType: false,
+//            processData: false,
+//            dataType: 'json', // what is expected back from the server
+//            data: post_data,
+//            type: 'POST',
+//            headers: headers
+//          })
+//          .fail(function() { Iccbl.appModel.jqXHRfail.apply(this,arguments); })
+//          .done(function(data) {
+//            appModel.showConnectionResult(data, {
+//              title: 'Batch Edit Locations Success'
+//            });
+//            listView.collection.fetch();
+//            
+//            if (callback) {
+//              callback();
+//            }
+//          });
+//        }
+//        
+//        var dialog = appModel.showModal({
+//          okText: 'Submit',
+//          view: _form_el,
+//          title: 'Batch edit plates',
+//          ok: function(e) {
+//            e.preventDefault();
+//            var errors = form.commit({ validate: true }) || {}; 
+//            if (!_.isEmpty(errors) ) {
+//              _.each(_.keys(errors), function(key) {
+//                form.$el.find('[name="'+key +'"]').parents('.form-group').addClass('has-error');
+//              });
+//              return false;
+//            }            
+//            var values = form.getValue()
+//            
+//            if (_.isUndefined(findPlateLocation(
+//                values['room'],values['freezer'],values['shelf'],values['bin']))) {
+//              $('#modal').modal('hide');
+//              appModel.showModal({
+//                title: 'Plate location will be created',
+//                body: Iccbl.formatString(
+//                  'Plate location: {room}-{freezer}-{shelf}-{bin}',values),
+//                ok: function(e) {
+//                  submitForm(values, function(){
+//                    appModel.getPlateLocationTree(null, { flush:true });
+//                  });
+//                }
+//              });
+//              return false; // signal early exit for modal
+//            } else {
+//              submitForm(values);
+//            }
+//          }
+//        });
+//      };
+//      $(this).queue([appModel.getPlateLocationTree,initfun]);
+//    }
     
   });
 

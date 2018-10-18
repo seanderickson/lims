@@ -345,6 +345,17 @@ class VOCAB(reports.schema.VOCAB):
         class status(schema_obj):
             AVAILABLE = 'available'
             RETIRED = 'retired'
+            DISCARDED = 'discarded'
+            LOST = 'lost'
+            GIVEN_AWAY = 'given_away'
+            DISCARDED_VOL_XFER = 'discarded_volume_transferred'
+            NOT_SPECIFIED = 'not_specified'
+            NOT_CREATED = 'not_created'
+            NOT_AVAILABLE = 'not_available'
+
+            retired_statuses = [
+                RETIRED, DISCARDED, LOST, GIVEN_AWAY, DISCARDED_VOL_XFER]
+
     
     class copy(schema_obj):
         class usage_type(schema_obj):

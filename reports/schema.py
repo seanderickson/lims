@@ -37,9 +37,14 @@ API_MSG_SUCCESS = 'Success'
 
 
 API_PARAM_SEARCH = 'search'
+
+# Nested search data; not encoded, a hash of data being passed internally 
+# If passed from the client, nested search data will be ANDed with other searches
 API_PARAM_NESTED_SEARCH = 'nested_search_data'
+
 # Complex search - a search data structure sent as a POST header 
 API_PARAM_COMPLEX_SEARCH_ID = 'search_id'
+
 URI_PATH_COMPLEX_SEARCH = 'csearch'
 
 # Date format for API - time zone is not used for dates

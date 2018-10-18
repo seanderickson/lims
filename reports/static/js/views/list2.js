@@ -1032,7 +1032,7 @@ define([
 
       if(_.has(self._options,'extraControls')){
         self.$('#extra_controls').append(
-          '<div id="extra_controls_div" class="panel"></div>');
+          '<div id="extra_controls_div" class="pull-right"></div>');
         _.each(self._options.extraControls, function(control){
           // Adjust the checkbox types, so that the first also has a margin
           // otherwise, wrapped checkboxes are offset

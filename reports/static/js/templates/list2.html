@@ -1,39 +1,33 @@
-<div class="" style="" id="list-container" >
-  <div class="row">
-    <div id="list-title" class="col-sm-12">
-    </div>
-  </div>
-  <div class="row controls">
-    <div class="col-sm-5" id="extra_controls"></div>
-    <div  class="col-sm-7" id="list_controls_div">
-      <div class="row pull-down">
-        <div class="col-xs-12 pull-right" id="list_controls">
-          <div id="extraselector"></div>
-          <button class="btn btn-default btn-sm pull-right" id="download_link" 
-            href="#" title="Download the table displayed">Download</button>
-          <button class="btn btn-default btn-sm pull-right" 
-            id="clear_sorts" style="display: none;" >Clear sorting</button>
-          <button class="btn btn-default btn-sm pull-right" 
-            id="clear_searches" style="display: none;" >Clear searches</button>
-          <button class="btn btn-default btn-sm pull-right" 
-            id="select_columns" >Select columns</button>
-        </div>
+<div class="row" style="" id="list-container" >
+  <div id="list-title" class="col-sm-12"></div>
+  <div class="col-sm-12 controls" id="list-controls-row">
+    <div class="row" >
+      <div  class="col-sm-7 pull-left" id="list_controls">
+        <button class="btn btn-default btn-sm pull-left" 
+          id="clear_sorts" style="display: none;" >Clear sorting</button>
+        <button class="btn btn-default btn-sm" 
+          id="clear_searches" style="display: none;" >Clear searches</button>
+        <button class="btn btn-default btn-sm" 
+          id="select_columns" >Select columns</button>
+      </div>
+      <div class="col-sm-5 pull-right" id="extra_controls">
+        <button class="btn btn-default btn-sm pull-right" id="download_link" 
+          href="#" title="Download the table displayed">Download</button>
+        <div id="extraselector"></div>
       </div>
     </div>
   </div>
-  <div class="row">
-    <div class="col-sm-6 pull-down controls" >
-      <div id="paginator-div" class="pull-right"></div>
+  <div class="col-sm-12" id="paginator-row" >
+    <div class="row">
+      <div class="col-sm-6 pull-down controls" >
+        <div id="paginator-div" class="pull-right"></div>
+      </div>
+      <div class="col-sm-6  pull-down">
+        <div class="message pull-left" id="pagination_message"></div>
+        <div id="rppselector" class="controls"></div>
+      </div>
     </div>
-    <div class="col-sm-6  pull-down">
-      <div class="message pull-left" id="pagination_message"></div>
-      <div id="rppselector" class="controls"></div>
-    </div>
   </div>
-  <div class="row">
-    <div id="table-div" class="col-xs-12" ></div>
-  </div>
-  <div class="row">
-    <div id="table-footer-div" class="col-sm-12"></div>
-  </div>
+  <div id="table-div" class="col-xs-12" ></div>
+  <div id="table-footer-div" class="col-sm-12"></div>
 </div>

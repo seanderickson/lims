@@ -1246,7 +1246,7 @@ define([
     setScreens: function(delegateStack) {
       var self = this;
       var addSMScreenButton = $([
-        '<a class="btn btn-default btn-sm pull-down" ',
+        '<a class="btn btn-default btn-sm pull-down pull-right" ',
           'role="button" id="add_smscreen" href="#">',
           'Add Small Molecule Screen</a>'
         ].join(''));
@@ -1255,7 +1255,7 @@ define([
         self.addScreen({ screen_type: 'small_molecule' });
       });
       var addRnaiScreenButton = $([
-        '<a class="btn btn-default btn-sm pull-down" ',
+        '<a class="btn btn-default btn-sm pull-down pull-right" ',
           'role="button" id="add_rnaiscreen" href="#">',
           'Add RNAi Screen</a>'
         ].join(''));
@@ -1531,7 +1531,7 @@ define([
           'save</a>'
         ].join(''));
       var showHistoryButton = $([
-      '<a class="btn btn-default btn-sm pull-down" ',
+      '<a class="btn btn-default btn-sm pull-down pull-right" ',
         'role="button" id="showHistoryButton" href="#">',
         'History</a>'
       ].join(''));
@@ -1763,7 +1763,11 @@ define([
         var CListView = ListView.extend({
           afterRender: function(){
             ListView.prototype.afterRender.apply(this, arguments);
+            
+            // Per JAS/KRS, limit table size to 2/3 of page for readability (20181015)
             this.$el.find('table').addClass('checklist');
+            self.$el.find('#table-div').removeClass();
+            self.$el.find('#list-container').parent().removeClass().addClass('col-sm-8');
           }
         })
         view = new CListView({ 

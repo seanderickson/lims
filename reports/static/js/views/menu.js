@@ -278,7 +278,6 @@ define([
       
       collapseAll: function(menu) {
         var self = this;
-        console.log('collapse1', menu);
         if (_.result(menu, 'expanded', false) == true){
           menu['expanded'] = false;
         }

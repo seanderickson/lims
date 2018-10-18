@@ -304,7 +304,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         
 //        var extraControls = [];
         var show_data_columns_control = $([
-          '<button class="btn btn-default btn-sm pull-right" role="button" ',
+          '<button class="btn btn-default btn-sm" role="button" ',
           'id="show_data_columns_control" title="Show study and screen data columns" >',
           'Select Study and Screen Columns',
           '</button>'

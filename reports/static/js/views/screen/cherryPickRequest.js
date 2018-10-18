@@ -1319,28 +1319,28 @@ define([
       extraControls.push(checkboxDiv);
       
       var setSelectedLcpButton = $([
-        '<a class="btn btn-default btn-sm pull-down" ',
+        '<a class="btn btn-default btn-sm pull-down pull-right" ',
           'style="display: none; " ',
           'role="button" id="save_button_lcp_selected" href="#">',
           'Save Selections</a>'
         ].join(''));
       extraControls.push(setSelectedLcpButton);
       var updateSelectedLcpButton = $([
-        '<a class="btn btn-default btn-sm pull-down" ',
+        '<a class="btn btn-default btn-sm pull-down pull-right" ',
           'style="display: none; " ',
           'role="button" id="update_selected_button" href="#">',
           'Update Selections</a>'
         ].join(''));
       extraControls.push(updateSelectedLcpButton);
       var cancelSelectedButton = $([
-        '<a class="btn btn-default btn-sm pull-down" ',
+        '<a class="btn btn-default btn-sm pull-down pull-right" ',
           'style="display: none; " ',
           'role="button" id="cancel_selected_button" href="#">',
           'Cancel Selections</a>'
         ].join(''));
       extraControls.push(cancelSelectedButton);
       var reserveAndMapSelectedButton = $([
-        '<a class="btn btn-default btn-sm pull-down" ',
+        '<a class="btn btn-default btn-sm pull-down pull-right" ',
           'style="display: none; " ',
           'role="button" id="reserve_map_selected_button" href="#">',
           'Reserve Selections and Map to Plates</a>'
@@ -1349,7 +1349,7 @@ define([
         extraControls.push(reserveAndMapSelectedButton);
       }
       var deleteLcpsButton = $([
-          '<a class="btn btn-default btn-sm pull-down" ',
+          '<a class="btn btn-default btn-sm pull-down pull-right" ',
           'style="display: none; " ',
           'role="button" id="deleteLcpsButton" href="#">',
           'Delete Lab Cherry Picks</a>'
@@ -1512,10 +1512,8 @@ define([
       self.listenTo(view, 'afterRender', function(event) {
         view.$el.find('#list-title').show().append(
           '<H4 id="title">Lab Cherry Picks for : ' + self.model.key + '</H4>');
-        view.$el.find('#extra_controls').removeClass('col-sm-5');
-        view.$el.find('#extra_controls').addClass('col-sm-6');
-        view.$el.find('#list_controls_div').removeClass('col-sm-7');
-        view.$el.find('#list_controls_div').addClass('col-sm-6');
+        view.$el.find('#extra_controls').removeClass().addClass('col-sm-10');
+        view.$el.find('#list_controls').removeClass().addClass('col-sm-2');
       });
     
       var initialSearchHash = view.listModel.get(appModel.URI_PATH_SEARCH);

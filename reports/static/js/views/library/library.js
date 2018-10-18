@@ -24,6 +24,8 @@ define([
             UploadDataForm, TabbedController ) {
 
   var LibraryView = TabbedController.extend({
+
+    WARN_SCREENING_STATUSES: ['discarded','not_allowed','requires_permission','not_recommended','retired' ],
     
     initialize: function(args) {
       var self = this;
@@ -201,7 +203,17 @@ define([
 
       showPreviewMessage();
       showReleaseMessage();
-      
+
+      $('#content_title_message').find('#library_status_message').remove();
+      if (!_.isEmpty(self.model.get('screening_status'))) {
+        if (_.contains(self.WARN_SCREENING_STATUSES, self.model.get('screening_status'))){
+          $('#content_title_message').append(
+            $('<div id="library_status_message" class="alert alert-danger"></div>').html(
+              'Screening Status: ' + appModel.getVocabularyTitle(
+                'library.screening_status',self.model.get('screening_status'))));
+        }
+      }
+    
       self.model.on('sync', showPreviewMessage);
       self.model.on('sync', showReleaseMessage);
     },

@@ -1670,8 +1670,6 @@ define([
         str = str.replace(/^\s*,\s*$/gm,'')
         // remove empty lines
         str = str.replace(/^\s*$\n+/gm,'');
-
-        str = str.replace(/[\t ]/g,'&nbsp;');
       }catch(e){
         console.log('print_json', e, obj);
         str = '' + obj;
@@ -1789,6 +1787,7 @@ define([
         options['view'] = body;
       } else {
         bodyMsg = bodyMsg.replace(/\n/g, '<br/>');
+        bodyMsg = bodyMsg.replace(/[\t ]/g,'&nbsp;');
         options['body'] = bodyMsg;
       }
       Iccbl.appModel.showModalMessage(options);

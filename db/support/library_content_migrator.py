@@ -23,7 +23,15 @@ class Migrator:
     purpose: support class for the library content version migrations
     '''
 
+
+    # FIXME: 20181019: missing columns:
+    # - library_well_type
+    # - molar_concentration
+    # - mg_ml_concentration
+
+
     rnai_keys = [
+                'library_well_type', 'molar_concentration', 'mg_ml_concentration',
                 'well_id', 'vendor_identifier', 'vendor_name', 'vendor_batch_id',
                 'vendor_name_synonym', #'substance_id',
                 'sequence', 'silencing_reagent_type',
@@ -44,7 +52,8 @@ class Migrator:
                 ]
             
     rnai_sql = '''select 
-well_id, vendor_identifier, vendor_name, vendor_batch_id, vendor_name_synonym,
+library_well_type, molar_concentration, mg_ml_concentration, 
+w.well_id, vendor_identifier, vendor_name, vendor_batch_id, vendor_name_synonym,
 sequence, silencing_reagent_type,
 
 vg.entrezgene_id as vendor_entrezgene_id,
@@ -74,11 +83,13 @@ fg.species_name as facility_gene_species,
     where dw.silencingreagent_id=r.reagent_id order by dw.well_id) a ) as duplex_wells
 
 from reagent r join silencing_reagent sr using(reagent_id)
+join well w using(well_id)
 left join gene vg on(vendor_gene_id=vg.gene_id)
 left join gene fg on(facility_gene_id=fg.gene_id)
 where r.library_contents_version_id=%s order by well_id;
 '''
     sm_keys = [
+                'library_well_type', 'molar_concentration', 'mg_ml_concentration',
                 'well_id', 'vendor_identifier', 'vendor_name', 'vendor_batch_id',
                 'vendor_name_synonym',# 'substance_id',
                 'inchi', 'smiles', 
@@ -87,6 +98,7 @@ where r.library_contents_version_id=%s order by well_id;
                 ]
             
     sm_sql = '''select 
+library_well_type, molar_concentration, mg_ml_concentration, 
 well_id, vendor_identifier, vendor_name, vendor_batch_id, vendor_name_synonym,
 inchi, smiles, 
 molecular_formula, molecular_mass, molecular_weight,
@@ -103,16 +115,20 @@ molecular_formula, molecular_mass, molecular_weight,
     from (select chembank_id from small_molecule_chembank_id cbk 
           where cbk.reagent_id=r.reagent_id order by id ) a ) as chembank_id 
 from reagent r join small_molecule_reagent using(reagent_id)
+join well w using(well_id) 
 where r.library_contents_version_id=%s order by well_id;
 '''
     
     np_keys = [ 
+                'library_well_type', 'molar_concentration', 'mg_ml_concentration',
                 'well_id', 'vendor_identifier', 'vendor_name', 'vendor_batch_id',
                 'vendor_name_synonym',# 'substance_id',
                 ]
     np_sql = '''select 
+library_well_type, molar_concentration, mg_ml_concentration, 
 well_id, vendor_identifier, vendor_name, vendor_batch_id, vendor_name_synonym
 from reagent r join natural_product_reagent using(reagent_id)
+join well w using(well_id) 
 where r.library_contents_version_id=%s order by well_id;
 '''
           

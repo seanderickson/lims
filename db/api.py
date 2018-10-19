@@ -4868,7 +4868,8 @@ class ScreenResultResource(DbApiResource):
             newfields = {}
             newfields.update(well_schema['fields'])
             for key,field in newfields.items():
-                field['visibility'] = [VOCAB.field.visibility.NONE]
+                if not set(VOCAB.field.visibility.hidden_fields) & set(field['visibility']):
+                    field['visibility'] = []
             newfields.update(current_fields)
             
             if screenresult.screen.screen_type == SCREEN_TYPE.SMALL_MOLECULE:
@@ -9793,7 +9794,8 @@ class ScreenerCherryPickResource(DbApiResource):
         
         # Turn off the visibility of all inherited fields
         for key,field in schema['fields'].items():
-            field['visibility'] = [VOCAB.field.visibility.NONE]
+            if not set(VOCAB.field.visibility.hidden_fields) & set(field['visibility']):
+                field['visibility'] = []
         
         # Overlay the original scp fields on the top
         schema['fields'].update(original_fields)
@@ -10530,7 +10532,8 @@ class LabCherryPickResource(DbApiResource):
             
             # Turn off the visibility of all inherited fields
             for key,field in schema['fields'].items():
-                field['visibility'] = [VOCAB.field.visibility.NONE]
+                if not set(VOCAB.field.visibility.hidden_fields) & set(field['visibility']):
+                    field['visibility'] = []
             
             # Overlay the original lcp fields on the top
             schema['fields'].update(original_fields)

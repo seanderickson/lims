@@ -256,6 +256,9 @@ class VOCAB(schema_obj):
             PROTOCOL = 'protocol'
             API = 'api'
             NONE = 'none'
+            
+            hidden_fields = [API, NONE]
+            
         class editability(schema_obj):
             CREATE = 'c'
             UPDATE = 'u'

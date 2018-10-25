@@ -1147,16 +1147,6 @@ var parseRawCopyWellSearch = Iccbl.parseRawCopyWellSearch = function(rawData,err
 
   if (Iccbl.appModel.DEBUG) console.log('parseRawCopyWellSearch: search_array', search_array);
   
-//  _.each(or_list, function(clause){
-//    clause = clause.trim();
-//    if(clause=='') return;
-//    search_array.push(clause);
-//  });
-//
-//  if (Iccbl.appModel.DEBUG){
-//    console.log('search_array', search_array);
-//  }
-  
   _.each(search_array, function(parts){
     if(!_.isEmpty(parts)){
       var final_search_line = {
@@ -1235,20 +1225,20 @@ var parseRawCopyWellSearch = Iccbl.parseRawCopyWellSearch = function(rawData,err
       
       if (_.isEmpty(well_ids) && _.isEmpty(plates) && _.isEmpty(plate_ranges)
           && _.isEmpty(copies)){
-          var errmsg = 'Must specify either a plate, plate range, copy, or well_id: ' + line;
+          var errmsg = 'Must specify either a plate, plate range, copy, or well_id: ' + parts.join(', ');
           final_search_line['errors'].push(errmsg);
           errors.push(errmsg);
       }
       if (_.isEmpty(well_ids) && _.isEmpty(plates) && _.isEmpty(plate_ranges)
           && !_.isEmpty(copies)){
-          var errmsg = 'Must specify either a plate, plate range, or well_id with copies: ' + line;
+          var errmsg = 'Must specify either a plate, plate range, or well_id with copies: ' + parts.join(', ');
           final_search_line['errors'].push(errmsg);
           errors.push(errmsg);
       }
       if (!_.isEmpty(well_ids)){
         if (!_.isEmpty(plates) || !_.isEmpty(plate_ranges)){
           var errmsg = 'Well ids may not be defined on the same line with '
-            + 'plate or plate ranges: ' + line;
+            + 'plate or plate ranges: ' + parts.join(', ');;
           final_search_line['errors'].push(errmsg);
           errors.push(errmsg);
         }
@@ -1258,7 +1248,7 @@ var parseRawCopyWellSearch = Iccbl.parseRawCopyWellSearch = function(rawData,err
       if (!_.isEmpty(wellnames) && _.isEmpty(plates) && _.isEmpty(plate_ranges)){
         if (well_ids.length > 1){
           var errmsg = 'Well names may not be defined with multiple '
-            + 'well_ids: ' + line;
+            + 'well_ids: ' + parts.join(', ');;
           final_search_line['errors'].push(errmsg);
           errors.push(errmsg);
         } else if (well_ids.length == 1){
@@ -1276,7 +1266,7 @@ var parseRawCopyWellSearch = Iccbl.parseRawCopyWellSearch = function(rawData,err
           final_search_line['well_ids'] = [];
         } else {
           var errmsg = 'Must specify a plate, plate_range, or well_id '
-            + 'for wellnames: ' + line;
+            + 'for wellnames: ' + parts.join(', ');
           final_search_line['errors'].push(errmsg);
           errors.push(errmsg);
         }

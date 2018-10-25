@@ -6536,9 +6536,9 @@ class CopyWellResource(DbApiResource):
             
             plates = parsed_search.get('plates',[])
             plate_ranges = parsed_search.get('plate_ranges',[])
-            well_ids = parsed_search.get('well_ids')
-            well_names = parsed_search.get('wellnames')
-            copies = parsed_search.get('copies')
+            well_ids = parsed_search.get('well_ids',[])
+            well_names = parsed_search.get('wellnames',[])
+            copies = parsed_search.get('copies',[])
             
             if copies:
                 # Convert well_ids to plate/well_names
@@ -6591,7 +6591,7 @@ class CopyWellResource(DbApiResource):
         for pc,well_names in pc_searches.items():
             (copy,plate) = pc.split('/')
             if DEBUG_WELL_PARSE:
-                logger.info('copywells: finding copy: %r, plate: %r, well_names', 
+                logger.info('copywells: finding copy: %r, plate: %r, well_names: %r', 
                     copy, plate, well_names)
             clause = and_(
                 _well.c.plate_number==plate,

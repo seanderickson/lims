@@ -93,7 +93,6 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       copyWellsSchema['searchVal'] = {
         title: 'Find',
         key: 'searchVal',
-        help: 'Copy Well Search',
         placeholder: 'Copy Wells...',
         validators: ['required',validateCopyWellSearch],
         type: EditView.TextArea2,
@@ -113,29 +112,67 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       var copyWellsForm = new Backbone.Form({
         model: copyWellsFormModel,
         template: appModel._form_template,
-//        el: '#search-box-2b'
       });
 
       var View = Backbone.Layout.extend({
         template: _.template(layout),
         afterRender: function(){
-          var $copyWellsForm = copyWellsForm.render().$el;
-          $('#resource_content').html($copyWellsForm);
-          $copyWellsForm.append([
+          $('#resource_content').html(copyWellsForm.render().el);
+          var helpLink = $('<a >&nbsp;?</a>');
+          copyWellsForm.$el.find('.form-group').find('label').append(helpLink);
+          helpLink.click(function(e){
+            e.preventDefault();
+            var bodyMessage = [
+              '<b>By well ID and copy:</b>',
+              '02091:B15 A',
+              'A 2091:B15',
+              '',
+              '<b>Enter multiple wells, separated by newlines, or by commas:</b>',
+              '02091:B15 C',
+              '02091:B16 D',
+              '02091:L19 E',
+              'or',
+              '02091:B15, 02091:B16, 02091:L19 C',
+              '',
+              '<b>By plate number, followed by well name(s):</b>',
+              '2091 B15 C',
+              '2091 B16 D',
+              '2091 L19 E',
+              'or',
+              '2091 B15 B16 L19 C',
+              '',
+              '<b>Multiple wells and copies</b>',
+              '2091 B15 B16 L19 C',
+              '',
+              '<b>Search for copies and plate range:</b>',
+              '50001-50005 A',
+              '50001-50005 A B C D',
+              '50001,50002,50004 A B C D',
+              '',
+              '<b>Quoted copy name with a space in it:</b>',
+              '50001-50005 "Stock A"',
+            ];
+            appModel.showModalMessage({
+              title: 'Search for copy wells using plate, well, and copy patterns',
+              body: bodyMessage.join('<br/>')
+            });
+          });
+
+          copyWellsForm.$el.append([
             '<button type="submit" class="btn btn-default btn-xs" ',
             'style="width: 3em;">ok</input>',
           ].join(''));
           
     
-          $copyWellsForm.find('[ type="submit" ]').click(function(e){
+          copyWellsForm.$el.find('[ type="submit" ]').click(function(e){
             e.preventDefault();
-            $copyWellsForm.find('[data-error]').empty();
+            copyWellsForm.$el.find('[data-error]').empty();
             var errors = copyWellsForm.commit({ validate: true }); 
             if(!_.isEmpty(errors)){
-              $copyWellsForm.find('[name="searchVal"]').addClass(self.errorClass);
+              copyWellsForm.$el.find('[name="searchVal"]').addClass(self.errorClass);
               return;
             }else{
-              $copyWellsForm.find('[name="searchVal"]').removeClass(self.errorClass);
+              copyWellsForm.$el.find('[name="searchVal"]').removeClass(self.errorClass);
             }
             
             var text_to_search = copyWellsForm.getValue('searchVal');
@@ -144,8 +181,8 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
             errors = [];
             var parsedSearchArray = Iccbl.parseRawCopyWellSearch(text_to_search,errors);
             if (!_.isEmpty(errors)){
-              $copyWellsForm.find('[name="searchVal"]').addClass(self.errorClass);
-              $copyWellsForm.find('[data-error]').html(errors.join('<br/>'));
+              copyWellsForm.$el.find('[name="searchVal"]').addClass(self.errorClass);
+              copyWellsForm.$el.find('[data-error]').html(errors.join('<br/>'));
               return;
             }
       

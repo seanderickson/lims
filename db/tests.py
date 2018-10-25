@@ -45,7 +45,7 @@ from db.api import API_MSG_SCREENING_PLATES_UPDATED, \
     LibraryCopyPlateResource, LibraryScreeningResource, \
     API_PARAM_SHOW_OTHER_REAGENTS, API_PARAM_SHOW_COPY_WELLS, \
     API_PARAM_SHOW_RETIRED_COPY_WELlS, API_PARAM_VOLUME_OVERRIDE, \
-    WellResource
+    WellResource, CopyWellResource
 import db.api
 from db.models import Reagent, Library, ScreensaverUser, \
     UserChecklist, AttachedFile, Screen, Well, Publication, \
@@ -989,6 +989,78 @@ class LibraryResource(DBResourceTestCase):
         PlateLocation.objects.all().delete()
         ApiLog.objects.all().delete()
     
+    
+    def test_c_copy_well_search_parser(self):
+        tests = (
+            ('50 A6 A7 A8 C', [
+                {'plates': [50], 'wellnames': ['A06','A07','A08'], 'copies': ['C'] }]),
+            ('50a6,b10,c20 C',[
+                {'plates': [50], 'wellnames': ['A06','B10','C20'], 'copies': ['C'] }]),
+            ('50a6 b10 c20 C',[
+                {'plates': [50], 'wellnames': ['A06','B10','C20'], 'copies': ['C'] }]),
+            ('50A6 C', [
+                {'well_ids': ['00050:A06'], 'copies': ['C'] }]),
+            ('00050:A06 A7 c10 C, D, E', [
+                {'plates': [50], 'wellnames': ['A06','A07','C10'], 'copies': ['C','D','E'] }]),
+            ('5000-5100 C,D', [
+                {'plate_ranges': [[5000,5100],], 'copies': ['C','D'] }]),
+            (
+            '50    A06 C,D\n'
+            '51    C10 C\n'
+            '53    F22 F\n', [
+                {'plates': [50], 'wellnames': ['A06'], 'copies': ['C','D']},
+                {'plates': [51], 'wellnames': ['C10'], 'copies': ['C']},
+                {'plates': [53], 'wellnames': ['F22'],'copies': ['F']} ]
+            ),
+            ('50-60 A1,A2 "Stock A"', [
+                {'plate_ranges': [[50,60],], 'wellnames': ['A01','A02'],
+                    'copies': ['Stock A']}]),
+            ('50-60 70-75 A1,A2 ZZ', [{
+                'plate_ranges': [[50,60],[70,75]], 'wellnames': ['A01','A02'],
+                'copies': ['ZZ']}]),
+            ('xxxy', {'errors': { SCHEMA.API_PARAM_SEARCH: 'Must specify either a plate, plate range, or well_id' }}),
+            ('A01 A02 ', {'errors': { 
+                SCHEMA.API_PARAM_SEARCH: 'Must specify either a plate, plate range, or well_id' }}),
+        )
+        
+        for (test_search, expected_searches) in tests:
+            logger.info('test: %r', test_search)
+            try:
+                parsed_searches = CopyWellResource.parse_well_search(test_search)
+                logger.info('returns: %r', parsed_searches)
+            except ValidationError, e:
+                if 'errors' not in expected_searches:
+                    self.fail('Expected search is not an error: %r, %r' 
+                        % (expected_searches,e))
+                else:
+                    expected_errors = expected_searches['errors']
+                    self.assertEqual(
+                        len(expected_errors), 
+                        len(e.errors))
+                    for key,expected_error_string in expected_errors.items():
+                        if key not in e.errors:
+                            self.fail('expected error key: %r, not found in %r'
+                                % (key, e.errors))
+                        parsed_error = e.errors[key]
+                        logger.info('error: %r', parsed_error)
+                        if len(parsed_error) == 1:
+                            parsed_error = parsed_error[0]
+                        logger.info('error: %r', parsed_error)
+                        self.assertTrue(expected_error_string in parsed_error,
+                            'expected: %r not found in %r' 
+                            % (expected_error_string, parsed_error))
+                    continue
+            
+            self.assertTrue(len(parsed_searches),len(expected_searches))
+            for i,expected_search in enumerate(expected_searches):
+                parsed_search = parsed_searches[i]
+                for k,v in expected_search.items():
+                    self.assertTrue(k in parsed_search, 
+                        'k: %r not in %r' % (k, parsed_search))
+                    v2 = parsed_search.get(k)
+                    self.assertEqual(v, v2, 
+                        'k: %r %r != %r' % (k, v,v2))
+    
     def test_b_well_search_parser(self):
         
         tests = (
@@ -1044,7 +1116,6 @@ class LibraryResource(DBResourceTestCase):
         for (test_search, expected_searches) in tests:
             logger.info('test: %r', test_search)
             try:
-                logger.info('search: %r', test_search)
                 parsed_searches = WellResource.parse_well_search(test_search)
                 logger.info('returns: %r', parsed_searches)
             except ValidationError, e:

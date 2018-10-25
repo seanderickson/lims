@@ -189,6 +189,7 @@ DEBUG_RV_CREATE = False or logger.isEnabledFor(logging.DEBUG)
 DEBUG_SCREENRESULT = logger.isEnabledFor(logging.DEBUG)
 DEBUG_LIB_LOAD = False or logger.isEnabledFor(logging.DEBUG)
 DEBUG_PLATE_EDIT = False or logger.isEnabledFor(logging.DEBUG)
+DEBUG_WELL_PARSE = False or logger.isEnabledFor(logging.DEBUG)
     
 def _get_raw_time_string():
   return timezone.now().strftime("%Y%m%d%H%M%S")
@@ -6378,6 +6379,351 @@ class CopyWellResource(DbApiResource):
                 self.wrap_view('dispatch_list'), name="api_dispatch_list"),
         ]
 
+    @classmethod
+    def parse_well_search(cls, well_search_data):
+        '''
+        Parse a Well search by line into an array of search lines of the form:
+        input: 
+        - lines separated by a newline char 
+        - space or comma separated values, 
+        output:
+        search_line: {
+            plates: [],
+            plate_ranges: [],
+            wellnames: [],
+            well_ids: []
+            copies: []
+        }
+        '''
+        # Use unquote to decode form data from a post
+        if not isinstance(well_search_data, (list,tuple)):
+            well_search_data = urllib.unquote(well_search_data)
+        else:
+            cleaned_searches = []
+            for ps in well_search_data:
+                if isinstance(ps, six.string_types):
+                    cleaned_searches.append(urllib.unquote(ps))
+                else:
+                    cleaned_searches.append(ps)
+            well_search_data = cleaned_searches    
+        
+        if DEBUG_WELL_PARSE:
+            logger.info('well_search_data: %r', well_search_data)
+        
+        parsed_searches = []
+        errors = []
+        
+        # Process the patterns by line; or semicolon (to support URL encoded)
+        parsed_lines = well_search_data
+        if isinstance(parsed_lines, basestring):
+            parsed_lines = re.split(
+                lims_utils.PLATE_SEARCH_LINE_SPLITTING_PATTERN,parsed_lines)
+            if DEBUG_WELL_PARSE:
+                logger.info('parsed_lines: %r', parsed_lines)
+        
+        for _line in parsed_lines:
+            _line = _line.strip()
+            if not _line:
+                continue
+            
+            parts = lims_utils.QUOTED_WORD_SPLITTING_PATTERN.findall(_line)
+            if DEBUG_WELL_PARSE:
+                logger.info('parse copywell search: line parts: %r', parts)
+            
+            parsed_search = defaultdict(list)
+            parsed_search['line'] = parts
+            for part in parts:
+                # unquote
+                part = re.sub(r'["\']+','',part)
+
+                if DEBUG_WELL_PARSE:
+                    logger.info('test part: %r', part)
+                if PLATE_PATTERN.match(part):
+                    plate_number = int(part)
+                    if DEBUG_WELL_PARSE:
+                        logger.info('from PLATE: %r to %d', part, plate_number)
+                    parsed_search['plates'].append(plate_number)
+                elif PLATE_RANGE_PATTERN.match(part):
+                    match = PLATE_RANGE_PATTERN.match(part)
+                    plate_range = sorted([
+                        int(match.group(1)), int(match.group(2))])
+                    if DEBUG_WELL_PARSE:
+                        logger.info('from PLATE_RANGE: %r, %r', part, plate_range)
+                    parsed_search['plate_ranges'].append(plate_range)
+                elif WELL_ID_PATTERN.match(part):
+                    parsed_search['well_ids'].append(lims_utils.parse_well_id(part))
+                elif WELL_NAME_PATTERN.match(part):
+                    match = WELL_NAME_PATTERN.match(part)
+                    wellrow = match.group(1).upper()
+                    wellcol = match.group(2)
+                    wellname = '%s%s' % (wellrow, str(wellcol).zfill(2))
+                    if DEBUG_WELL_PARSE:
+                        logger.info('from WELL_NAME: %r to %s', part, wellname)
+                    parsed_search['wellnames'].append(wellname)
+                elif COPY_NAME_PATTERN.match(part):
+                    parsed_search['copies'].append(part)
+                else:
+                    errors.append('part not recognized: %r' % part)
+              
+            if not errors:
+                # Validation rules:
+                # Aside from copies, must specify a valid well search, so using the
+                # rules from WellResource.parse_well_search
+                if 'plates' not in parsed_search \
+                    and 'plate_ranges' not in parsed_search \
+                    and 'well_ids' not in parsed_search:
+                    errors.append(
+                        'Must specify either a plate, plate range, or well_id: %r' % _line)
+                if 'well_ids' in parsed_search \
+                    and ( 'plates' in parsed_search 
+                        or 'plate_ranges' in parsed_search):
+                    errors.append(
+                        'Well ids may not be defined on the same line with plate or '
+                        'plate ranges: %r' % _line)
+                # Wellname matches require either plate, plate range, or wellid
+                if 'wellnames' in parsed_search \
+                    and 'plates' not in parsed_search \
+                    and 'plate_ranges' not in parsed_search:
+                        if 'well_ids' in parsed_search:
+                            well_ids = parsed_search['well_ids']
+                            if len(well_ids) > 1:
+                                errors.append(
+                                    'Well names may not be defined with multiple '
+                                    'well_ids: %r' % _line)
+                            else:
+                                match = WELL_ID_PATTERN.match(well_ids[0])
+                                plate = int(match.group(1))
+                                wellrow = match.group(3).upper()
+                                wellcol = match.group(4)
+                                wellname = '%s%s' % (wellrow, str(wellcol).zfill(2)) 
+                                parsed_search['wellnames'].append(wellname)
+                                parsed_search['plates'].append(plate)
+                                del parsed_search['well_ids']
+                        else:
+                            errors.append(
+                                'Must specify either a plate, plate range, or well_id'
+                                'for wellnames: %r' % _line)
+                if DEBUG_WELL_PARSE:
+                    logger.info('parsed: %r from %r', parsed_search, _line)
+                parsed_searches.append(parsed_search)
+        
+        if errors:
+            raise ValidationError(key=SCHEMA.API_PARAM_SEARCH, msg=', '.join(errors))
+        if not parsed_searches:
+            raise ValidationError(key=SCHEMA.API_PARAM_SEARCH, msg='no search lines found')
+        
+        for parsed_search in parsed_searches:
+            for key, list_val in parsed_search.items():
+                parsed_search[key] = sorted(list_val)
+
+        if DEBUG_WELL_PARSE:
+            logger.info('parse_well_search: %r', parsed_searches)
+        return parsed_searches
+
+                
+                
+    @classmethod
+    def create_well_base_query(cls, parsed_searches):
+        
+        if DEBUG_WELL_PARSE:
+            logger.info('create_well_base_query: %r', parsed_searches)
+
+        # Compress searches by copy/plate (to help SQL efficiency)
+        pc_searches = defaultdict(list)
+        copy_wellname_searches = defaultdict(list)
+        well_only_searches = []
+        for parsed_search in parsed_searches:
+            
+            plates = parsed_search.get('plates',[])
+            plate_ranges = parsed_search.get('plate_ranges',[])
+            well_ids = parsed_search.get('well_ids')
+            well_names = parsed_search.get('wellnames')
+            copies = parsed_search.get('copies')
+            
+            if copies:
+                # Convert well_ids to plate/well_names
+                if well_ids:
+                    for well_id in well_ids:
+                        plates.append(lims_utils.well_id_plate_number(well_id))
+                        well_names.append(lims_utils.well_id_name(well_id))
+                if plates or plate_ranges:
+                    plate_copies = []
+                    for copy in copies:
+                        for plate in plates:
+                            plate_copies.append('{}/{}'.format(copy,plate))
+                        for plate_range in plate_ranges:
+                            for plate in xrange(plate_range[0],plate_range[1]+1):
+                                plate_copies.append('{}/{}'.format(copy,plate))
+                
+                    for plate_copy in plate_copies:
+                        if well_names:
+                            pc_searches[plate_copy].extend(well_names)
+                        else:
+                            pc_searches[plate_copy].extend([])
+                else:
+                    if well_names:
+                        copy_wellname_searches[copy].extend(wellnames)
+                    else:
+                        raise ValidationError(key='copies', msg='Must be specified with plates or wells')
+            else:
+                well_only_searches.append(parsed_search)
+        if DEBUG_WELL_PARSE:
+            logger.info('pc_searches: %r', pc_searches)
+            logger.info('copy_wellname_searches: %r', copy_wellname_searches)
+            logger.info('well_only_searches: %r', well_only_searches)
+        
+        bridge = get_tables()
+        _well = bridge['well']
+        _plate = bridge['plate']
+        _copy = bridge['copy']
+
+        well_query = (
+            select([
+                _well.c.well_id,
+                _copy.c.copy_id
+            ])
+            .select_from(
+                _well.join(_plate, _well.c.plate_number==_plate.c.plate_number)
+                    .join(_copy, _copy.c.copy_id==_plate.c.copy_id))
+            .group_by(_well.c.well_id, _copy.c.copy_id))
+
+        clauses = []
+        for pc,well_names in pc_searches.items():
+            (copy,plate) = pc.split('/')
+            if DEBUG_WELL_PARSE:
+                logger.info('copywells: finding copy: %r, plate: %r, well_names', 
+                    copy, plate, well_names)
+            clause = and_(
+                _well.c.plate_number==plate,
+                _copy.c.name==copy)
+            if well_names:
+                clause = and_(clause, _well.c.well_name.in_(well_names))
+            clauses.append(clause)
+
+        for copy, wellnames in copy_wellname_searches.items():
+            clause = and_(
+                _copy.c.name==copy,
+                _well.c.well_name.in_(well_names))
+            clauses.append(clause)
+        
+        # TODO: could optimize well only searches as in WellResource
+        for well_search in well_only_searches:
+            well_clause = None
+            plates = well_search.get('plates')
+            plate_ranges = well_search.get('plate_ranges')
+            well_names = well_search.get('well_names')
+            well_ids = well_searh.get('well_ids')
+            
+            if well_ids:
+                if well_names:
+                    raise ValidationError(key='well_ids',msg='cannot be specified with well names')
+                if plates or plate_ranges:
+                    raise ValidationError(key='well_ids',msg='cannot be specified with plates or plate ranges')
+                well_clause = _well.c.well_id.in_(well_ids)
+                
+            if well_names:
+                if not plates or plate_ranges:
+                    raise ValidationError(key='well_names',msg='cannot be specified without plates or plate_ranges')
+                    
+            plate_clauses = []
+            if plate_ranges:
+                for plate_range in plate_ranges:
+                    plate_clauses.append(_well.c.plate_number.between(*plate_range, symmetric=True))
+            if plates:
+                plate_clauses.append(_well.c.plate_number.in_(plates))
+            if plate_clauses:
+                if len(plate_clauses) > 1:
+                    well_clause = or_(*plate_clauses)
+                else:
+                    well_clause = plate_clauses[0]
+                if well_names:
+                    well_clause = and_(well_clause, _well.c.well_name.in_(well_names))
+            
+            if well_clause is not None:
+                clauses.append(well_clause)
+            else:
+                raise Exception('well_only_search invalid: %r', well_search)
+            
+        if not clauses:
+            raise ValidationError(key='well_search_data', msg='no searches found')
+        if len(clauses) == 1:    
+            well_query = well_query.where(clauses[0])
+        else:
+            well_query = well_query.where(or_(*clauses))
+
+        # compiled_stmt = str(well_query.compile(
+        #     dialect=postgresql.dialect(),
+        #     compile_kwargs={"literal_binds": True}))
+        # logger.info('well_query %s', compiled_stmt)
+        
+        return well_query
+
+        # @classmethod
+        # def create_well_base_query1(cls, parsed_searches):
+        #     
+        #     if DEBUG_WELL_PARSE:
+        #         logger.info('create_well_base_query: %r', parsed_searches)
+        #     
+        #     bridge = get_tables()
+        #     _well = bridge['well']
+        #     _plate = bridge['plate']
+        #     _copy = bridge['copy']
+        # 
+        #     well_query = (
+        #         select([
+        #             _well.c.well_id,
+        #             _copy.c.copy_id
+        #         ])
+        #         .select_from(
+        #             _well.join(_plate, _well.c.plate_number==_plate.c.plate_number)
+        #                 .join(_copy, _copy.c.copy_id==_plate.c.copy_id))
+        #         .group_by(_well.c.well_id, _copy.c.copy_id))
+        #     clauses = []
+        #     for parsed_search in parsed_searches:
+        #         well_clause = None
+        #         
+        #         plates = parsed_search.get('plates')
+        #         plate_ranges = parsed_search.get('plate_ranges')
+        #         well_ids = parsed_search.get('well_ids')
+        #         well_names = parsed_search.get('wellnames')
+        #         copies = parsed_search.get('copies')
+        #         
+        #         if plates or plate_ranges:
+        #             plate_clause = []
+        #             if plates:
+        #                 plate_clause.append(_well.c.plate_number.in_(plates))
+        #             if plate_ranges:
+        #                 for plate_range in plate_ranges:
+        #                     plate_clause.append(_well.c.plate_number.between(
+        #                         *plate_range, symmetric=True))
+        #             if len(plate_clause) > 1:
+        #                 well_clause = or_(plate_clause)
+        #             else:
+        #                 well_clause = plate_clause[0]
+        #             if well_names:
+        #                 well_clause = and_(well_clause,_well.c.well_name.in_(well_names))
+        #         if well_ids:
+        #             if plates or plate_ranges:
+        #                 raise ValidationError(
+        #                     key='well_ids', 
+        #                     msg='must not be used with plate ranges')
+        #             else:
+        #                 well_clause = _well.c.well_id.in_(well_ids)
+        #         if copies:
+        #             if well_clause is not None:
+        #                 clauses.append(and_(_copy.c.name.in_(copies), well_clause))
+        #             else:
+        #                 clauses.append(_copy.c.name.in_(copies))
+        #         
+        #     if not clauses:
+        #         raise ValidationError(key='well_search_data', msg='no searches found')
+        #     if len(clauses) == 1:    
+        #         well_query = well_query.where(clauses[0])
+        #     else:
+        #         well_query = well_query.where(or_(*clauses))
+        # 
+        #     return well_query
+
     @read_authorization
     def get_detail(self, request, **kwargs):
 
@@ -6428,178 +6774,185 @@ class CopyWellResource(DbApiResource):
             param_hash['library_short_name__eq'] = library_short_name
         library_screen_type = param_hash.pop('library_screen_type',None)
 
-        try:
-            
-            # general setup
+        # well search data is raw line based text entered by the user
+        well_search_data = param_hash.pop(SCHEMA.API_PARAM_SEARCH, None)
+        well_base_query = None
+        if well_search_data is not None:
+            parsed_searches = CopyWellResource.parse_well_search(well_search_data)
+            well_base_query = CopyWellResource.create_well_base_query(parsed_searches)
+        if well_base_query is not None:
+            well_base_query = well_base_query.cte('well_base_query')
+
+        # general setup
           
-            manual_field_includes = set(param_hash.get('includes', []))
+        manual_field_includes = set(param_hash.get('includes', []))
   
-            (filter_expression, filter_hash, readable_filter_hash) = \
-                SqlAlchemyResource.build_sqlalchemy_filters(
-                    schema, param_hash=param_hash)
-            filename = self._get_filename(
-                readable_filter_hash, schema, is_for_detail)
-            filter_expression = \
-                self._meta.authorization.filter(request.user,filter_expression)
+        (filter_expression, filter_hash, readable_filter_hash) = \
+            SqlAlchemyResource.build_sqlalchemy_filters(
+                schema, param_hash=param_hash)
+        filename = self._get_filename(
+            readable_filter_hash, schema, is_for_detail)
+        filter_expression = \
+            self._meta.authorization.filter(request.user,filter_expression)
 
-            # TODO: remove this restriction if the query can be optimized
-            # if filter_expression is None:
-            #     raise InformationError(
-            #         key='Input filters ',
-            #         msg='Please enter a filter expression to begin')
-            # else:
-            logger.debug('filters: %r', readable_filter_hash)                      
-            order_params = param_hash.get('order_by', [])
-            field_hash = self.get_visible_fields(
-                schema['fields'], filter_hash.keys(), manual_field_includes,
-                param_hash.get('visibilities'),
-                exact_fields=set(param_hash.get('exact_fields', [])),
-                order_params=order_params)
-            order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
-                order_params, field_hash)
+        # TODO: remove this restriction if the query can be optimized
+        # if filter_expression is None:
+        #     raise InformationError(
+        #         key='Input filters ',
+        #         msg='Please enter a filter expression to begin')
+        # else:
+        logger.debug('filters: %r', readable_filter_hash)                      
+        order_params = param_hash.get('order_by', [])
+        field_hash = self.get_visible_fields(
+            schema['fields'], filter_hash.keys(), manual_field_includes,
+            param_hash.get('visibilities'),
+            exact_fields=set(param_hash.get('exact_fields', [])),
+            order_params=order_params)
+        order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
+            order_params, field_hash)
              
-            rowproxy_generator = None
-            if use_vocab is True:
-                rowproxy_generator = \
-                    DbApiResource.create_vocabulary_rowproxy_generator(field_hash)
-                # use "use_vocab" as a proxy to also adjust siunits for viewing
-                rowproxy_generator = DbApiResource.create_siunit_rowproxy_generator(
-                    field_hash, rowproxy_generator)
+        rowproxy_generator = None
+        if use_vocab is True:
             rowproxy_generator = \
-                self._meta.authorization.get_row_property_generator(
-                    request.user, field_hash, rowproxy_generator)
+                DbApiResource.create_vocabulary_rowproxy_generator(field_hash)
+            # use "use_vocab" as a proxy to also adjust siunits for viewing
+            rowproxy_generator = DbApiResource.create_siunit_rowproxy_generator(
+                field_hash, rowproxy_generator)
+        rowproxy_generator = \
+            self._meta.authorization.get_row_property_generator(
+                request.user, field_hash, rowproxy_generator)
 
-            # specific setup 
-            base_query_tables = [
-                'copy_well', 'copy', 'plate', 'well', 'library', 'plate_location']
-            
-            _cw = self.bridge['copy_well']
-            _c = self.bridge['copy']
-            _l = self.bridge['library']
-            _p = self.bridge['plate']
-            _w = self.bridge['well']
-            _pl = self.bridge['plate_location']
+        # specific setup 
+        base_query_tables = [
+            'copy_well', 'copy', 'plate', 'well', 'library', 'plate_location']
+        
+        _cw = self.bridge['copy_well']
+        _c = self.bridge['copy']
+        _l = self.bridge['library']
+        _p = self.bridge['plate']
+        _w = self.bridge['well']
+        _pl = self.bridge['plate_location']
             
 
-            # TODO: optimize query join order copy-plate, then all-copy-plate-well, 
-            # then copy-plate-well to copy_well
-            # copy_plate = (
-            #     select([
-            #         _p.c.plate_id, _c.c.copy_id,
-            #         _p.c.plate_number, _c.c.name,
-            #         _p.c.status, _c.c.usage_type,
-            #         _p.c.well_volume,_p.c.remaining_well_volume,
-            #         _p.c.mg_ml_concentration, _p.c.molar_concentration,
-            #         _p.c.screening_count, _p.c.cplt_screening_count,
-            #         _l.c.short_name ])
-            #     .select_from(_p.join(_c, _p.c.copy_id==_c.c.copy_id)
-            #         .join(_l, _c.c.library_id==_l.c.library_id))
-            #         ).cte('copy_plate')
-            # all_copy_wells = (
-            #     select([_w.c.well_id]))
+        # TODO: optimize query join order copy-plate, then all-copy-plate-well, 
+        # then copy-plate-well to copy_well
+        # copy_plate = (
+        #     select([
+        #         _p.c.plate_id, _c.c.copy_id,
+        #         _p.c.plate_number, _c.c.name,
+        #         _p.c.status, _c.c.usage_type,
+        #         _p.c.well_volume,_p.c.remaining_well_volume,
+        #         _p.c.mg_ml_concentration, _p.c.molar_concentration,
+        #         _p.c.screening_count, _p.c.cplt_screening_count,
+        #         _l.c.short_name ])
+        #     .select_from(_p.join(_c, _p.c.copy_id==_c.c.copy_id)
+        #         .join(_l, _c.c.library_id==_l.c.library_id))
+        #         ).cte('copy_plate')
+        # all_copy_wells = (
+        #     select([_w.c.well_id]))
+        
+        custom_columns = {
+            'copywell_id': (
+                _concat(_l.c.short_name,'/',_c.c.name,'/',_w.c.well_id)),
+            'volume': case([
+                (_w.c.library_well_type==WELL_TYPE.EXPERIMENTAL, 
+                     func.coalesce(_cw.c.volume, 
+                         _p.c.remaining_well_volume, _p.c.well_volume) )],
+                else_=None),
+            'initial_volume': case([
+                (_w.c.library_well_type==WELL_TYPE.EXPERIMENTAL, 
+                     func.coalesce(_cw.c.initial_volume,_p.c.well_volume) )],
+                 else_=None),
+            'consumed_volume': case([
+                (_w.c.library_well_type==WELL_TYPE.EXPERIMENTAL, 
+                    func.coalesce(_cw.c.initial_volume,_p.c.well_volume)-
+                        func.coalesce(_cw.c.volume, _p.c.remaining_well_volume) )],
+                else_=None),
+            'mg_ml_concentration': case([
+                (_w.c.library_well_type==WELL_TYPE.EXPERIMENTAL, 
+                    func.coalesce(
+                        _cw.c.mg_ml_concentration,_p.c.mg_ml_concentration,
+                        _w.c.mg_ml_concentration ) )],
+                else_=None),
+            'molar_concentration': case([
+                (_w.c.library_well_type==WELL_TYPE.EXPERIMENTAL, 
+                    func.coalesce(
+                        _cw.c.molar_concentration,_p.c.molar_concentration,
+                        _w.c.molar_concentration ) )],
+                else_=None),
+            'cumulative_freeze_thaw_count': (
+                (func.coalesce(_p.c.screening_count,0) 
+                    + func.coalesce(_p.c.cplt_screening_count,0))),
+            'location': (
+                _concat_with_sep(
+                    (_pl.c.room,_pl.c.freezer,_pl.c.shelf,_pl.c.bin),'-')
+                ),
             
-            custom_columns = {
-                'copywell_id': (
-                    _concat(_l.c.short_name,'/',_c.c.name,'/',_w.c.well_id)),
-                'volume': case([
-                    (_w.c.library_well_type==WELL_TYPE.EXPERIMENTAL, 
-                         func.coalesce(_cw.c.volume, 
-                             _p.c.remaining_well_volume, _p.c.well_volume) )],
-                    else_=None),
-                'initial_volume': case([
-                    (_w.c.library_well_type==WELL_TYPE.EXPERIMENTAL, 
-                         func.coalesce(_cw.c.initial_volume,_p.c.well_volume) )],
-                     else_=None),
-                'consumed_volume': case([
-                    (_w.c.library_well_type==WELL_TYPE.EXPERIMENTAL, 
-                        func.coalesce(_cw.c.initial_volume,_p.c.well_volume)-
-                            func.coalesce(_cw.c.volume, _p.c.remaining_well_volume) )],
-                    else_=None),
-                'mg_ml_concentration': case([
-                    (_w.c.library_well_type==WELL_TYPE.EXPERIMENTAL, 
-                        func.coalesce(
-                            _cw.c.mg_ml_concentration,_p.c.mg_ml_concentration,
-                            _w.c.mg_ml_concentration ) )],
-                    else_=None),
-                'molar_concentration': case([
-                    (_w.c.library_well_type==WELL_TYPE.EXPERIMENTAL, 
-                        func.coalesce(
-                            _cw.c.molar_concentration,_p.c.molar_concentration,
-                            _w.c.molar_concentration ) )],
-                    else_=None),
-                'cumulative_freeze_thaw_count': (
-                    (func.coalesce(_p.c.screening_count,0) 
-                        + func.coalesce(_p.c.cplt_screening_count,0))),
-                'location': (
-                    _concat_with_sep(
-                        (_pl.c.room,_pl.c.freezer,_pl.c.shelf,_pl.c.bin),'-')
-                    ),
-                
-                
-                # 'adjustments': case([
-                #     (_w.c.library_well_type==WELL_TYPE.EXPERIMENTAL, 
-                #         func.coalesce(_cw.c.adjustments, 0) )],
-                #     else_=None),
-                # Note: the query plan makes this faster than the hash join of 
-                # copy-copy_well
-                # 'copy_name': literal_column(
-                #    '( select copy.name from copy where copy.copy_id=copy_well.copy_id )'
-                #    ).label('copy_name')
-            }
             
-            columns = self.build_sqlalchemy_columns(
-                field_hash.values(), base_query_tables=base_query_tables,
-                custom_columns=custom_columns)
+            # 'adjustments': case([
+            #     (_w.c.library_well_type==WELL_TYPE.EXPERIMENTAL, 
+            #         func.coalesce(_cw.c.adjustments, 0) )],
+            #     else_=None),
+            # Note: the query plan makes this faster than the hash join of 
+            # copy-copy_well
+            # 'copy_name': literal_column(
+            #    '( select copy.name from copy where copy.copy_id=copy_well.copy_id )'
+            #    ).label('copy_name')
+        }
+            
+        columns = self.build_sqlalchemy_columns(
+            field_hash.values(), base_query_tables=base_query_tables,
+            custom_columns=custom_columns)
 
-            # build the query statement
+        # build the query statement
 
-            j = join(_w, _l, _w.c.library_id == _l.c.library_id)
-            j = j.join(_c, _l.c.library_id == _c.c.library_id)
-            j = j.join(_p, and_(
-                _p.c.copy_id == _c.c.copy_id,
-                _w.c.plate_number == _p.c.plate_number))
-            j = j.join(_pl, _p.c.plate_location_id==_pl.c.plate_location_id, isouter=True)
-            j = j.join(_cw, and_(
-                _cw.c.well_id == _w.c.well_id,
-                _cw.c.copy_id == _c.c.copy_id), isouter=True )
-            
-            stmt = select(columns.values()).select_from(j)
-            
-            if library_screen_type is not None:
-                stmt = stmt.where(_l.c.screen_type==library_screen_type)
-            # general setup
+        j = join(_w, _l, _w.c.library_id == _l.c.library_id)
+        j = j.join(_c, _l.c.library_id == _c.c.library_id)
+        j = j.join(_p, and_(
+            _p.c.copy_id == _c.c.copy_id,
+            _w.c.plate_number == _p.c.plate_number))
+        j = j.join(_pl, _p.c.plate_location_id==_pl.c.plate_location_id, isouter=True)
+        j = j.join(_cw, and_(
+            _cw.c.well_id == _w.c.well_id,
+            _cw.c.copy_id == _c.c.copy_id), isouter=True )
+
+        if well_base_query is not None:
+            j = j.join(well_base_query, and_(
+                _w.c.well_id == well_base_query.c.well_id,
+                _c.c.copy_id == well_base_query.c.copy_id))
+        
+        stmt = select(columns.values()).select_from(j)
+        
+        if library_screen_type is not None:
+            stmt = stmt.where(_l.c.screen_type==library_screen_type)
+        # general setup
+         
+        (stmt, count_stmt) = self.wrap_statement(
+            stmt, order_clauses, filter_expression)
+        
+        stmt = stmt.order_by('plate_number', 'well_id','copy_name')
+        
+        # compiled_stmt = str(stmt.compile(
+        #     dialect=postgresql.dialect(),
+        #     compile_kwargs={"literal_binds": True}))
+        # logger.info('compiled_stmt %s', compiled_stmt)
+        
+        title_function = None
+        if use_titles is True:
+            def title_function(key):
+                return field_hash[key]['title']
+        if is_data_interchange:
+            title_function = DbApiResource.datainterchange_title_function(
+                field_hash,schema['id_attribute'])
+        
+        return self.stream_response_from_statement(
+            request, stmt, count_stmt, filename,
+            field_hash=field_hash,
+            param_hash=param_hash,
+            is_for_detail=is_for_detail,
+            rowproxy_generator=rowproxy_generator,
+            title_function=title_function, meta=kwargs.get('meta', None))
              
-            (stmt, count_stmt) = self.wrap_statement(
-                stmt, order_clauses, filter_expression)
-            
-            if not order_clauses:
-                stmt = stmt.order_by('copy_name', 'plate_number', 'well_id')
-            
-            # compiled_stmt = str(stmt.compile(
-            #     dialect=postgresql.dialect(),
-            #     compile_kwargs={"literal_binds": True}))
-            # logger.info('compiled_stmt %s', compiled_stmt)
-            
-            title_function = None
-            if use_titles is True:
-                def title_function(key):
-                    return field_hash[key]['title']
-            if is_data_interchange:
-                title_function = DbApiResource.datainterchange_title_function(
-                    field_hash,schema['id_attribute'])
-            
-            return self.stream_response_from_statement(
-                request, stmt, count_stmt, filename,
-                field_hash=field_hash,
-                param_hash=param_hash,
-                is_for_detail=is_for_detail,
-                rowproxy_generator=rowproxy_generator,
-                title_function=title_function, meta=kwargs.get('meta', None))
-             
-        except Exception, e:
-            logger.exception('on get list')
-            raise e  
-
     def put_detail(self, request, **kwargs):
         raise ApiNotImplemented(self._meta.resource_name, 'put_detail')
                 
@@ -6659,18 +7012,21 @@ class CopyWellResource(DbApiResource):
                 initializer_dict[key] = parse_val(
                     deserialized.get(key, None), key, fields[key]['data_type']) 
         
-        volume = initializer_dict.get('volume', None)        
-        mg_ml_concentration = initializer_dict.get('mg_ml_concentration', None)
-        molar_concentration = initializer_dict.get('molar_concentration', None)
+        volume = initializer_dict.get('volume')        
+        mg_ml_concentration = initializer_dict.get('mg_ml_concentration')
+        molar_concentration = initializer_dict.get('molar_concentration')
+        cherry_pick_screening_count = initializer_dict.get('cherry_pick_screening_count')
         
-        if volume is None and molar_concentration is None and mg_ml_concentration is None:
+        if not any(v is not None for v in 
+            [volume, molar_concentration, mg_ml_concentration, cherry_pick_screening_count]):
             msg = (
                 'Must submit one of [volume, mg_ml_concentration, '
-                'molar_concentration]: well: %r' % well_id)
+                'molar_concentration, cherry_pick_screening_count]: well: %r' % well_id)
             raise ValidationError({
                 'volume': msg,
                 'mg_ml_concentration': msg,
                 'molar_concentration': msg,
+                'cherry_pick_screening_count': msg
                 })
         has_update = False
         try:
@@ -6716,6 +7072,17 @@ class CopyWellResource(DbApiResource):
         if molar_concentration is not None:
             has_update = True
             copywell.molar_concentration = molar_concentration
+        if cherry_pick_screening_count is not None:
+            
+            if cherry_pick_screening_count < 0:
+                raise ValidationError(
+                    key='cherry_pick_screening_count',
+                    msg='must be positive')
+            
+            
+            has_update = True
+            copywell.cherry_pick_screening_count = cherry_pick_screening_count
+        
         if has_update is True:
             copywell.save()
         else:
@@ -9343,8 +9710,8 @@ class CherryPickRequestResource(DbApiResource):
 
     def _find_copies(self,cpr):
         '''
-        Find and assign copies that are fulfillable for the Lab Cherry Picks
-        on the Cherry Pick Request:
+        Find and assign copies that are fulfillable (sufficient volume, available) 
+        for the Lab Cherry Picks on the Cherry Pick Request:
         - well copy
         @param cpr Cherry Pick Request with Lab Cherry Picks already created
         '''
@@ -24545,7 +24912,6 @@ class WellResource(DbApiResource):
             well_ids: []
         }
         '''
-        DEBUG_WELL_PARSE = False or logger.isEnabledFor(logging.DEBUG)
         # Use unquote to decode form data from a post
         if not isinstance(well_search_data, (list,tuple)):
             well_search_data = urllib.unquote(well_search_data)
@@ -24557,8 +24923,10 @@ class WellResource(DbApiResource):
                 else:
                     cleaned_searches.append(ps)
             well_search_data = cleaned_searches    
+        
         if DEBUG_WELL_PARSE:
             logger.info('well_search_data: %r', well_search_data)
+        
         parsed_searches = []
         errors = []
         
@@ -24609,43 +24977,44 @@ class WellResource(DbApiResource):
                 else:
                     errors.append('part not recognized: %r' % part)
                     
-            if 'plates' not in parsed_search \
-                and 'plate_ranges' not in parsed_search \
-                and 'well_ids' not in parsed_search:
-                errors.append(
-                    'Must specify either a plate, plate range, or well_id: %r' % _line)
-            if 'well_ids' in parsed_search \
-                and ( 'plates' in parsed_search 
-                    or 'plate_ranges' in parsed_search):
-                errors.append(
-                    'Well ids may not be defined on the same line with plate or '
-                    'plate ranges: %r' % _line)
-            # match wellnames only after plate, plate range is identified
-            if 'wellnames' in parsed_search \
-                and 'plates' not in parsed_search \
-                and 'plate_ranges' not in parsed_search:
-                    if 'well_ids' in parsed_search:
-                        well_ids = parsed_search['well_ids']
-                        if len(well_ids) > 1:
-                            errors.append(
-                                'Well names may not be defined with multiple '
-                                'well_ids: %r' % _line)
+            if not errors:
+                if 'plates' not in parsed_search \
+                    and 'plate_ranges' not in parsed_search \
+                    and 'well_ids' not in parsed_search:
+                    errors.append(
+                        'Must specify either a plate, plate range, or well_id: %r' % _line)
+                if 'well_ids' in parsed_search \
+                    and ( 'plates' in parsed_search 
+                        or 'plate_ranges' in parsed_search):
+                    errors.append(
+                        'Well ids may not be defined on the same line with plate or '
+                        'plate ranges: %r' % _line)
+                # match wellnames only after plate, plate range is identified
+                if 'wellnames' in parsed_search \
+                    and 'plates' not in parsed_search \
+                    and 'plate_ranges' not in parsed_search:
+                        if 'well_ids' in parsed_search:
+                            well_ids = parsed_search['well_ids']
+                            if len(well_ids) > 1:
+                                errors.append(
+                                    'Well names may not be defined with multiple '
+                                    'well_ids: %r' % _line)
+                            else:
+                                match = WELL_ID_PATTERN.match(well_ids[0])
+                                plate = int(match.group(1))
+                                wellrow = match.group(3).upper()
+                                wellcol = match.group(4)
+                                wellname = '%s%s' % (wellrow, str(wellcol).zfill(2)) 
+                                parsed_search['wellnames'].append(wellname)
+                                parsed_search['plates'].append(plate)
+                                del parsed_search['well_ids']
                         else:
-                            match = WELL_ID_PATTERN.match(well_ids[0])
-                            plate = int(match.group(1))
-                            wellrow = match.group(3).upper()
-                            wellcol = match.group(4)
-                            wellname = '%s%s' % (wellrow, str(wellcol).zfill(2)) 
-                            parsed_search['wellnames'].append(wellname)
-                            parsed_search['plates'].append(plate)
-                            del parsed_search['well_ids']
-                    else:
-                        errors.append(
-                            'Must specify a plate, plate_range, or well_id '
-                            'for wellnames: %r' % _line)
-            if DEBUG_WELL_PARSE:
-                logger.info('parsed: %r from %r', parsed_search, _line)
-            parsed_searches.append(parsed_search)
+                            errors.append(
+                                'Must specify either a plate, plate_range, or well_id'
+                                'for wellnames: %r' % _line)
+                if DEBUG_WELL_PARSE:
+                    logger.info('parsed: %r from %r', parsed_search, _line)
+                parsed_searches.append(parsed_search)
         
         if errors:
             raise ValidationError(key=SCHEMA.API_PARAM_SEARCH, msg=', '.join(errors))

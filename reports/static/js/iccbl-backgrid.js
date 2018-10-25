@@ -55,8 +55,6 @@ var URI_REPLICATE_VOLUME_PATTERN = /((\d+)x)?(([\d\.]+)(\w|\xB5|\x{03BC})L)/i;
 /**
  * COPY_NAME_PATTERN:
  * -must start with an alpha char
- * FIXME: does not support embedded commas
- * - fixme is to clean the copy names in the database to remove commas
  */
 var COPY_NAME_PATTERN = Iccbl.COPY_NAME_PATTERN = /^["']?[A-Za-z]+[\w\- :]*["']?$/
 
@@ -198,6 +196,15 @@ var stringToFunction = Iccbl.stringToFunction = function(str) {
 
 
 /**
+ * Run maxPrecision using appModel.MAX_PRECISION after calculations to round out 
+ * floating point math errors.
+ */ 
+var maxPrecision = Iccbl.maxPrecision = function maxPrecision(number) {
+  return (parseFloat(number.toPrecision(Iccbl.appModel.MAX_PRECISION)));
+};
+
+
+/**
  * Round by first converting to whole number, to avoid floating point number
  * arithmetic errors:
  * @see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Math/round
@@ -211,8 +218,19 @@ var round = Iccbl.round = function round(number, precision) {
   return +(numArray[0] + "e" + (numArray[1] ? (+numArray[1] + precision) : precision));
   };
   return shift(Math.round(shift(number, precision, false)), precision, true);
-}
+};
 
+/**
+ * Perform rounding using the defaultUnit precision added to the desired precision:
+ * e.g. if defaultUnit is 1e-6, and desired precision is 2 digits, then the 
+ * applied precision will be 2+6 = 8 digits.
+ */
+var roundForDefaultUnit = Iccbl.roundForDefaultUnit = function roundForDefaultUnit(number, precision, defaultUnit){
+  // find exponent
+  var exponent = Math.floor(Math.log(defaultUnit)/Math.log(10));
+  var full_precision = precision - exponent;
+  return round(number, full_precision);
+};
 
 /**
  * Parse a string date value, ignoring the time and timezone.
@@ -1098,6 +1116,189 @@ var parseRawWellSearch = Iccbl.parseRawWellSearch = function(rawData,errors){
 
 };
 
+var parseRawCopyWellSearch = Iccbl.parseRawCopyWellSearch = function(rawData,errors){
+
+  if (Iccbl.appModel.DEBUG){
+    console.log('parseRawCopyWellSearch', rawData);
+  }
+  var or_list = rawData.split(SEARCH_LINE_SPLITTING_PATTERN);
+  var search_array = []
+  var final_search_array = [];
+
+  _.each(or_list, function(clause){
+    clause = clause.trim();
+    if(clause=='') return;
+
+    // split quoted strings, split on spaces or commas
+    var parts = _.filter(_.map(
+      clause.match(PLATE_COPY_RANGE_SPLITTING_PATTERN),
+      function(val){
+        return val;
+        // 20180313 - do not remove quotes on client; API parser will remove
+        //        // unquote
+        //        return val.replace(/["']+/g,'');
+      }),
+      function(val){
+        val = val.trim();
+        return !_.isEmpty(val);
+      });
+    search_array.push(parts);
+  });
+
+  if (Iccbl.appModel.DEBUG) console.log('parseRawCopyWellSearch: search_array', search_array);
+  
+//  _.each(or_list, function(clause){
+//    clause = clause.trim();
+//    if(clause=='') return;
+//    search_array.push(clause);
+//  });
+//
+//  if (Iccbl.appModel.DEBUG){
+//    console.log('search_array', search_array);
+//  }
+  
+  _.each(search_array, function(parts){
+    if(!_.isEmpty(parts)){
+      var final_search_line = {
+        plates: [],
+        plate_ranges: [],
+        wellnames: [],
+        well_ids: [],
+        copies: [],
+        errors: [],
+        combined: []
+      };
+      _.each(parts, function(part){
+        if (Iccbl.appModel.DEBUG){
+          console.log('test part: '+ part);
+        }
+        if (PLATE_PATTERN.test(part)){
+          if (Iccbl.appModel.DEBUG){
+            console.log('found plate:' + part);
+          }
+          final_search_line.plates.push(part);
+        }else if (PLATE_RANGE_PATTERN.test(part)){
+          var rangeParts = PLATE_RANGE_PATTERN.exec(part);
+          rangeParts = [rangeParts[1],rangeParts[2]];
+          rangeParts.sort();
+          if (Iccbl.appModel.DEBUG){
+            console.log('from PLATE_RANGE_PATTERN:' + part
+              + 'to' + rangeParts.join(','));
+          }
+          final_search_line.plate_ranges.push(rangeParts[0]+'-'+rangeParts[1]);
+        }else if (WELL_ID_PATTERN.test(part)){
+          var match = WELL_ID_PATTERN.exec(part);
+          var plate = parseInt(match[1]);
+          var wellrow = match[3].toUpperCase();
+          var wellcol = parseInt(match[4]);
+          if (wellcol < 10) {
+            wellcol = '0'+wellcol;
+          }
+          var wellname = wellrow + wellcol;
+          var wellid = '' + plate + ':' + wellname;
+          if (Iccbl.appModel.DEBUG){
+            console.log('from WELL_ID:' + part + 'to' + wellid);
+          }
+          final_search_line['well_ids'].push(wellid);
+        }else if (WELL_PATTERN.test(part)) {
+          var match = WELL_PATTERN.exec(part);
+          var wellrow = match[1].toUpperCase();
+          var wellcol = parseInt(match[2]);
+          if (wellcol < 10) {
+            wellcol = '0'+wellcol;
+          }
+          var wellname = wellrow + wellcol;
+          if (Iccbl.appModel.DEBUG){
+            console.log('from WELL_PATTERN:' + part + 'to:' + wellname);
+          }
+          final_search_line['wellnames'].push(wellname);
+        } else if (COPY_NAME_PATTERN.test(part)) {
+          if (Iccbl.appModel.DEBUG){
+            console.log('found copy:' + part);
+          }
+          final_search_line.copies.push(part);
+        } else {
+          final_search_line['errors'].push('part not recognized: ' + part);
+          errors.push('part not recognized: ' + part);
+        }
+      });
+
+      if (Iccbl.appModel.DEBUG){
+        console.log('step 1: search_line' + JSON.stringify(final_search_line));
+      }
+
+      var well_ids = final_search_line['well_ids'];
+      var wellnames = final_search_line['wellnames'];
+      var plates = final_search_line['plates'];
+      var plate_ranges = final_search_line['plate_ranges'];
+      var copies = final_search_line['copies'];
+      
+      if (_.isEmpty(well_ids) && _.isEmpty(plates) && _.isEmpty(plate_ranges)
+          && _.isEmpty(copies)){
+          var errmsg = 'Must specify either a plate, plate range, copy, or well_id: ' + line;
+          final_search_line['errors'].push(errmsg);
+          errors.push(errmsg);
+      }
+      if (_.isEmpty(well_ids) && _.isEmpty(plates) && _.isEmpty(plate_ranges)
+          && !_.isEmpty(copies)){
+          var errmsg = 'Must specify either a plate, plate range, or well_id with copies: ' + line;
+          final_search_line['errors'].push(errmsg);
+          errors.push(errmsg);
+      }
+      if (!_.isEmpty(well_ids)){
+        if (!_.isEmpty(plates) || !_.isEmpty(plate_ranges)){
+          var errmsg = 'Well ids may not be defined on the same line with '
+            + 'plate or plate ranges: ' + line;
+          final_search_line['errors'].push(errmsg);
+          errors.push(errmsg);
+        }
+      }
+
+      // Match wellnames only if plate, plate range, or single well_id is identified
+      if (!_.isEmpty(wellnames) && _.isEmpty(plates) && _.isEmpty(plate_ranges)){
+        if (well_ids.length > 1){
+          var errmsg = 'Well names may not be defined with multiple '
+            + 'well_ids: ' + line;
+          final_search_line['errors'].push(errmsg);
+          errors.push(errmsg);
+        } else if (well_ids.length == 1){
+          var well_id = well_ids[0];
+          var match = WELL_ID_PATTERN.exec(well_id);
+          var plate = parseInt(match[1]);
+          var wellrow = match[3].toUpperCase();
+          var wellcol = parseInt(match[4]);
+          if (wellcol < 10) {
+            wellcol = '0'+wellcol;
+          }
+          var wellname = wellrow + wellcol;
+          final_search_line['wellnames'].push(wellname);
+          final_search_line['plates'].push(plate);
+          final_search_line['well_ids'] = [];
+        } else {
+          var errmsg = 'Must specify a plate, plate_range, or well_id '
+            + 'for wellnames: ' + line;
+          final_search_line['errors'].push(errmsg);
+          errors.push(errmsg);
+        }
+      }
+      final_search_line.combined = _.union(
+        final_search_line.plates, final_search_line.plate_ranges,
+        final_search_line.wellnames, final_search_line.well_ids,
+        final_search_line.copies
+      );
+      if (Iccbl.appModel.DEBUG){
+        console.log('final_search_line.combined ',
+          JSON.stringify(final_search_line.combined));
+      }
+      final_search_array.push(final_search_line);
+    }
+  });
+  if (Iccbl.appModel.DEBUG){
+    console.log('final_search_array', final_search_array);
+  }
+  return final_search_array;
+
+};
 
 /**
  * Parse a Copy Plate search by line into an array of search lines of the form:
@@ -1119,9 +1320,9 @@ var parseRawWellSearch = Iccbl.parseRawWellSearch = function(rawData,errors){
  */
 var parseRawPlateSearch = Iccbl.parseRawPlateSearch = function(rawData, errors){
 
-  var search_array = []
-
   var or_list = rawData.split(SEARCH_LINE_SPLITTING_PATTERN);
+  var search_array = []
+  var final_search_array = [];
 
   _.each(or_list, function(clause){
     clause = clause.trim();
@@ -1145,7 +1346,6 @@ var parseRawPlateSearch = Iccbl.parseRawPlateSearch = function(rawData, errors){
 
   if (Iccbl.appModel.DEBUG) console.log('parseRawPlateSearch: search_array', search_array);
 
-  var final_search_array = [];
   _.each(search_array, function(parts){
     if(!_.isEmpty(parts)){
       var final_search_line = {
@@ -2416,6 +2616,7 @@ _.extend(SIUnitsFormatter.prototype, {
 
     if (self.use_rounding == false){
       // NOTE: use truncate to match current Screensaver functionality
+      // NOTE: "~~" is equivalent to Math.floor()
       val = val.toFixed(~~decimals);
       if( self.trailing_zeros == false){
         val = val*1;
@@ -2447,7 +2648,6 @@ _.extend(SIUnitsFormatter.prototype, {
 
     if (formattedValue === '') return null;
 
-    // TODO: test regex version here
     var match = this.SI_UNIT_PATTERN.exec(formattedValue);
     if (!match){
       throw 'SI Unit value not recognized' + formattedValue;
@@ -5257,13 +5457,11 @@ var SIUnitFormFilter = NumberFormFilter.extend({
   },
 
   _calculate: function(multiplier, sci_mult, val){
-    // Run strip after every calculation to round out floating point math errors
-    function strip(number) {
-      return (parseFloat(number.toPrecision(12)));
-      };
-    val = strip(val / multiplier);
+    val = val / multiplier;
     if(sci_mult > 0){ // if sci unit is undefined, assume to be 1
-      val = strip(val * sci_mult);
+      val = maxPrecision(val * sci_mult);
+    } else {
+      val = maxPrecision(val);
     }
     return val;
   },
@@ -5272,10 +5470,7 @@ var SIUnitFormFilter = NumberFormFilter.extend({
     var decimals = 3; // TODO: users will not be expected to enter values beyond
                       // 3 decimals
     var self = this;
-    function strip(number) {
-      return (parseFloat(number.toPrecision(12)));
-      };
-    number = strip(number/self.multiplier);
+    number = maxPrecision(number/self.multiplier);
     pair = _.find(this.siunits, function(pair){
       return pair[1] <= Math.abs(number);
     });
@@ -5397,11 +5592,6 @@ var createBackgridColumn = Iccbl.createBackgridColumn =
     }
 
   }
-//  if (data_type == 'list'){
-//    backgridCellType = backgridCellType.extend({
-//      formatter: Iccbl.StringFormatter
-//    });
-//  }
   column = _.extend(column, {
     'name' : key,
     'label' : prop['title'],

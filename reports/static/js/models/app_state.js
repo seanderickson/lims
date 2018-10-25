@@ -2844,6 +2844,9 @@ define([
   appState.MAX_RAW_SEARCHES_IN_URL = 10;
   appState.MAX_ROWS_IN_DIALOG_MSG = 20;
   
+  // Use MAX_PRECISION to remove floating point math errors
+  appState.MAX_PRECISION = 12;
+  
   // API Param elements are used by the API
   appState.API_PARAM_SEARCH_ID = 'search_id'
   appState.API_PARAM_NESTED_SEARCH = 'nested_search_data';

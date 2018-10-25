@@ -969,6 +969,7 @@ class ApiResource(SqlAlchemyResource):
         id_attribute = schema['id_attribute']
         resource_name = self._meta.resource_name + '/'
         logger.debug(
+
             'find_key_from_resource_uri: %r, resource_name: %r, id_attribute: %r', 
             resource_uri, resource_name, id_attribute)
          
@@ -1092,6 +1093,7 @@ class ApiResource(SqlAlchemyResource):
         return self.get_list(request,**kwargs)
     
     def _parse_list_ids(self, deserialized, schema):
+        
         id_query_params = defaultdict(set)
         # store ids by row for ValidationError key
         rows_to_ids = defaultdict(dict)
@@ -1180,16 +1182,17 @@ class ApiResource(SqlAlchemyResource):
         (id_query_params,rows_to_ids) = self._parse_list_ids(deserialized, schema)
         if not id_query_params:
             logger.info('No ids found for PATCH (may be ok if id is generated)')
-        kwargs_for_log.update(id_query_params)
-
-        try:
-            logger.debug('get original state, for logging... %r', 
-                { k:v for k,v in kwargs_for_log.items() if k != 'schema'} )
-            original_data = self._get_list_response_internal(**kwargs_for_log)
-            logger.info('original state retrieved: %d', len(original_data))
-        except Exception as e:
-            logger.exception('original state not obtained')
-            original_data = []
+            raise ValidationError(key='id_kwargs', msg='No IDs found in patch data')
+        else:
+            kwargs_for_log.update(id_query_params)
+            try:
+                logger.debug('get original state, for logging... %r', 
+                    { k:v for k,v in kwargs_for_log.items() if k != 'schema'} )
+                original_data = self._get_list_response_internal(**kwargs_for_log)
+                logger.info('original state retrieved: %d', len(original_data))
+            except Exception as e:
+                logger.exception('original state not obtained')
+                original_data = []
 
         if 'parent_log' not in kwargs:
             parent_log = self.make_log(request, schema=schema)
@@ -1299,17 +1302,18 @@ class ApiResource(SqlAlchemyResource):
 
         if not id_query_params:
             logger.info('No ids found for PATCH (may be ok if id is generated)')
-        kwargs_for_log.update(id_query_params)
+        else:
+            kwargs_for_log.update(id_query_params)
+    
+            try:
+                logger.info('get original state, for logging...')
+                logger.debug('kwargs_for_log: %r', kwargs_for_log)
+                original_data = self._get_list_response_internal(**kwargs_for_log)
+            except Exception as e:
+                logger.exception('original state not obtained')
+                original_data = []
 
-        try:
-            logger.info('get original state, for logging...')
-            logger.debug('kwargs_for_log: %r', kwargs_for_log)
-            original_data = self._get_list_response_internal(**kwargs_for_log)
-        except Exception as e:
-            logger.exception('original state not obtained')
-            original_data = []
-
-        logger.info('put list kwargs_for_log: %r', 
+        logger.debug('put list kwargs_for_log: %r', 
             {k:v for k,v in kwargs_for_log.items() if k != 'schema' })
         logger.debug('put list %s, %s',deserialized,kwargs)
 
@@ -1340,15 +1344,19 @@ class ApiResource(SqlAlchemyResource):
 
         # Get new state, for logging
         # After patch, the id keys must be present
-        id_attribute = resource = schema['id_attribute']
-        for idkey in id_attribute:
-            id_param = '%s__in' % idkey
-            ids = set(kwargs_for_log.get(id_param,[]))
-            for new_obj in new_objs:
-                if hasattr(new_obj, idkey):
-                    idval = getattr(new_obj, idkey)
-                    ids.add(idval)
-            kwargs_for_log[id_param] = ids
+        if not id_query_params:
+            id_attribute = resource = schema['id_attribute']
+            for idkey in id_attribute:
+                id_param = '%s__in' % idkey
+                ids = set(id_query_params.get(id_param,[]))
+                for new_obj in new_objs:
+                    if hasattr(new_obj, idkey):
+                        idval = getattr(new_obj, idkey)
+                        ids.add(idval)
+                id_query_params[id_param] = ids
+            kwargs_for_log.update(id_query_params)
+        if not id_query_params:
+            raise Exception('no IDs found in posted data')
         try:
             logger.info('get new state, for logging...')
             logger.debug('kwargs_for_log: %r', kwargs_for_log)
@@ -1467,15 +1475,16 @@ class ApiResource(SqlAlchemyResource):
         (id_query_params,rows_to_ids) = self._parse_list_ids(deserialized, schema)
         if not id_query_params:
             logger.info('No ids found for PATCH (may be ok if id is generated)')
-        kwargs_for_log.update(id_query_params)
-        
-        try:
-            logger.debug('get original state, for logging...')
-            logger.debug('kwargs_for_log: %r', kwargs_for_log)
-            original_data = self._get_list_response_internal(**kwargs_for_log)
-        except Exception as e:
-            logger.exception('original state not obtained')
-            original_data = []
+        else:
+            logger.info('patch ids: %r', id_query_params)
+            kwargs_for_log.update(id_query_params)
+            try:
+                logger.debug('get original state, for logging...')
+                logger.debug('kwargs_for_log: %r', kwargs_for_log)
+                original_data = self._get_list_response_internal(**kwargs_for_log)
+            except Exception as e:
+                logger.exception('original state not obtained')
+                original_data = []
 
         if 'parent_log' not in kwargs:
             parent_log = self.make_log(request, schema=schema)
@@ -1496,16 +1505,22 @@ class ApiResource(SqlAlchemyResource):
 
         # Get new state, for logging
         # After patch, the id keys must be present
-        for idkey in id_attribute:
-            id_param = '%s__in' % idkey
-            extant_ids = set(kwargs_for_log.get(id_param,[]))
-            for new_obj in new_objs:
-                if hasattr(new_obj, idkey):
-                    idval = getattr(new_obj, idkey)
-                    extant_ids.add(idval)
-            kwargs_for_log[id_param] = extant_ids
+        if not id_query_params:
+            id_query_params = {}
+            for idkey in id_attribute:
+                id_param = '%s__in' % idkey
+                extant_ids = set(id_query_params.get(id_param,[]))
+                for new_obj in new_objs:
+                    if hasattr(new_obj, idkey):
+                        idval = getattr(new_obj, idkey)
+                        extant_ids.add(idval)
+                id_query_params[id_param] = extant_ids
+            kwargs_for_log.update(id_query_params)
+        if not id_query_params:
+            raise Exception('no IDs found in posted data')
+        
         new_data = self._get_list_response_internal(**kwargs_for_log)
-        logger.debug('post list done, new data: %d', len(new_data))
+        logger.info('post list done, new data: %d', len(new_data))
 
         logs = self.log_patches(request, original_data,new_data,schema=schema, **kwargs)
         logger.info('post logs created: %d', len(logs) if logs else 0 )
@@ -1531,8 +1546,7 @@ class ApiResource(SqlAlchemyResource):
                 request, { API_RESULT_META: meta }, response_class=HttpResponse)
         else:
             logger.info('return data with post response')
-            
-            response = self.get_list(request, meta=meta, **kwargs)             
+            response = self.get_list(request, meta=meta, **kwargs_for_log)             
             response.status_code = 200
             return response
 

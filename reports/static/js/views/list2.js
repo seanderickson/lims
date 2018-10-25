@@ -103,6 +103,8 @@ define([
           collection.url = self._options.url;
         }
       }
+      
+      self.base_url = collection.url;
 
       function setComplexSearch(){
         var searchId = self.listModel.get(appModel.URI_PATH_COMPLEX_SEARCH);
@@ -110,8 +112,9 @@ define([
           if (appModel.DEBUG) console.log('change: ' + appModel.URI_PATH_COMPLEX_SEARCH, searchId);
           collection.type = 'POST';
           var searchData = appModel.getSearch(searchId);
-          var new_url = self._options.url + '/' + appModel.URI_PATH_COMPLEX_SEARCH + '/' + searchId;
-          collection.url = new_url;
+          var url = self.base_url;
+          url += '/' + appModel.URI_PATH_COMPLEX_SEARCH + '/' + searchId;
+          collection.url = url;
           collection.fetch = function(options){
             var options = options || {};
             options.data = _.extend({}, options.data);
@@ -127,7 +130,6 @@ define([
         var searchData = self.listModel.get(appModel.URI_PATH_ENCODED_SEARCH);
         if (!_.isUndefined(searchData)){
           if (appModel.DEBUG) console.log('change: ' + appModel.URI_PATH_ENCODED_SEARCH, searchData);
-          collection.url = self._options.url ;
           collection.fetch = function(options){
             var options = options || {};
             options.data = _.extend({}, options.data);
@@ -218,6 +220,8 @@ define([
           parsedData = Iccbl.parseRawWellSearch(value, errors);
         }else if (resource.key == 'compound_search'){
           parsedData = Iccbl.parseCompoundVendorIDSearch(value,errors);
+        }else if (resource.key == 'copywell'){
+          parsedData = Iccbl.parseRawCopyWellSearch(value,errors);
         }else if (resource.key == 'librarycopyplate'){
           parsedData = Iccbl.parseRawPlateSearch(value,errors);
         }else{

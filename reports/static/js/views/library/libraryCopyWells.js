@@ -7,12 +7,13 @@ define([
   'models/app_state',
   'views/list2',
   'views/generic_detail_layout',
+  'views/generic_edit',
   'views/library/library',
   'utils/uploadDataForm',
   'templates/genericResource.html'
 ], 
 function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout, 
-         LibraryView, UploadDataForm, layout) {
+         EditView, LibraryView, UploadDataForm, layout) {
   
   var LibraryCopyWellView = Backbone.Layout.extend({
     
@@ -37,30 +38,148 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
     },
     
     afterRender: function(){
-      
+      var self = this;
       var uriStack = this.uriStack;
-      var library = this.library;
-      var copy = this.copy;
-      var url = [ 
-          library.resource.apiUri,library.key,'copy',copy.get('copy_name'),
-          'copywell'].join('/');
       var resourceId = 'copywell';
-      var resource = appModel.getResource(resourceId);
 
       if (!_.isEmpty(uriStack) &&
               !_.contains(appModel.LIST_ARGS, uriStack[0]) ) {
         // Detail view
-        var well_id = uriStack.shift();
-        this.consumedStack = [well_id];
-        var _key = library.key + '/' + copy.get('copy_name')+ '/' + well_id;
-        appModel.getModel(resourceId, _key, this.showDetail );
+        if (self.library && self.copy){
+          // If in the context of libary/copy, then just the well id
+          var well_id = uriStack.shift();
+          this.consumedStack = [well_id];
+          var _key = self.library.key + '/' + self.copy.get('copy_name')+ '/' + well_id;
+          appModel.getModel(resourceId, _key, this.showDetail );
+        } else {
+          var copy_well_id = uriStack.shift();
+          appModel.getModel(resourceId, copy_well_id, this.showDetail );
+        }
       } else {
-        // List view
-        this.consumedStack = [];
-        this.showList(resource, url);
-        this.$("#tab_container-title").empty();
+        if (_.isEmpty(uriStack)) {
+          self.consumedStack = [];
+          self.reportUriStack([]);
+          self.showCopyWellSearchForm();
+        } else {
+          this.$("#tab_container-title").empty();
+          this.consumedStack = [];
+          this.showList();
+        }
       }
-    },     
+    },
+    
+    showCopyWellSearchForm(){
+      var self = this;
+      var resource = appModel.getResource('copywell');
+      ///// Copy Well search
+      var copyWellsSchema = {};
+      
+      function validateCopyWellSearch(value,formValues){
+        var errors = [];
+        var parsedData = Iccbl.parseRawCopyWellSearch(value, errors);
+        if (_.isEmpty(parsedData)){
+          errors.push('no values found for input');
+        } else {
+          console.log('parsedData', parsedData);
+        }
+        if (!_.isEmpty(errors)){
+          return {
+            type: 'searchVal',
+            message: errors.join('; ')
+          };
+        }
+      };
+      
+      copyWellsSchema['searchVal'] = {
+        title: 'Find',
+        key: 'searchVal',
+        help: 'Copy Well Search',
+        placeholder: 'Copy Wells...',
+        validators: ['required',validateCopyWellSearch],
+        type: EditView.TextArea2,
+        template: appModel._fieldTemplate,
+        editorClass: 'form-control'
+      };
+      var CopyWellsFormModel = Backbone.Model.extend({
+        schema: copyWellsSchema,
+        validate: function(attrs) {
+          var errors = {};
+          if (!_.isEmpty(errors)) return errors;
+        }
+      });
+      var copyWellsFormModel = new CopyWellsFormModel({
+      });
+      
+      var copyWellsForm = new Backbone.Form({
+        model: copyWellsFormModel,
+        template: appModel._form_template,
+//        el: '#search-box-2b'
+      });
+
+      var View = Backbone.Layout.extend({
+        template: _.template(layout),
+        afterRender: function(){
+          var $copyWellsForm = copyWellsForm.render().$el;
+          $('#resource_content').html($copyWellsForm);
+          $copyWellsForm.append([
+            '<button type="submit" class="btn btn-default btn-xs" ',
+            'style="width: 3em;">ok</input>',
+          ].join(''));
+          
+    
+          $copyWellsForm.find('[ type="submit" ]').click(function(e){
+            e.preventDefault();
+            $copyWellsForm.find('[data-error]').empty();
+            var errors = copyWellsForm.commit({ validate: true }); 
+            if(!_.isEmpty(errors)){
+              $copyWellsForm.find('[name="searchVal"]').addClass(self.errorClass);
+              return;
+            }else{
+              $copyWellsForm.find('[name="searchVal"]').removeClass(self.errorClass);
+            }
+            
+            var text_to_search = copyWellsForm.getValue('searchVal');
+            
+            console.log('processCopyWellSearch: ', text_to_search);
+            errors = [];
+            var parsedSearchArray = Iccbl.parseRawCopyWellSearch(text_to_search,errors);
+            if (!_.isEmpty(errors)){
+              $copyWellsForm.find('[name="searchVal"]').addClass(self.errorClass);
+              $copyWellsForm.find('[data-error]').html(errors.join('<br/>'));
+              return;
+            }
+      
+            
+            if (parsedSearchArray.length <= appModel.MAX_RAW_SEARCHES_IN_URL){
+              // encode simple searches as a URL param
+              var encodedSearches = [];
+              _.each(parsedSearchArray, function(parsedSearch){
+                encodedSearches.push(_.map(
+                  parsedSearch.combined, encodeURIComponent).join(','));
+              });
+              var uriStack = [resource.key, appModel.URI_PATH_ENCODED_SEARCH, 
+                encodedSearches.join(appModel.UI_PARAM_RAW_SEARCH_LINE_ENCODE)];
+              appModel.setUriStack(uriStack);
+            }else{
+              // must change the route, and create a post
+              var searchId = ( new Date() ).getTime();
+              appModel.setSearch(searchId,text_to_search);
+              this.searchId = searchId;
+              var uriStack = [
+                resource.key, appModel.URI_PATH_COMPLEX_SEARCH, 
+                searchId];
+              appModel.setUriStack(uriStack);
+            }
+            
+          }); // submit
+
+        }
+      });
+      var view = new View();
+      Backbone.Layout.setupView(view);
+      self.setView('#tab_container', view).render();
+      
+    },
     
     showDetail: function(model) {
       var self = this;
@@ -77,10 +196,21 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       self.$("#tab_container-title").html('Well ' + model.get('well_id'));
     },
 
-    showList: function(resource, url) {
+    showList: function() {
+      console.log('show list...');
       var self = this;
       var uriStack = _.clone(this.uriStack);
       var extraControls = [];
+
+      var resource = appModel.getResource('copywell');
+      var url = [resource.apiUri];
+      if (self.library && self.copy){
+        url = [ 
+          self.library.resource.apiUri,self.library.key,'copy',self.copy.get('copy_name'),
+          'copywell'];
+      }
+      url = url.join('/');
+      
       var Collection = Iccbl.MyCollection.extend({
         url: url
       });
@@ -93,34 +223,36 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       }
       
       // Set concentration type visibility based concentrations found in library wells
-      var concentration_types = self.library.get('concentration_types');
       resource.fields['mg_ml_concentration']['visibility'] = [];
       resource.fields['molar_concentration']['visibility'] = [];
-      if (concentration_types) {
-        if (_.contains(concentration_types, 'mg_ml')){
-          resource.fields['mg_ml_concentration']['visibility'] = ['l'];
-        }
-        if (_.contains(concentration_types, 'molar')){
-          resource.fields['molar_concentration']['visibility'] = ['l'];
+      if (self.library){
+        var concentration_types = self.library.get('concentration_types');
+        if (concentration_types) {
+          if (_.contains(concentration_types, 'mg_ml')){
+            resource.fields['mg_ml_concentration']['visibility'] = ['l'];
+          }
+          if (_.contains(concentration_types, 'molar')){
+            resource.fields['molar_concentration']['visibility'] = ['l'];
+          }
         }
       }
 
       if (appModel.hasPermission(resource.key, 'write')){
         
-        // Set field visibility based on copy type
-        if(self.copy && self.copy.get('usage_type') == 'cherry_pick_source_plates'){
-          _.each(_.pick(resource['fields'], 
-            ['volume']), 
-            function(field){
-              field['editability'] = ['l','u'];
-            });
-        }
         _.each(_.pick(resource['fields'], 
-          ['mg_ml_concentration','molar_concentration']), 
+          ['volume', 'mg_ml_concentration', 'molar_concentration', 'cherry_pick_screening_count']), 
           function(field){
-            field['editability'] = ['l','d'];
+            field['editability'] = ['l','u'];
           });
         
+        // Set up the grid to record edits of the "well_volume" column
+        var showSaveButton = $([
+          '<a class="btn btn-default btn-sm pull-down" ',
+            'style="display: none; " ',
+            'role="button" id="save_button_wells" href="#">',
+            'save</a>'
+          ].join(''));
+        extraControls.push(showSaveButton);
         var showUploadButton = $([
           '<a class="btn btn-default btn-sm pull-down" ',
             'role="button" id="patch_resource" href="#">',
@@ -130,12 +262,10 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         
         showUploadButton.click(function(e){
           e.preventDefault();
-          function callbackSuccess() {
-          };
-          
           UploadDataForm.postUploadFileDialog(
             collection.url, resource.content_types)
-            .done(function(){
+            .done(function(data, textStatus, jqXHR){
+              appModel.showConnectionResult(data);
               collection.fetch({ reset: true });
             })
             .fail(function(){
@@ -143,14 +273,6 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
             });
         });
 
-        // Set up the grid to record edits of the "well_volume" column
-        var showSaveButton = $([
-          '<a class="btn btn-default btn-sm pull-down" ',
-            'style="display: none; " ',
-            'role="button" id="save_button_wells" href="#">',
-            'save</a>'
-          ].join(''));
-        extraControls.push(showSaveButton);
         // Create a new collection of just the changed items 
         // (so that multi page changes can be collected)
         var PostCollection = Backbone.Collection.extend({
@@ -173,41 +295,97 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
                 console.log('no changes');
                 return;
               }
-              
               var saveModel = new Backbone.Model(model.pick(resource.id_attribute));
-
+              // Save the copy_usage_type to perform warning later if not CPR usage
+              saveModel.set('copy_usage_type', model.get('copy_usage_type'));
               // Because the siUnit cell converts to float, must filter spurious changes
               var has_changes = false;
-              var newValue = parseFloat(model.get("volume"));
-              var prevValue = parseFloat(model.previous("volume"));
+              
+              // Check volume
+              var modelField = 'volume';
+              var newValue = parseFloat(model.get(modelField));
+              var prevValue = parseFloat(model.previous(modelField));
+
+              // Round the raw previous value
+              var displayOptions = resource.fields[modelField]['display_options'];
+              var defaultUnit = _.result(displayOptions,'defaultUnit');
+              var precision = _.result(displayOptions, 'decimals');
+              if (_.isNumber(defaultUnit) && _.isNumber(precision)){
+                prevValue = Iccbl.roundForDefaultUnit(prevValue, precision, defaultUnit);
+              }
+              
               // NaN !== NaN
               if (!_.isNaN(newValue) && newValue !== prevValue){
                 has_changes = true;
-                saveModel.set('volume', model.get('volume'));
+                console.log('field value change:', modelField, prevValue, newValue);
+                saveModel.set(modelField, model.get(modelField));
               } else {
-                console.log('no change in volume');
+                self.$el.find('td.'+modelField).removeClass('edited');
+                console.log('no change in field: ', modelField);
               }
-              var newValue = parseFloat(model.get("mg_ml_concentration"));
-              var prevValue = parseFloat(model.previous("mg_ml_concentration"));
+
+              // Check the concentrations
+              var modelField = 'mg_ml_concentration';
+              var newValue = parseFloat(model.get(modelField));
+              var prevValue = parseFloat(model.previous(modelField));
+
+              // Round the raw previous value
+              var displayOptions = resource.fields[modelField]['display_options'];
+              var defaultUnit = _.result(displayOptions,'defaultUnit');
+              var precision = _.result(displayOptions, 'decimals');
+              if (_.isNumber(defaultUnit) && _.isNumber(precision)){
+                prevValue = Iccbl.roundForDefaultUnit(prevValue, precision, defaultUnit);
+              }
+              
+              // NaN !== NaN
               if (!_.isNaN(newValue) && newValue !== prevValue){
                 has_changes = true;
-                saveModel.set('mg_ml_concentration', model.get('mg_ml_concentration'));
+                console.log('field value change:', modelField, prevValue, newValue);
+                saveModel.set(modelField, model.get(modelField));
               } else {
-                console.log('no change in mg_ml_concentration');
+                self.$el.find('td.'+modelField).removeClass('edited');
+                console.log('no change in field: ', modelField);
               }
-              var newValue = parseFloat(model.get("molar_concentration"));
-              var prevValue = parseFloat(model.previous("molar_concentration"));
+
+              var modelField = 'molar_concentration';
+              var newValue = parseFloat(model.get(modelField));
+              var prevValue = parseFloat(model.previous(modelField));
+
+              // Round the raw previous value
+              var displayOptions = resource.fields[modelField]['display_options'];
+              var defaultUnit = _.result(displayOptions,'defaultUnit');
+              var precision = _.result(displayOptions, 'decimals');
+              if (_.isNumber(defaultUnit) && _.isNumber(precision)){
+                prevValue = Iccbl.roundForDefaultUnit(prevValue, precision, defaultUnit);
+              }
+              
+              // NaN !== NaN
               if (!_.isNaN(newValue) && newValue !== prevValue){
                 has_changes = true;
-                saveModel.set('molar_concentration', model.get('molar_concentration'));
+                console.log('field value change:', modelField, prevValue, newValue);
+                saveModel.set(modelField, model.get(modelField));
               } else {
-                console.log('no change in molar_concentration');
+                self.$el.find('td.'+modelField).removeClass('edited');
+                console.log('no change in field: ', modelField);
+              }
+              
+              var modelField = 'cherry_pick_screening_count';
+              var newValue = model.get(modelField);
+              var prevValue = model.previous(modelField);
+              if (newValue != prevValue){
+                has_changes = true;
+                console.log('field value change:', modelField, prevValue, newValue);
+                saveModel.set(modelField, model.get(modelField));
+              } else {
+                self.$el.find('td.'+modelField).removeClass('edited');
+                console.log('no change in field: ', modelField);
               }
               
               if (!has_changes) {
                 console.log('no changes');
                 return;
               }
+
               changedCollection.add(saveModel);
               showSaveButton.show();
               appModel.setPagePending();
@@ -231,6 +409,24 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
             return;
           }
           
+          var copy_usage_types = {};
+          changedCollection.each(function(model){
+            var type = model.get('copy_usage_type');
+            console.log('checking', model.toJSON(), type);
+            if (type !== 'cherry_pick_source_plates'){
+              var typeCount = _.result(copy_usage_types,type, 0);
+              copy_usage_types[type] = typeCount + 1;
+            }
+          });
+          if (!_.isEmpty(copy_usage_types)){
+            appModel.showModal({
+              title: 'Copy types are not "cherry_pick_source_plates"',
+              body: appModel.print_json(copy_usage_types),
+              ok: function(){
+                console.log('ok...');
+              }
+            });
+          }
           var saveFunction = function() {
             appModel.showOkCommentForm({
               ok: function(formValues){
@@ -273,21 +469,27 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         'role="button" id="showHistoryButton_wells" href="#">',
         'History</a>'
       ].join(''));
-      extraControls.push(showHistoryButton);
-      showHistoryButton.click(function(e){
-        e.preventDefault();
-        var newUriStack = ['apilog','order','-date_time', appModel.URI_PATH_SEARCH];
-        var search = {};
-        search['ref_resource_name'] = 'copywell';
-        search['key__icontains'] = [
-          self.library.get('short_name'),
-          self.copy.get('copy_name')].join('/');
-        newUriStack.push(appModel.createSearchString(search));
-        var route = newUriStack.join('/');
-        console.log('history route: ' + route);
-        appModel.router.navigate(route, {trigger: true});
-        self.remove();
-      });
+      
+      
+      if (self.library && self.copy){
+        // Only show history if in the context of a library copy
+        extraControls.push(showHistoryButton);
+        showHistoryButton.click(function(e){
+          e.preventDefault();
+          var newUriStack = ['apilog','order','-date_time', appModel.URI_PATH_SEARCH];
+          var search = {};
+          search['ref_resource_name'] = 'copywell';
+          search['key__icontains'] = [
+            self.library.get('short_name'),
+            self.copy.get('copy_name')].join('/');
+          newUriStack.push(appModel.createSearchString(search));
+          var route = newUriStack.join('/');
+          console.log('history route: ' + route);
+          appModel.router.navigate(route, {trigger: true});
+          self.remove();
+        });
+      }
+      
 
       resource.fields['copy_name'].backgridCellType = 
         Iccbl.LinkCell.extend(_.extend({},
@@ -319,8 +521,11 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
               e.preventDefault();
               var well_id = this.model.get('well_id');
               self.consumedStack = [well_id];
-              var _key = [self.library.key, self.copy.get('copy_name'), well_id].join('/');
-              appModel.getModel('copywell', _key, self.showDetail );
+              var _key = [this.model.get('copy_name'), well_id];
+              if (self.library){
+                _key.unshift(self.library.key);
+              }
+              appModel.getModel('copywell', _key.join('/'), self.showDetail );
             }
           }));
             

@@ -15,7 +15,7 @@ molar_concentration,fields.copywell,custom,,,12,,,TRUE,"Molar Concentration","Mo
 plate_screening_count,fields.copywell,plate,screening_count,,13,,,TRUE,"Number of library screening activities for the plate","Plate Screening Count",TRUE,,,[l;d],,integer,,,,,,,,,,,
 plate_cplt_screening_count,fields.copywell,plate,cplt_screening_count,,14,,,TRUE,"Number of cherry pick liquid transfers for the plate","Plate Cherry Pick Screening Count",TRUE,,,[l;d],,integer,,,,,,,,,,,
 cumulative_freeze_thaw_count,fields.copywell,custom,,,15,,,TRUE,"Number of times that the plate has been thawed for either a library screening or a cherry pick screening","Freeze Thaw Count",TRUE,,,[l;d],,integer,,,,,,,,,,,
-cherry_pick_screening_count,fields.copywell,,,,16,,,TRUE,"Number of times that this Copy Well has been accessed for a cherry pick screening activity (for freeze-thaw accounting)","Well Cherry Pick Screening Count",TRUE,,,[l;d],,integer,,,,,,,,,,,
+cherry_pick_screening_count,fields.copywell,,,,16,,,TRUE,"Number of times that this Copy Well has been accessed for a cherry pick screening activity (for freeze-thaw accounting)","Well Cherry Pick Screening Count",TRUE,,,[l;d],[c;u],integer,,,,,,,,,,,
 copywell_id,fields.copywell,custom,,,50,,,TRUE,"Full Copy Well ID (library_short_name/copy_name/well_id)","Full Copy Well ID",TRUE,,,,,string,link,"{ 'hrefTemplate': '#copywell/{copywell_id}' }",,,,,,,,,
 library_screen_type,fields.copywell,library,screen_type,,18,,,TRUE,"RNAi' or 'Small Molecule'","Screen Type",TRUE,,screen.type,,,string,,,select,,,,,,,,
 library_type,fields.copywell,library,library_type,,19,,,TRUE,"The type of library, e.g., 'Commercial', 'Known Bioactives', 'siRNA', etc.","Library Type",TRUE,,library.type,,,string,,,select,,,,,,,,

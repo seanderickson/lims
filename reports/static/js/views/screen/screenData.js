@@ -132,12 +132,13 @@ define([
         var extraControls = [];
         var show_positives_control = $([
           '<label class="checkbox-inline">',
-          '  <input type="checkbox">show positive rows only',
+          '  <input type="checkbox">Show Positive Rows Only',
           '</label>'
           ].join(''));
         var show_mutual_positives_control = $([
-          '<label class="checkbox-inline">',
-           '  <input type="checkbox">mutual positives',
+          '<label class="checkbox-inline" ',
+          '       title="Show columns from other screens that have overlapping (mutual) positives." >',
+           '  <input type="checkbox">Mutual Positives',
            '</label>'
            ].join(''));
         //var show_mutual_positives_control = $([
@@ -148,8 +149,8 @@ define([
         //   ].join(''));
         var show_other_screen_columns_button = $([
           '<button class="btn btn-default btn-sm pull-right" role="button" ',
-          'id="showOtherScreenColumns" title="Show other screen columns" >',
-          'Other screen columns',
+          'id="showOtherScreenColumns" title="Show other screen and study columns" >',
+          'Other Screen and Study Columns',
           '</button>'
           ].join(''))
         if (_.isEmpty(self.model.get('study_type'))) {
@@ -232,6 +233,10 @@ define([
         show_mutual_positives_control.find('input[type="checkbox"]').change(function(e) {
           if (e.target.checked) {
             window.setTimeout(function() {
+              var searchHash = _.clone(view.listModel.get(appModel.URI_PATH_SEARCH));
+              searchHash['is_positive__eq'] = 'true';
+              view.listModel.set(appModel.URI_PATH_SEARCH,searchHash);
+              show_positives_control.find('input[type="checkbox"]').prop('checked',true);
               self.showMutualPositiveColumns(view, true);
             });
           } else {

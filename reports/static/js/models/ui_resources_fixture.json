@@ -436,16 +436,14 @@
     }
   },
   "copywell": {
+    "listView": "LibraryCopyWellsView",
     "options": { 
       "rpp_selections" : [24,96,384,1000],
-      "rpp": 24,
-      "search": { 
-        "library_well_type__in": "experimental"
-      }
+      "rpp": 24
     }
   },
   "copywell_sm_cpr": {
-    "listView": "ListView",
+    "listView": "LibraryCopyWellsView",
     "header_message": "Small Molecule, Cherry Pick Source Copy Well",
     "title": "Copy Well (small molecule, cherry pick source plates)",
     "listing_title": "Copy Wells (small molecule, cherry pick source plates)",
@@ -462,7 +460,7 @@
     }
   },
   "copywell_rnai_cpr": {
-    "listView": "ListView",
+    "listView": "LibraryCopyWellsView",
     "header_message": "RNAi, Cherry Pick Source Copy Well",
     "title": "Copy Well (RNAi, cherry pick source plates)",
     "listing_title": "Copy Wells (RNAi, cherry pick source plates)",

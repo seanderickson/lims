@@ -22871,12 +22871,11 @@ class ReagentResource(DbApiResource):
                 select([_or.c.well_id])
                 .select_from(_or)
                 .where(and_(
-                    _or.c.vendor_identifier==_reagent2.c.vendor_identifier,
-                    _or.c.vendor_name==_reagent2.c.vendor_name,
-                    _or.c.well_id != _reagent2.c.well_id))
-                .where(_reagent2.c.vendor_identifier != '')
-                .where(_reagent2.c.well_id == text('reagent.well_id'))
-                .order_by(_reagent2.c.well_id)
+                    _or.c.vendor_identifier != '',
+                    _or.c.vendor_identifier==text('reagent.vendor_identifier'),
+                    _or.c.vendor_name==text('reagent.vendor_name'),
+                    _or.c.well_id != text('reagent.well_id')))
+                .order_by(_or.c.well_id)
                 .alias('other_reagents'))
             )
                         

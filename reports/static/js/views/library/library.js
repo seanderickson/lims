@@ -476,7 +476,7 @@ define([
                    self.model.key,
                    'reagent'].join('/');
         var download_contents_button = $([
-           '<a class="btn btn-default btn-sm pull-right" ',
+           '<a class="btn btn-default btn-sm" ',
              'title="Download the full library reagent table (with images, if Excel)" ',
              'role="button" id="download_contents_button" >',
              'Full Download</a>'
@@ -487,7 +487,7 @@ define([
           resource: resource,
           url: url,
           library: self.model,
-          extraListControls: [download_contents_button]
+          extraControls: [download_contents_button]
         });
         Backbone.Layout.setupView(view);
         self.listenTo(view , 'uriStack:change', self.reportUriStack);

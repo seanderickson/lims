@@ -2178,6 +2178,7 @@ define([
       
       if (self.model.get('screener_cherry_pick_count') == 0) {
         self.showScpSearchForm();
+        self.reportUriStack([]);
       } else { // Screener cherry picks have been entered
         var schemaUrl = [
            self.model.resource.apiUri,self.model.key,'screener_cherry_pick',
@@ -2192,21 +2193,13 @@ define([
       var self = this;
       // create the search form
       
-      // FIXME: should use the same code as the search_box.js well search
-      var TextArea2 = Backbone.Form.editors.TextArea.extend({
-        render: function() {
-          TextArea2.__super__.render.apply(this,arguments);
-          this.$el.attr('placeholder', this.schema.placeholder);
-          return this;
-        },        
-      });
       var formSchema = {};
       formSchema['well_search'] = {
         title: 'Well Search',
         key: 'well_search',
         editorClass: 'input-full form-control',
         validators: ['required'],
-        type: TextArea2,
+        type: EditView.TextArea2,
         template: appModel._field_template
       };
       

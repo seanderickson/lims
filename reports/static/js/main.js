@@ -10,6 +10,7 @@ require('backgrid-paginator/backgrid-paginator.css');
 require('backgrid-filter/backgrid-filter.css');
 require('multiselect/css/multi-select.css');
 require('bootstrap-datepicker/dist/css/bootstrap-datepicker3.css');
+require('select2/dist/css/select2.css');
 require('bootstrap-chosen/bootstrap-chosen.css');
 require('jquery-bonsai/jquery.bonsai.css');
 require('jquery.bonsai.overrides.css');

@@ -386,7 +386,15 @@ define([
           libraries.each(function(library){
             var short_name = library.get('short_name');
             var library_name = library.get('library_name');
-            options.push({ val: short_name, label: short_name + ': ' + library_name });
+            
+            var label = short_name;
+            if (short_name != library_name){
+              label += ': ' + library_name;
+            }
+            label += ' (' + library.get('start_plate');
+            label += '-' + library.get('end_plate') + ')';
+            
+            options.push({ val: short_name, label: label });
           });
           self.set(prop,options);
           if (callBack) callBack(options);
@@ -638,8 +646,8 @@ define([
             var username = user.get('username');
             var name = user.get('name');
             var _label = name;
-            if(!_.isEmpty(username)) _label += ': ' + username;
-            _label += ' (' + user_id + ')';
+            if(!_.isEmpty(username)) _label += ' (' + username + ')';
+            _label += ': ' + user_id;
             options.unshift({ val: user_id, label: _label});
           });
           self.set(prop,options);
@@ -2755,7 +2763,7 @@ define([
   
   appState._form_template = _.template([
      '<div class="form-horizontal container" id="_form_template" >',
-     '<form data-fieldsets class="form form-horizontal container" autocomplete="off">',
+     '<form data-fieldsets class="form-group form-horizontal container" autocomplete="off">',
      "</form>",
      '<div id="data-error" class="has-error" ></div>',
      "</div>"].join(''));      

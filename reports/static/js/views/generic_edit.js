@@ -576,6 +576,8 @@ define([
     }
   });
   
+  
+  // TODO: 20181029 - replace Chosen select with Select2 (see search_box.js)
   var ChosenSelect = Backbone.Form.editors.Select.extend({
     render: function() {
       var self = this;
@@ -848,6 +850,7 @@ define([
           },
         'select':
           {
+            // TODO: 20181029 - replace Chosen select with Select2 (see search_box.js)
             type: ChosenSelect,
             editorClass: 'chosen-select',
             editorAttrs: { widthClass: 'col-sm-5'}
@@ -1156,6 +1159,7 @@ define([
       console.log('afterRender...');
 
       console.log('setup single selects using chosen...');
+      // TODO: 20181029 - replace Chosen select with Select2 (see search_box.js)
       // See http://harvesthq.github.io/chosen/
       this.$el.find('.chosen-select').chosen({
         disable_search_threshold: 3,

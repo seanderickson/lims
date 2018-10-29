@@ -7,9 +7,10 @@ define([
     'models/app_state',
     'views/generic_edit',
     'views/screen/plateRangeSearch',
+    'select2',
     'templates/search-box.html'
 ], function($, _, Backbone, backbone_forms, Iccbl, appModel, EditView, 
-    PlateRangeSearchView, searchBoxTemplate) {
+    PlateRangeSearchView, select2, searchBoxTemplate) {
     
   var SearchView = Backbone.Layout.extend({
 
@@ -57,21 +58,6 @@ define([
       console.log('---- initialize search_box');
 
       var args = args || {};
-      function validateWellSearch(value,formValues){
-        var errors = [];
-        var parsedData = Iccbl.parseRawWellSearch(value, errors);
-        if (_.isEmpty(parsedData)){
-          errors.push('no values found for input');
-        } else {
-          console.log('parsedData', parsedData);
-        }
-        if (!_.isEmpty(errors)){
-          return {
-            type: 'searchVal',
-            message: errors.join('; ')
-          };
-        }
-      };
       
       var plateCopySchema = {};
       function validatePlateSearch(value, formValues){
@@ -115,6 +101,23 @@ define([
       });
       
       ///// Well search
+
+      function validateWellSearch(value,formValues){
+        var errors = [];
+        var parsedData = Iccbl.parseRawWellSearch(value, errors);
+        if (_.isEmpty(parsedData)){
+          errors.push('no values found for input');
+        } else {
+          console.log('parsedData', parsedData);
+        }
+        if (!_.isEmpty(errors)){
+          return {
+            type: 'searchVal',
+            message: errors.join('; ')
+          };
+        }
+      };
+      
       var wellsSchema = {};
       wellsSchema['searchVal'] = {
         title: 'Find',
@@ -142,7 +145,54 @@ define([
         el: '#search-box-2-content'
       });
       
+      // 20181029 - show the copywell form only from the reports menu
+      ///// Copy Well search
+
+      //function validateCopyWellSearch(value,formValues){
+      //  var errors = [];
+      //  var parsedData = Iccbl.parseRawCopyWellSearch(value, errors);
+      //  if (_.isEmpty(parsedData)){
+      //    errors.push('no values found for input');
+      //  } else {
+      //    console.log('parsedData', parsedData);
+      //  }
+      //  if (!_.isEmpty(errors)){
+      //    return {
+      //      type: 'searchVal',
+      //      message: errors.join('; ')
+      //    };
+      //  }
+      //};
+      
+      //var copyWellsSchema = {};
+      //copyWellsSchema['searchVal'] = {
+      //  title: 'Find',
+      //  key: 'searchVal',
+      //  help: 'Copy Well Search',
+      //  placeholder: 'Copy Wells...',
+      //  validators: ['required',validateCopyWellSearch],
+      //  type: EditView.TextArea2,
+      //  template: self.fieldTemplate,
+      //  editorClass: 'form-control'
+      //};
+      //var CopyWellsFormModel = Backbone.Model.extend({
+      //  schema: copyWellsSchema,
+      //  validate: function(attrs) {
+      //    var errors = {};
+      //    if (!_.isEmpty(errors)) return errors;
+      //  }
+      //});
+      //var copyWellsFormModel = new CopyWellsFormModel({
+      //});
+      //
+      //var copyWellsForm = self.copyWellsForm = new Backbone.Form({
+      //  model: copyWellsFormModel,
+      //  template: self.searchFormTemplate,
+      //  el: '#search-box-2b'
+      //});
+      
       ///// Compound Name, Facility or Vendor ID
+      
       var compoundSchema = {};
       compoundSchema['searchVal'] = {
         help: 'Compound Name, Vendor ID Search',
@@ -170,6 +220,7 @@ define([
       });
       
       ///// Screening Inquiry
+      
       var screeningInqurySchema = {};
       function validateScreeningInquiry(value, formValues){
         var errors = [];
@@ -212,6 +263,7 @@ define([
       });      
       
       ///// Cherry Pick Request
+      
       var cprSchema = {};
       cprSchema['searchVal'] = {
         help: 'Cherry Pick Request Search',
@@ -253,28 +305,27 @@ define([
       schema1['user_id'] = {
         title: '',
         key: 'user_id',
-        type: EditView.ChosenSelect,
-        editorClass: 'chosen-select',
-        placeholder: 'Find a User...',
+        type: Backbone.Form.editors.Select,
+        editorClass: 'form-control user-select',
         options: appModel.getUserOptions(),
         template: self.choiceFieldTemplate 
       };
       schema1['screen_facility_id'] = {
         title: '',
         key: 'screen_facility_id',
-        type: EditView.ChosenSelect,
-        editorClass: 'chosen-select',
-        placeholder: 'Find a Screen...',
+        type: Backbone.Form.editors.Select,
+        editorClass: 'form-control screen-select',
         options: appModel.getScreenOptions(),
         template: self.choiceFieldTemplate
       };
+      
+      var libraryOptions = appModel.getLibraryOptions();
       schema1['library_short_name'] = {
         title: '',
         key: 'library_short_name',
-        type: EditView.ChosenSelect,
-        editorClass: 'chosen-select',
-        placeholder: 'Find a Library...',
-        options: appModel.getLibraryOptions(),
+        type: Backbone.Form.editors.Select,
+        editorClass: 'form-control library-select',
+        options: libraryOptions,
         template: self.choiceFieldTemplate
       };
       var FormFields1 = Backbone.Model.extend({
@@ -326,14 +377,62 @@ define([
         });
       });
       $('#search-box-1').html(this.form1.render().$el);
+
+      //console.log('setup single selects using chosen...');
+      //// See http://harvesthq.github.io/chosen/
+      //this.$el.find('.chosen-select').chosen({
+      //  width: '100%',
+      //  allow_single_deselect: true,
+      //  search_contains: true
+      //  });
       
-      console.log('setup single selects using chosen...');
-      // See http://harvesthq.github.io/chosen/
-      this.$el.find('.chosen-select').chosen({
-        width: '100%',
-        allow_single_deselect: true,
-        search_contains: true
-        });
+      // Select2
+      function matchCustom(params, data) {
+        // User term: params.term
+        // Option title: data.text
+        if (typeof data.text === 'undefined' || _.isEmpty(data.text)) {
+          return null;
+        }
+        if ($.trim(params.term) === '') {
+          return data;
+        }
+        
+        if (data.text.indexOf(params.term) > -1) {
+          return data;
+        }else{
+          var val = parseInt(params.term);
+          if (!_.isNaN(val)){
+            // Match the special plate range text created for the options
+            var PLATE_RANGE_PATTERN = /\((\d+)-(\d+)\)/;
+            var rangeParts = PLATE_RANGE_PATTERN.exec(data.text);
+            if (!_.isEmpty(rangeParts)){
+              var start = parseInt(rangeParts[1]);
+              var end = parseInt(rangeParts[2]);
+              var result = val >= start && val <= end;
+              if (result){
+                return data;
+              }
+            }
+          }
+        }      
+        return null;
+      }      
+      self.$el.find('.library-select').select2({
+        placeholder : { id:'-1', text:'Find a Library...'},
+        matcher: matchCustom,
+      });
+
+      self.$el.find('.screen-select').select2({
+        placeholder : { id:'-1', text:'Find a Screen...'},
+        matcher: matchCustom,
+      });
+
+      self.$el.find('.user-select').select2({
+        placeholder : { id:'-1', text:'Find a User...'},
+        matcher: matchCustom,
+      });
+
+      
       self.stopListening(appModel,'change:users');
       self.listenTo(appModel,'change:users', function(){
         console.log('user options changed');
@@ -360,17 +459,21 @@ define([
           self.render();
         });
       });
-      if (this.form2_data){
-        this.wellsForm.setValue('searchVal', this.form2_data);
+      if (this.wells_form_data){
+        this.wellsForm.setValue('searchVal', this.wells_form_data);
       }
-      if (this.form2a_data){
-        this.compoundNameForm.setValue('searchVal', this.form2a_data);
+      // 20181029 - show the copywell form only from the reports menu
+      //if (this.copy_wells_form_data){
+      //  this.copyWellsForm.setValue('searchVal', this.copy_wells_form_data);
+      //}
+      if (this.compound_name_form_data){
+        this.compoundNameForm.setValue('searchVal', this.compound_name_form_data);
       }
       if (this.plateCopyForm_data){
         this.plateCopyForm.setValue('searchVal', this.plateCopyForm_data);
       }
-      if (this.form5_data){
-        this.screeningInquiryForm.setValue('searchVal', this.form5_data);
+      if (this.screening_inq_form_data){
+        this.screeningInquiryForm.setValue('searchVal', this.screening_inq_form_data);
       }
     },
     
@@ -451,6 +554,31 @@ define([
           return;
         }
       });
+      
+      // 20181029 - show the copywell form only from the reports menu
+      ///// CopyWell search - perform search on server
+      //var copyWellsForm = this.copyWellsForm;
+      //var $copyWellsForm = this.copyWellsForm.render().$el;
+      //$('#search-box-2b').html($copyWellsForm);
+      //
+      //$copyWellsForm.find('[ type="submit" ]').click(function(e){
+      //  e.preventDefault();
+      //  self.$('[data-error]').empty();
+      //  var errors = copyWellsForm.commit({ validate: true }); 
+      //  if(!_.isEmpty(errors)){
+      //    $copyWellsForm.find('[name="searchVal"]').addClass(self.errorClass);
+      //    return;
+      //  }else{
+      //    $copyWellsForm.find('[name="searchVal"]').removeClass(self.errorClass);
+      //  }
+      //  
+      //  var errors = self.processCopyWellSearch(self.copyWellsForm.getValue('searchVal'));
+      //  if (!_.isEmpty(errors)){
+      //    $copyWellsForm.find('[name="searchVal"]').addClass(self.errorClass);
+      //    $copyWellsForm.find('[data-error]').html(errors.join('<br/>'));
+      //    return;
+      //  }
+      //});
       
       ///// Compound name, Vendor ID search- perform search on server
       var compoundNameForm = this.compoundNameForm;
@@ -634,7 +762,24 @@ define([
           }).join('\n');
           this.wellsForm.setValue('searchVal', parsedData);
           // plateCopyForm may not be rendered yet, store the value
-          this.form2_data = parsedData;
+          this.wells_form_data = parsedData;
+        
+        // 20181029 - show the copywell form only from the reports menu
+        //}else if (uiResourceId == 'copywell') {
+        //  var errors = [];
+        //  var search_data = complex_search[appModel.API_PARAM_SEARCH];
+        //  var parsedData = Iccbl.parseRawCopyWellSearch(search_data,errors);
+        //  if (!_.isEmpty(errors)){
+        //    console.log('Search data not parsed properly', errors);
+        //    return;
+        //  }
+        //  parsedData = _.map(parsedData, function(parsedLine){
+        //    return parsedLine.combined.join(' ');
+        //  }).join('\n');
+        //  this.copyWellsForm.setValue('searchVal', parsedData);
+        //  // form may not be rendered yet, store the value
+        //  this.copy_wells_form_data = parsedData;
+        
         }else if (uiResourceId == 'compound_search') {
           var search_data = complex_search[appModel.API_PARAM_SEARCH];
           var parsedData = Iccbl.parseCompoundVendorIDSearch(search_data,errors);
@@ -644,7 +789,7 @@ define([
           }
           parsedData = parsedData.join('\n');
           this.compoundNameForm.setValue('searchVal', parsedData);
-          this.form2a_data = parsedData;
+          this.compound_name_form_data = parsedData;
         } else {
           throw 'unknown resource for search: ' + uiResourceId;
         }
@@ -674,7 +819,7 @@ define([
             parsedData += ' x' + plateRangeSearchData.replicate_count;
             self.screeningInquiryForm.setValue('searchVal',parsedData);
             // wellsForm may not be rendered yet, store the value
-            self.form5_data = parsedData;
+            self.screening_inq_form_data = parsedData;
           }
         }
         return;
@@ -762,6 +907,40 @@ define([
       
     },
     
+    // 20181029 - show the copywell form only from the reports menu
+    //processCopyWellSearch: function(text_to_search){
+    //  console.log('processCopyWellSearch: ', text_to_search);
+    //  errors = [];
+    //  var parsedSearchArray = Iccbl.parseRawCopyWellSearch(text_to_search,errors);
+    //  if (!_.isEmpty(errors)){
+    //    return errors;
+    //  }
+    //
+    //  var resource = appModel.getResource('copywell');
+    //  
+    //  if (parsedSearchArray.length <= appModel.MAX_RAW_SEARCHES_IN_URL){
+    //    // encode simple searches as a URL param
+    //    var encodedSearches = [];
+    //    _.each(parsedSearchArray, function(parsedSearch){
+    //      encodedSearches.push(_.map(
+    //        parsedSearch.combined, encodeURIComponent).join(','));
+    //    });
+    //    var uriStack = [resource.key, appModel.URI_PATH_ENCODED_SEARCH, 
+    //      encodedSearches.join(appModel.UI_PARAM_RAW_SEARCH_LINE_ENCODE)];
+    //    appModel.setUriStack(uriStack);
+    //  }else{
+    //    // must change the route, and create a post
+    //    var searchId = ( new Date() ).getTime();
+    //    appModel.setSearch(searchId,text_to_search);
+    //    this.searchId = searchId;
+    //    var uriStack = [
+    //      resource.key, appModel.URI_PATH_COMPLEX_SEARCH, 
+    //      searchId];
+    //    appModel.setUriStack(uriStack);
+    //  }
+      
+    },
+    
     processCompoundSearch: function(text_to_search){
       errors = [];
       var parsedSearchArray = Iccbl.parseCompoundVendorIDSearch(text_to_search,errors);
@@ -792,6 +971,7 @@ define([
     cleanup: function(){
       this.plateCopyForm.setValue('searchVal', null);
       this.wellsForm.setValue('searchVal', null);
+      // this.copyWellsForm.setValue('searchVal', null);
       this.compoundNameForm.setValue('searchVal', null);
       this.cprForm.setValue('searchVal', null);
       this.screeningInquiryForm.setValue('searchVal', null)

@@ -105,6 +105,9 @@ function($, _, Backbone, appModel) {
       // Replace false (default) to create browser history
       var options = _.extend({ trigger: false, replace:false }, options); 
       this.navigate( route, options );
+      _.defer(function(){
+        window.scrollTo(0, 0);
+      });
     }
 
   });

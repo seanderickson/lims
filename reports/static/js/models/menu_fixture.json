@@ -99,16 +99,7 @@
           }
         },
         "copywell": {
-          "view": "list",
-          "expanded": false,
-          "submenus": {
-            "copywell_sm_cpr": {
-              "view": "list"
-            },
-            "copywell_rnai_cpr": {
-              "view": "list"
-            }
-          }          
+          "view": "list"
         },
         "platelocation": {
           "view": "list"

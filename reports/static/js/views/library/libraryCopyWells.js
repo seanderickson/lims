@@ -91,7 +91,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       };
       
       copyWellsSchema['searchVal'] = {
-        title: 'Find',
+        title: 'Find Copy Wells',
         key: 'searchVal',
         placeholder: 'Copy Wells...',
         validators: ['required',validateCopyWellSearch],
@@ -118,6 +118,9 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         template: _.template(layout),
         afterRender: function(){
           $('#resource_content').html(copyWellsForm.render().el);
+          
+          copyWellsForm.$el.find('textarea').attr('rows',20);
+          
           var helpLink = $('<a >&nbsp;?</a>');
           copyWellsForm.$el.find('.form-group').find('label').append(helpLink);
           helpLink.click(function(e){

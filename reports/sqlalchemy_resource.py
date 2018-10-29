@@ -549,7 +549,7 @@ class SqlAlchemyResource(IccblBaseResource):
             search_expressions = []
             filter_fields = set(filter_hash.keys())
             for search_hash in nested_search_data:
-                logger.info('search_hash: %s' % search_hash)
+                logger.debug('nested search_hash: %s' % search_hash)
                 
                 (search_filter_hash,readable_search_filter_hash) = \
                     SqlAlchemyResource.\
@@ -558,7 +558,7 @@ class SqlAlchemyResource(IccblBaseResource):
                     search_expressions.append(and_(*search_filter_hash.values()))
                     # Append search expressions for each field to a combined hash
                     for field,expression in search_filter_hash.items():
-                        logger.info(
+                        logger.debug(
                             'search filter to combine: %r, %r', field, expression)
                         if field in combined_filter_hash:
                             combined_filter_hash[field] = \

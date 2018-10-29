@@ -4,6 +4,7 @@ import re
 
 # WELL_ID_PATTERN = re.compile(r'^(\d{1,5}):?(([a-zA-Z]{1,2})(\d{1,2}))$')
 WELL_ID_PATTERN = re.compile(r'^(\d+):?(([a-zA-Z]{1,2})(\d{1,2}))$')
+COPYWELL_ID_PATTERN = re.compile(r'^([A-Za-z]+[\w\- :]*)/(\d+):?(([a-zA-Z]{1,2})(\d{1,2}))$')
 WELL_NAME_PATTERN = re.compile(r'^([a-zA-Z]{1,2})(\d{1,2})$')
 #PLATE_PATTERN = re.compile(r'^(\d{1,5})$')
 PLATE_PATTERN = re.compile(r'^(\d+)$')

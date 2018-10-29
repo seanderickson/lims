@@ -919,7 +919,8 @@ class ApiResource(SqlAlchemyResource):
         ''' 
         return the full ID for the resource, as defined by the "id_attribute"
         - if validate=True, raises ValidationError if some or all keys are missing
-        - otherwise, returns keys that can be found
+        - UPDATE: 20181027: 
+            - DOES NOT return only keys that can be found; returns all keys or None
         '''
         if schema is None:
             raise ProgrammingError
@@ -959,6 +960,8 @@ class ApiResource(SqlAlchemyResource):
                     not_found,deserialized, id_attribute, schema['key'])
                 raise ValidationError({
                     k:'required' for k in not_found })
+            else:
+                return None
         logger.debug('kwargs_for_id: %r', kwargs_for_id)   
         return kwargs_for_id
 
@@ -1094,23 +1097,28 @@ class ApiResource(SqlAlchemyResource):
     
     def _parse_list_ids(self, deserialized, schema):
         
-        id_query_params = defaultdict(set)
+        id_query_params = defaultdict(list)
         # store ids by row for ValidationError key
         rows_to_ids = defaultdict(dict)
         for _row,_data in enumerate(deserialized):
             try:
-                id_kwargs = self.get_id(_data, schema=schema)
+                id_kwargs = self.get_id(_data, schema=schema, validate=True)
             except ValidationError as e:
                 # Consider CumulativeError
                 e.errors['input_row'] = _row
                 raise
             logger.debug('found id_kwargs: %r from %r', id_kwargs, _data)
-            if id_kwargs:
-                rows_to_ids[_row] = id_kwargs
+            rows_to_ids[_row] = id_kwargs
+            
+            if len(id_kwargs) == 1:
                 for idkey,idval in id_kwargs.items():
                     id_param = '%s__in' % idkey
-                    id_query_params[id_param].add(str(idval))
-        return (id_query_params,rows_to_ids)
+                    id_query_params[id_param].append(str(idval))
+            else:
+                id_query_params[SCHEMA.API_PARAM_NESTED_SEARCH].append(id_kwargs)
+
+        return (id_query_params, rows_to_ids)
+    
     
     @write_authorization
     @un_cache

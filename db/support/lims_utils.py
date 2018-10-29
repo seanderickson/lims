@@ -9,7 +9,7 @@ import re
 
 from django.db.utils import ProgrammingError
 
-from db import WELL_NAME_PATTERN, WELL_ID_PATTERN
+from db import WELL_NAME_PATTERN, WELL_ID_PATTERN, COPYWELL_ID_PATTERN
 from reports import ValidationError
 
 
@@ -180,6 +180,20 @@ def well_id_name(well_id):
     wellrow = match.group(3).upper()
     wellcol = match.group(4)
     return '%s%s' % (wellrow, str(wellcol).zfill(2)) 
+
+
+def parse_copywell_id(pattern):
+    match = COPYWELL_ID_PATTERN.match(pattern)
+    if not match:
+        return (None,None,None,None)
+    else:
+        copy = match.group(1)
+        plate = int(match.group(2))
+        wellrow = match.group(4).upper()
+        wellcol = match.group(5)
+        wellname = '%s%s' % (wellrow, str(wellcol).zfill(2)) 
+#         plate = str(plate).zfill(5)
+        return ( copy, plate, well_id(plate, wellname), wellname)
 
 def parse_well_id(pattern):
     match = WELL_ID_PATTERN.match(pattern)

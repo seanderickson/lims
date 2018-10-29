@@ -6533,12 +6533,35 @@ class CopyWellResource(DbApiResource):
         copy_wellname_searches = defaultdict(list)
         well_only_searches = []
         for parsed_search in parsed_searches:
+            if DEBUG_WELL_PARSE:
+                logger.info('parsed search: %r', parsed_search)
             
+            # Get the elements from the parse_well_search output
             plates = parsed_search.get('plates',[])
             plate_ranges = parsed_search.get('plate_ranges',[])
             well_ids = parsed_search.get('well_ids',[])
             well_names = parsed_search.get('wellnames',[])
             copies = parsed_search.get('copies',[])
+
+            # Also include standard filter searches:
+            plate_number = parsed_search.get('plate_number')
+            if plate_number:
+                plates.append(plate_number)
+            plate_number_in = parsed_search.get('plate_number__in')
+            if plate_number_in:
+                plates.extend(plate_number_in)
+            well_ids_in = parsed_search.get('well_id__in')
+            if well_ids_in:
+                well_ids.extend(well_ids_in)
+            well_name = parsed_search.get('well_name')
+            if well_name:
+                well_names.append(well_name)
+            well_name_in = parsed_search.get('well_name__in')
+            if well_name_in:
+                well_names.extend(well_name_in)
+            copy = parsed_search.get('copy_name')
+            if copy:
+                copies.append(copy)
             
             if copies:
                 # Convert well_ids to plate/well_names
@@ -6608,11 +6631,12 @@ class CopyWellResource(DbApiResource):
         
         # TODO: could optimize well only searches as in WellResource
         for well_search in well_only_searches:
+            logger.info('well only search: %r', well_search)
             well_clause = None
             plates = well_search.get('plates')
             plate_ranges = well_search.get('plate_ranges')
             well_names = well_search.get('well_names')
-            well_ids = well_searh.get('well_ids')
+            well_ids = well_search.get('well_ids')
             
             if well_ids:
                 if well_names:
@@ -6658,71 +6682,6 @@ class CopyWellResource(DbApiResource):
         
         return well_query
 
-        # @classmethod
-        # def create_well_base_query1(cls, parsed_searches):
-        #     
-        #     if DEBUG_WELL_PARSE:
-        #         logger.info('create_well_base_query: %r', parsed_searches)
-        #     
-        #     bridge = get_tables()
-        #     _well = bridge['well']
-        #     _plate = bridge['plate']
-        #     _copy = bridge['copy']
-        # 
-        #     well_query = (
-        #         select([
-        #             _well.c.well_id,
-        #             _copy.c.copy_id
-        #         ])
-        #         .select_from(
-        #             _well.join(_plate, _well.c.plate_number==_plate.c.plate_number)
-        #                 .join(_copy, _copy.c.copy_id==_plate.c.copy_id))
-        #         .group_by(_well.c.well_id, _copy.c.copy_id))
-        #     clauses = []
-        #     for parsed_search in parsed_searches:
-        #         well_clause = None
-        #         
-        #         plates = parsed_search.get('plates')
-        #         plate_ranges = parsed_search.get('plate_ranges')
-        #         well_ids = parsed_search.get('well_ids')
-        #         well_names = parsed_search.get('wellnames')
-        #         copies = parsed_search.get('copies')
-        #         
-        #         if plates or plate_ranges:
-        #             plate_clause = []
-        #             if plates:
-        #                 plate_clause.append(_well.c.plate_number.in_(plates))
-        #             if plate_ranges:
-        #                 for plate_range in plate_ranges:
-        #                     plate_clause.append(_well.c.plate_number.between(
-        #                         *plate_range, symmetric=True))
-        #             if len(plate_clause) > 1:
-        #                 well_clause = or_(plate_clause)
-        #             else:
-        #                 well_clause = plate_clause[0]
-        #             if well_names:
-        #                 well_clause = and_(well_clause,_well.c.well_name.in_(well_names))
-        #         if well_ids:
-        #             if plates or plate_ranges:
-        #                 raise ValidationError(
-        #                     key='well_ids', 
-        #                     msg='must not be used with plate ranges')
-        #             else:
-        #                 well_clause = _well.c.well_id.in_(well_ids)
-        #         if copies:
-        #             if well_clause is not None:
-        #                 clauses.append(and_(_copy.c.name.in_(copies), well_clause))
-        #             else:
-        #                 clauses.append(_copy.c.name.in_(copies))
-        #         
-        #     if not clauses:
-        #         raise ValidationError(key='well_search_data', msg='no searches found')
-        #     if len(clauses) == 1:    
-        #         well_query = well_query.where(clauses[0])
-        #     else:
-        #         well_query = well_query.where(or_(*clauses))
-        # 
-        #     return well_query
 
     @read_authorization
     def get_detail(self, request, **kwargs):
@@ -6778,8 +6737,18 @@ class CopyWellResource(DbApiResource):
         well_search_data = param_hash.pop(SCHEMA.API_PARAM_SEARCH, None)
         well_base_query = None
         if well_search_data is not None:
-            parsed_searches = CopyWellResource.parse_well_search(well_search_data)
-            well_base_query = CopyWellResource.create_well_base_query(parsed_searches)
+            parsed_searches = self.parse_well_search(well_search_data)
+            well_base_query = self.create_well_base_query(parsed_searches)
+
+        parsed_well_search_data = param_hash.pop(SCHEMA.API_PARAM_NESTED_SEARCH, None)
+        if parsed_well_search_data is not None:
+            if well_base_query is not None:
+                raise Exception('May not specify both %r and %r', 
+                    SCHEMA.API_PARAM_SEARCH, SCHEMA.API_PARAM_NESTED_SEARCH)
+            else:
+                well_base_query = \
+                    self.create_well_base_query(parsed_well_search_data)
+
         if well_base_query is not None:
             well_base_query = well_base_query.cte('well_base_query')
 
@@ -6853,7 +6822,7 @@ class CopyWellResource(DbApiResource):
         
         custom_columns = {
             'copywell_id': (
-                _concat(_l.c.short_name,'/',_c.c.name,'/',_w.c.well_id)),
+                _concat(_c.c.name,'/',_w.c.well_id)),
             'volume': case([
                 (_w.c.library_well_type==WELL_TYPE.EXPERIMENTAL, 
                      func.coalesce(_cw.c.volume, 
@@ -6887,7 +6856,6 @@ class CopyWellResource(DbApiResource):
                 _concat_with_sep(
                     (_pl.c.room,_pl.c.freezer,_pl.c.shelf,_pl.c.bin),'-')
                 ),
-            
             
             # 'adjustments': case([
             #     (_w.c.library_well_type==WELL_TYPE.EXPERIMENTAL, 
@@ -6961,6 +6929,68 @@ class CopyWellResource(DbApiResource):
     @transaction.atomic    
     def delete_obj(self, request, deserialized, **kwargs):
         raise ApiNotImplemented(self._meta.resource_name, 'delete_obj')
+
+    def get_id(self, deserialized, validate=False, schema=None, **kwargs):
+        
+        id_kwargs = DbApiResource.get_id(
+            self, deserialized, validate=validate, schema=schema, **kwargs)
+        
+        well_id = id_kwargs.get('well_id')
+        # For now: well_id overrides other keys;
+        # TODO: raise exception if conflicts
+        if well_id:
+            id_kwargs['plate_number'] = lims_utils.well_id_plate_number(well_id)
+            id_kwargs['well_name'] = lims_utils.well_id_name(well_id)
+            
+        copywell_id = deserialized.get('copywell_id')
+        if copywell_id:
+            logger.info('copywell_id: %r', copywell_id)
+            ( copy_name, plate_number, well_id, well_name) = lims_utils.parse_copywell_id(copywell_id)
+            
+            # For now: copywell_id overrides other keys;
+            # TODO: raise exception if conflicts
+            if copy_name:
+                
+                id_kwargs['copy_name'] = copy_name
+                id_kwargs['plate_number'] = plate_number
+                id_kwargs['well_name'] = well_name
+            else:
+                logger.warn('invalid copywell_id: %r', copywell_id)
+                if validate:
+                    raise ValidationError(
+                        key='copywell_id', 
+                        msg='invalid format: %r' % copywell_id)
+                    
+        return id_kwargs
+
+    def _parse_list_ids(self, deserialized, schema):
+        (id_query_params, rows_to_ids) = DbApiResource._parse_list_ids(self, deserialized, schema)
+    
+        
+        if id_query_params:
+            id_kwargs_list = id_query_params.get(SCHEMA.API_PARAM_NESTED_SEARCH)
+            if not id_kwargs_list:
+                raise Exception('Expected \"%s\" in _parse_list_ids' % SCHEMA.API_PARAM_NESTED_SEARCH)
+            
+            # Group IDS by copy/plate
+            
+            copy_plate_to_well_names = defaultdict(set)
+            for id_kwargs in id_kwargs_list:
+                copy_plate = (id_kwargs['copy_name'],id_kwargs['plate_number'])
+                copy_plate_to_well_names[copy_plate].add(id_kwargs['well_name'])
+            
+            nested_search = []
+            for (copy_name, plate_number),well_names in copy_plate_to_well_names.items():
+                nested_search.append({
+                    'copy_name': copy_name, 
+                    'plate_number': plate_number,
+                    'well_name__in': well_names })
+            
+            return (
+                { SCHEMA.API_PARAM_NESTED_SEARCH: nested_search },
+                rows_to_ids )
+        else:
+            return (id_query_params, rows_to_ids)
     
     @write_authorization
     @transaction.atomic
@@ -7055,7 +7085,7 @@ class CopyWellResource(DbApiResource):
                 well=well, copy=librarycopy, plate=plate,
                 initial_volume = plate.well_volume)
             copywell.save()
-            logger.info('created cw: %r', id_kwargs)
+            logger.debug('created cw: %r', id_kwargs)
         
         
         if volume is not None:
@@ -7087,7 +7117,7 @@ class CopyWellResource(DbApiResource):
             copywell.save()
         else:
             return None
-        logger.info('patch_obj done: %r', id_kwargs)
+        logger.debug('patch_obj done: %r', id_kwargs)
         return { API_RESULT_OBJ: copywell }
     
     @un_cache
@@ -24340,7 +24370,7 @@ class WellResource(DbApiResource):
         reagent_specific_fields = { 
             k:v for k,v in schema['fields'].items()
                 if v['scope'] != 'fields.well' }
-        logger.info('reagent_specific_fields: %r', reagent_specific_fields.keys())
+        logger.debug('reagent_specific_fields: %r', reagent_specific_fields.keys())
 
         # allow for internal data to be passed
         deserialized = kwargs.pop('data', None)
@@ -24386,7 +24416,7 @@ class WellResource(DbApiResource):
         if full_plates:
             search_data.append({ 'plates': list(full_plates) })
 
-        logger.info('search data: %r', search_data)
+        logger.debug('search data: %r', search_data)
         kwargs_for_log = kwargs.copy()
         kwargs_for_log[SCHEMA.API_PARAM_NESTED_SEARCH] = search_data
         kwargs_for_log['includes'] = ['*', 'molfile','-structure_image']

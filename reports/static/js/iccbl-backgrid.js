@@ -1353,7 +1353,9 @@ var parseRawPlateSearch = Iccbl.parseRawPlateSearch = function(rawData, errors){
         }else if (COPY_NAME_PATTERN.test(part)){
           final_search_line.copies.push(part);
         } else {
-          errors.push('Copy names must begin with a letter: ' + part);
+          errors.push(
+            'Copy names must begin with a letter, and may only contain '
+            + 'letters, numbers, spaces, dashes and colons');
         }
       });
       final_search_line.combined = _.union(

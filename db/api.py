@@ -6945,12 +6945,12 @@ class CopyWellResource(DbApiResource):
         copywell_id = deserialized.get('copywell_id')
         if copywell_id:
             logger.info('copywell_id: %r', copywell_id)
-            ( copy_name, plate_number, well_id, well_name) = lims_utils.parse_copywell_id(copywell_id)
+            ( copy_name, plate_number, well_id, well_name) = \
+                lims_utils.parse_copywell_id(copywell_id)
             
             # For now: copywell_id overrides other keys;
             # TODO: raise exception if conflicts
             if copy_name:
-                
                 id_kwargs['copy_name'] = copy_name
                 id_kwargs['plate_number'] = plate_number
                 id_kwargs['well_name'] = well_name
@@ -7157,6 +7157,8 @@ class CopyWellResource(DbApiResource):
         copywells_allocated = set()
         for copywell in copywells_to_allocate:
             copy = copywell.copy
+            # NOTE: make the log key more robust, with library name as well
+            # - library name should be optional for the copywell key
             key = '/'.join([copy.library.short_name, copy.name, copywell.well_id])
             logger.info('copywell: %r: vol: %r, requested: %r', 
                 copywell, copywell.volume, volume)
@@ -10466,7 +10468,7 @@ class ScreenerCherryPickResource(DbApiResource):
              
 class LabCherryPickResource(DbApiResource):        
 
-    LCP_COPYWELL_KEY = '{library_short_name}/{source_copy_name}/{source_well_id}'
+    LCP_COPYWELL_KEY = '{source_copy_name}/{source_well_id}'
 
     class Meta:
 
@@ -11231,10 +11233,15 @@ class LabCherryPickResource(DbApiResource):
                 'selected': case([
                     (_lcp.c.copy_id==_copy.c.copy_id, text('true') )],
                         else_=text('false')),
+                # 'source_copywell_id': (
+                #     case([(_lcp.c.copy_id!=None,
+                #             _concat(_library.c.short_name,'/',_copy.c.name,'/',
+                #                 _lcp.c.source_well_id)
+                #         )],
+                #         else_=None )),
                 'source_copywell_id': (
                     case([(_lcp.c.copy_id!=None,
-                            _concat(_library.c.short_name,'/',_copy.c.name,'/',
-                                _lcp.c.source_well_id)
+                            _concat(_copy.c.name, '/', _lcp.c.source_well_id)
                         )],
                         else_=None )),
                 'source_copy_well_volume': case([
@@ -11392,9 +11399,12 @@ class LabCherryPickResource(DbApiResource):
                         (_lcp.c.copy_id==_copy.c.copy_id, _copy.c.name )],
                             else_=_original_copy.c.name),
                     'source_copywell_id': (
-                        _concat(_library.c.short_name,'/',_copy.c.name,'/',
-                            _lcp.c.source_well_id)
+                        _concat(_copy.c.name, '/', _lcp.c.source_well_id)
                             ),
+                    # 'source_copywell_id': (
+                    #     _concat(_library.c.short_name,'/',_copy.c.name,'/',
+                    #         _lcp.c.source_well_id)
+                    #         ),
                     'status': case([
                         (and_(_lcp.c.copy_id==_copy.c.copy_id,
                               _lcp.c.cherry_pick_assay_plate_id==None,), 
@@ -16151,6 +16161,7 @@ class LibraryScreeningResource(ActivityResource):
                     'copy_name': _data['copy_name'] })
         logger.debug('plate keys: %r',plate_keys)
         
+        # 3. Logging
         logger.debug('3. Cache current state for logging...')
         # Create a search criteria to poll the current plate state
         # TODO: cache and log the copy state as well

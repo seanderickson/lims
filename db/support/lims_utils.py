@@ -187,10 +187,10 @@ def parse_copywell_id(pattern):
     if not match:
         return (None,None,None,None)
     else:
-        copy = match.group(1)
-        plate = int(match.group(2))
-        wellrow = match.group(4).upper()
-        wellcol = match.group(5)
+        copy = match.group(2)
+        plate = int(match.group(3))
+        wellrow = match.group(5).upper()
+        wellcol = match.group(6)
         wellname = '%s%s' % (wellrow, str(wellcol).zfill(2)) 
 #         plate = str(plate).zfill(5)
         return ( copy, plate, well_id(plate, wellname), wellname)

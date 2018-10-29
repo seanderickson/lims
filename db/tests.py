@@ -5525,6 +5525,7 @@ class ScreenResource(DBResourceTestCase):
         # Only modify one well here
         copywell_input = copywell_data[0]
         copywell_id = copywell_input['copywell_id']
+        copywell_log_id = copywell_input['library_short_name'] + '/' + copywell_input['copywell_id']
         logger.info('copywell input: %r', copywell_input)
         copywell_plate = '%s/%s' % (
             copywell_input['copy_name'],str(copywell_input['plate_number']))
@@ -5682,7 +5683,7 @@ class ScreenResource(DBResourceTestCase):
                 self.assertTrue('screening_count' in apilog['diff_keys'])
             elif apilog['ref_resource_name'] == 'copywell':
                 logger.info('copywell log: %r', apilog)
-                self.assertEqual(copywell_id, apilog['key'])
+                self.assertEqual(copywell_log_id, apilog['key'])
                 self.assertTrue('volume' in apilog['diff_keys'])
             else:
                 self.fail('unknown log: %r', apilog)
@@ -5797,7 +5798,7 @@ class ScreenResource(DBResourceTestCase):
                 logger.info('lcp log: %r', apilog)
                 self.assertEqual(plate_removed_key, apilog['key'])
             elif apilog['ref_resource_name'] == 'copywell':
-                self.assertEqual(copywell_id, apilog['key'])
+                self.assertEqual(copywell_log_id, apilog['key'])
                 logger.info('copywell log: %r', apilog)
             else:
                 self.fail('unknown log: %r', apilog)

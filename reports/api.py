@@ -961,7 +961,7 @@ class ApiResource(SqlAlchemyResource):
                 raise ValidationError({
                     k:'required' for k in not_found })
             else:
-                return None
+                return {}
         logger.debug('kwargs_for_id: %r', kwargs_for_id)   
         return kwargs_for_id
 
@@ -1114,7 +1114,7 @@ class ApiResource(SqlAlchemyResource):
                 for idkey,idval in id_kwargs.items():
                     id_param = '%s__in' % idkey
                     id_query_params[id_param].append(str(idval))
-            else:
+            elif id_kwargs:
                 id_query_params[SCHEMA.API_PARAM_NESTED_SEARCH].append(id_kwargs)
 
         return (id_query_params, rows_to_ids)

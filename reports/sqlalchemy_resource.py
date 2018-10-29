@@ -537,7 +537,8 @@ class SqlAlchemyResource(IccblBaseResource):
         # OR'd together,  then AND'd with the regular filters (if any)
         nested_search_data = param_hash.get(SCHEMA.API_PARAM_NESTED_SEARCH, None)
         if nested_search_data:
-            logger.info('nested_search_data: %r', nested_search_data)
+            if DEBUG_FILTERS:
+                logger.info('nested_search_data: %r', nested_search_data)
             if isinstance(nested_search_data, basestring):
                 nested_search_data = json.loads(nested_search_data)
             if isinstance(nested_search_data, dict):
@@ -549,7 +550,8 @@ class SqlAlchemyResource(IccblBaseResource):
             search_expressions = []
             filter_fields = set(filter_hash.keys())
             for search_hash in nested_search_data:
-                logger.debug('nested search_hash: %s' % search_hash)
+                if DEBUG_FILTERS:
+                    logger.info('nested search_hash: %s' % search_hash)
                 
                 (search_filter_hash,readable_search_filter_hash) = \
                     SqlAlchemyResource.\

@@ -938,8 +938,7 @@ define([
     //      searchId];
     //    appModel.setUriStack(uriStack);
     //  }
-      
-    },
+    //},
     
     processCompoundSearch: function(text_to_search){
       errors = [];

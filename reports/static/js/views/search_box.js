@@ -791,7 +791,7 @@ define([
           this.compoundNameForm.setValue('searchVal', parsedData);
           this.compound_name_form_data = parsedData;
         } else {
-          throw 'unknown resource for search: ' + uiResourceId;
+          console.log('unknown resource for search: ' + uiResourceId);
         }
         return;
       }

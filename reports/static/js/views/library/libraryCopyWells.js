@@ -300,7 +300,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         showUploadButton.click(function(e){
           e.preventDefault();
           UploadDataForm.postUploadFileDialog(
-            collection.url, resource.content_types)
+            resource.apiUri, resource.content_types)
             .done(function(data, textStatus, jqXHR){
               appModel.showConnectionResult(data);
               collection.fetch({ reset: true });

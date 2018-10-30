@@ -12,7 +12,7 @@ lab_affiliation,fields.screen,,,8,,,TRUE,"The affiliation of the lab carrying ou
 lead_screener_id,fields.screen,,,9,,,TRUE,"The scientist primarily responsible for running the screen","Lead Screener ID",TRUE,,,,[c;u],string,link,"{ 'hrefTemplate': '#screensaveruser/{lead_screener_id}' }",select,,,,TRUE,,0,
 lead_screener_username,fields.screen,custom,,9,,"Alternate natural key that can be used to set this element",TRUE,"The scientist primarily responsible for running the screen","Lead Screener Username",TRUE,,,[none],[c;u],string,link,"{ 'hrefTemplate': '#screensaveruser/{lead_screener_id}' }",,,,,,[readEverythingAdmin],,
 lead_screener_name,fields.screen,,,10,,,TRUE,"The scientist primarily responsible for running the screen","Lead Screener",TRUE,,,[l;d],,string,link,"{ 'hrefTemplate': '#screensaveruser/{lead_screener_id}' }",,,,,,,0,
-title,fields.screen,,,11,,,TRUE,"The title of the screen",Title,TRUE,,,[l;d],[c;u],string,,"{ 'widthClass': 'col-sm-10' }",,,,,TRUE,,0,
+title,fields.screen,,,11,,,TRUE,"The title of the screen",Title,TRUE,,,[l;d],[c;u],string,full_string,"{ 'widthClass': 'col-sm-10' }",,,,,TRUE,,0,
 status,fields.screen,,,12,Admin,,TRUE,"The current status of the screen",Status,TRUE,,screen.status,[l;d;e],[c;u],string,,,select,,,,,,3,
 status_date,fields.screen,,,13,Admin,,TRUE,"The date of the most recent change of status for the screen","Status Date",TRUE,,,[l;d],[c;u],date,,,,,,,,,3,
 collaborator_ids,fields.screen,custom,,14,,,TRUE,"Ids of Collaborators",Collaborators,TRUE,,,[d],[c;u],list,link,"{ 'hrefTemplate': '#screensaveruser/{__val__}' }",multiselect3,,,,,,0,

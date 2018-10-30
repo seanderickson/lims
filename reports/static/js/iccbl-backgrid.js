@@ -2197,7 +2197,7 @@ var LinkCell = Iccbl.LinkCell = Iccbl.BaseCell.extend({
 
   // TODO: redo the link cell like the UriListCell
 
-  className : "link-cell",
+  className : "link-cell text-wrap-cell",
 
   events : {
     'click A': 'linkCallback',

@@ -84,9 +84,6 @@ decimal,datacolumn.data_type,7,,"Decimal numeric value",Decimal,
 1,resultvalue.partitioned_positive,1,,Weak,W,
 2,resultvalue.partitioned_positive,2,,Medium,M,
 3,resultvalue.partitioned_positive,3,,Strong,S,
-female,user.gender,1,,Female,Female,
-male,user.gender,2,,Male,Male,
-other,user.gender,3,,Other,Other,
 small_molecule_screener,user.facilityusagerole,1,,"Users that are conducting small molecule screens at the facility","Small Molecule Screener",TRUE
 rnai_screener,user.facilityusagerole,2,,"Users that are conducting RNAi screens at the facility","RNAi Screener",TRUE
 non_screening_user,user.facilityusagerole,3,"nonScreeningUser is *not* mutually exclusive with screener roles; user may have been a nonScreeningUser initially, then became screener later on","Users that are using the facility for purposes other than conducting a screen","Non-screening User",

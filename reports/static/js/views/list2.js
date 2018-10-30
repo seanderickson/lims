@@ -277,7 +277,7 @@ define([
           self.listModel.set(appModel.URI_PATH_COMPLEX_SEARCH,searchId);
           
         }
-        self.collection.getFirstPage({reset: true, fetch: true});
+        self.collection.getFirstPage({reset: true, fetch: true}).fail(appModel.jqXHRfail);
         
       };
       

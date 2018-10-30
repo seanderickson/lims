@@ -6519,8 +6519,6 @@ class CopyWellResource(DbApiResource):
         if DEBUG_WELL_PARSE:
             logger.info('parse_well_search: %r', parsed_searches)
         return parsed_searches
-
-                
                 
     @classmethod
     def create_well_base_query(cls, parsed_searches):
@@ -13391,17 +13389,14 @@ class AttachedFileResource(DbApiResource):
             _comment_apilogs = ApiLogResource.get_resource_comment_subquery(
                 self._meta.resource_name, without_log_diffs=False)
             _comment_apilogs = _comment_apilogs.cte('_comment_apilogs')
+            lab_head_table = ScreensaverUserResource.get_lab_head_cte().cte('lab_heads')
             
             j = _af
-            isouter = False
-            username = param_hash.pop('username', None)
-            if username:
-                isouter = True
-            screensaver_user_id = param_hash.pop('screensaver_user_id', None)
-            if screensaver_user_id:
-                isouter = True
             j = j.join(
                 _su, _af.c.screensaver_user_id == _su.c.screensaver_user_id,
+                isouter=True)
+            j = j.join(
+                lab_head_table, _su.c.lab_head_id==lab_head_table.c.screensaver_user_id,
                 isouter=True)
             j = j.join(
                 _screen, _af.c.screen_id == _screen.c.screen_id,
@@ -13439,7 +13434,13 @@ class AttachedFileResource(DbApiResource):
                     .where(
                         _comment_apilogs.c.key == 
                         cast(_af.c.attached_file_id,sqlalchemy.sql.sqltypes.TEXT))),
-                }
+                'lab_name': lab_head_table.c.lab_name_full,
+                'lab_head_id': lab_head_table.c.screensaver_user_id,
+                'lab_head_username': lab_head_table.c.username,
+                'lab_affiliation_name': lab_head_table.c.lab_affiliation_name,
+                'lab_affiliation_category': lab_head_table.c.lab_affiliation_category,
+                'lab_affiliation_id': lab_head_table.c.lab_affiliation_id,
+               }
 
             base_query_tables = [
                 'attached_file', 'screensaver_user', 'screen','publication','reagent'] 

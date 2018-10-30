@@ -6635,7 +6635,7 @@ class CopyWellResource(DbApiResource):
             well_clause = None
             plates = well_search.get('plates')
             plate_ranges = well_search.get('plate_ranges')
-            well_names = well_search.get('well_names')
+            well_names = well_search.get('wellnames')
             well_ids = well_search.get('well_ids')
             
             if well_ids:
@@ -6648,7 +6648,8 @@ class CopyWellResource(DbApiResource):
             if well_names:
                 if not plates or plate_ranges:
                     raise ValidationError(key='well_names',msg='cannot be specified without plates or plate_ranges')
-                    
+                well_clause = _well.c.well_name.in_(well_names)
+                logger.info('well_names: %r', well_names)
             plate_clauses = []
             if plate_ranges:
                 for plate_range in plate_ranges:
@@ -6657,11 +6658,14 @@ class CopyWellResource(DbApiResource):
                 plate_clauses.append(_well.c.plate_number.in_(plates))
             if plate_clauses:
                 if len(plate_clauses) > 1:
-                    well_clause = or_(*plate_clauses)
+                    plate_clauses = or_(*plate_clauses)
                 else:
-                    well_clause = plate_clauses[0]
-                if well_names:
-                    well_clause = and_(well_clause, _well.c.well_name.in_(well_names))
+                    plate_clauses = plate_clauses[0]
+            
+                if well_clause is not None:
+                    well_clause = and_(well_clause, plate_clauses)
+                else:
+                    well_clause = plate_clauses
             
             if well_clause is not None:
                 clauses.append(well_clause)

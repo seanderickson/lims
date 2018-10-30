@@ -100,11 +100,12 @@ def migrate_screen_status(apps,schema_editor):
                 'screen_facility_id': str(screen.facility_id)
                 }
             status_items.append(status_item)
-
-        for s in Screen.objects\
-            .filter(pin_transfer_admin_activity_id__isnull=False):
         
-            activity = s.pin_transfer_admin_activity;
+        if screen.pin_transfer_admin_activity is not None:
+#         for s in Screen.objects\
+#             .filter(pin_transfer_admin_activity_id__isnull=False):
+        
+            activity = screen.pin_transfer_admin_activity;
 
             status_item = {
                 'date': activity.date_of_activity, 

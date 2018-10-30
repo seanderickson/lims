@@ -1388,7 +1388,8 @@ define([
       e.preventDefault();
       e.stopPropagation();
       var self = this;
-      var errors, changedAttributes,
+      var errors, 
+        changedAttributes = {},
         options = {};
       console.log('click_save');
       
@@ -1424,29 +1425,28 @@ define([
         return;
       }
       
-      // NOTE: backbone will save all attributes if model.isNew
-      // so changedAttributes will have no effect.
-      if (self.fullSaveOnEdit ) {
-        changedAttributes = null; 
-      } else {
-        changedAttributes = self._getChangedAttributes(this.model);
-        if (! changedAttributes || _.isEmpty(changedAttributes)) {
-          appModel.showModalMessage({
-            body: 'Form values must be changed or updated in the form in order to submit.',
-            title: 'No updated values found in this form'
-          });
-          return;
-        }
-      }
-
       // Set up options for Backbone sync / AJAX 
       
-      // Wait for the server before setting the new attributes on the model
-      options['wait'] = true;
-      
       if (!  self.model.isNew()) {
+        
+        // NOTE: backbone will save all attributes if model.isNew
+        // so changedAttributes will have no effect.
+        if (self.fullSaveOnEdit) {
+          changedAttributes = null; 
+        } else {
+          changedAttributes = self._getChangedAttributes(this.model);
+          if (! changedAttributes || _.isEmpty(changedAttributes)) {
+            appModel.showModalMessage({
+              body: 'Form values must be changed or updated in the form in order to submit.',
+              title: 'No updated values found in this form'
+            });
+            return;
+          }
+        }
+        
         options['patch'] = true;
       }else{
+        changedAttributes = self._getChangedAttributes(this.model);
         // If new, then add any previous attributes that are non-null (defaults)
         _.each(_.pairs(self.model.previousAttributes()),function(pair){
           var key = pair[0];
@@ -1465,6 +1465,9 @@ define([
         options.attrs = changedAttributes;
       }      
       
+      // Wait for the server before setting the new attributes on the model
+      options['wait'] = true;
+
       var headers = options['headers'] = {};
       
       if ( _.result(this.model.resource,'require_comment_on_save') === true) {

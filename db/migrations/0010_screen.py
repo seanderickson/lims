@@ -101,7 +101,7 @@ def migrate_screen_status(apps,schema_editor):
             activity = s.pin_transfer_admin_activity;
 
             status_item = {
-                'date': activity.date_date_of_activity, 
+                'date': activity.date_of_activity, 
                 'status': 'transfer_approved',
                 'username': activity.created_by.username,
                 'screen_facility_id': str(screen.facility_id),

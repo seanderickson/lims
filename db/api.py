@@ -818,7 +818,7 @@ class PlateLocationResource(DbApiResource):
 
         # cache state, for logging
         # Look for id's kwargs, to limit the potential candidates for logging
-        id_attribute = schema['id_attribute']
+#         id_attribute = schema['id_attribute']
         kwargs_for_log = self.get_id(
             deserialized, schema=schema, validate=True,**kwargs)
 
@@ -844,7 +844,7 @@ class PlateLocationResource(DbApiResource):
 
         # get new state, for logging
         new_data = self._get_detail_response_internal(**kwargs_for_log)
-        update_log = self.log_patch(request, original_data,new_data,**kwargs)
+        update_log = self.log_patch(request, original_data,new_data, schema=schema, **kwargs)
         if update_log:
             update_log.save()
         # patch_count = len(patched_plate_logs)
@@ -938,16 +938,16 @@ class PlateLocationResource(DbApiResource):
             'len: %d...', len(plate_log_hash.items()))
         
         plate_logs = []
-        lcp_id_attribute = \
+        lcp_schema = \
             self.get_librarycopyplate_resource()\
-                .build_schema(user=request.user)['id_attribute']
+                .build_schema(user=request.user)
         for prev_dict,new_dict in plate_log_hash.values():
             log = self.get_librarycopyplate_resource().log_patch( 
                 request,prev_dict,new_dict,
                 **{ 'parent_log': kwargs.get('parent_log', None),
                     'full_create_log': False,
                     'log_empty_diffs': False,
-                    'id_attribute': lcp_id_attribute } )
+                    'schema': lcp_schema } )
             if log: 
                 plate_logs.append(log)
         ApiLog.bulk_create(plate_logs)
@@ -2872,7 +2872,7 @@ class UserAgreementResource(DbApiResource):
         if not schema:
             raise Exception('schema not initialized')
         fields = schema['fields']
-        id_attribute = schema['id_attribute']
+#         id_attribute = schema['id_attribute']
         
         # Perform manual deserialization; MULTIPART content is in POST dict
         param_hash = self._convert_request_to_dict(request)
@@ -2905,7 +2905,7 @@ class UserAgreementResource(DbApiResource):
         deserialized['screensaver_user_id'] = screensaver_user_id
         id_kwargs = self.get_id(deserialized,validate=True, **kwargs)
         log = self.make_log(
-            request, id_kwargs, id_attribute=id_attribute, schema=schema)
+            request, id_kwargs, schema=schema)
         log.parent_log = parent_log;
         log.save()
         original_data = self._get_detail_response_internal(**id_kwargs)
@@ -2966,7 +2966,7 @@ class UserAgreementResource(DbApiResource):
         new_data = self._get_detail_response_internal(**id_kwargs)
         
         self.log_patch(request, original_data, new_data, log, 
-            id_attribute=id_attribute, parent_log=parent_log, full_create_log=True)
+            schema=schema, parent_log=parent_log, full_create_log=True)
         log.save()
         
         data = { API_RESULT_DATA: [new_data]}
@@ -2986,7 +2986,7 @@ class UserAgreementResource(DbApiResource):
         if not schema:
             raise Exception('schema not initialized')
         fields = schema['fields']
-        id_attribute = schema['id_attribute']
+#         id_attribute = schema['id_attribute']
         id_kwargs = self.get_id(deserialized,validate=True,schema=schema,**kwargs)
         screensaver_user_id = id_kwargs['screensaver_user_id']
         screensaver_user = ScreensaverUser.objects.get(
@@ -5138,7 +5138,7 @@ class ScreenResultResource(DbApiResource):
         # self.clear_cache(by_uri='/screenresult/%s' % screen_facility_id)
         self.clear_cache(request, all=True)
         
-        id_attribute = schema['id_attribute']
+#         id_attribute = schema['id_attribute']
         meta = { 'columns': len(columns) }
         
         try:
@@ -8656,7 +8656,7 @@ class CherryPickRequestResource(DbApiResource):
 
         # cache state, for logging
         # Look for id's kwargs, to limit the potential candidates for logging
-        id_attribute = schema['id_attribute']
+#         id_attribute = schema['id_attribute']
         kwargs_for_log = self.get_id(
             deserialized, schema=schema, validate=True,**kwargs)
 
@@ -9421,7 +9421,7 @@ class CherryPickRequestResource(DbApiResource):
             })
             logger.debug('new_cpr: %r', new_cpr)
             parent_log = self.log_patch(
-                request, original_cpr, new_cpr, parent_log, 
+                request, original_cpr, new_cpr, log=parent_log, 
                 excludes=['screener_cherry_picks'])
             parent_log.save()
             
@@ -9948,7 +9948,7 @@ class ScreenerCherryPickResource(DbApiResource):
         if self._meta.collection_name in deserialized:
             deserialized = deserialized[self._meta.collection_name]
  
-        id_attribute = schema['id_attribute']
+#         id_attribute = schema['id_attribute']
 
         original_cpr_data = self.get_cpr_resource()._get_detail_response_internal(**{
             'cherry_pick_request_id': cpr.cherry_pick_request_id })
@@ -10551,7 +10551,7 @@ class LabCherryPickResource(DbApiResource):
         set_deselected_to_zero = parse_val(
             param_hash.get(API_PARAM_SET_DESELECTED_TO_ZERO, False),
                 API_PARAM_SET_DESELECTED_TO_ZERO, 'boolean')
-        id_attribute = schema['id_attribute']
+#         id_attribute = schema['id_attribute']
 
         if 'cherry_pick_request_id' not in kwargs:
             raise BadRequestError(key='cherry_pick_request_id', msg='required')
@@ -11784,7 +11784,7 @@ class CherryPickPlateResource(DbApiResource):
             deserialized = deserialized[self._meta.collection_name]
         logger.debug('patch cpaps: %r', deserialized)
         
-        id_attribute = schema['id_attribute']
+#         id_attribute = schema['id_attribute']
         
         assay_plates = { cpap.plate_ordinal:cpap 
             for cpap in cpr.cherry_pick_assay_plates.all() }
@@ -12753,7 +12753,6 @@ class PublicationResource(DbApiResource):
         param_hash.update(kwargs)
         
         fields = schema['fields']
-        id_attribute = resource = schema['id_attribute']
 
         initializer_dict = {}
         for key in fields.keys():
@@ -12835,7 +12834,7 @@ class PublicationResource(DbApiResource):
                     'parent_log': parent_log })
             
         kwargs_for_log = { 'parent_log': parent_log }
-        for id_field in id_attribute:
+        for id_field in schema['id_attribute']:
             val = getattr(publication, id_field,None)
             if val:
                 kwargs_for_log['%s' % id_field] = val
@@ -12882,7 +12881,6 @@ class PublicationResource(DbApiResource):
         schema = kwargs.pop('schema', None)
         if not schema:
             raise Exception('schema not initialized')
-        id_attribute = schema['id_attribute']
     
         publication_id = kwargs.get('publication_id', None)
         if not publication_id:
@@ -12896,12 +12894,12 @@ class PublicationResource(DbApiResource):
                 publication.screen, publication, request, is_delete=True)
 
         kwargs_for_log = {}
-        for id_field in id_attribute:
+        for id_field in schema['id_attribute']:
             if kwargs.get(id_field,None):
                 kwargs_for_log[id_field] = kwargs[id_field]
         logger.debug('delete detail: %s' %(kwargs_for_log))
         if not kwargs_for_log:
-            raise Exception('required id keys %s' % id_attribute)
+            raise Exception('required id keys %s' % schema['id_attribute'])
         else:
             try:
                 original_data = self._get_detail_response_internal(**kwargs_for_log)
@@ -12918,9 +12916,12 @@ class PublicationResource(DbApiResource):
             log_comment = request.META[HEADER_APILOG_COMMENT]
         
         log = self.make_log(request)
-        log.ref_resource_name = self._meta.resource_name
-        log.key = '/'.join([str(original_data[x]) for x in id_attribute])
-        log.uri = '/'.join([self._meta.resource_name,log.key])
+
+#         id_attribute = schema['id_attribute']
+#         log.ref_resource_name = self._meta.resource_name
+        self.make_log_key(log, original_data, schema=schema)
+#         log.key = '/'.join([str(original_data[x]) for x in id_attribute])
+#         log.uri = '/'.join([self._meta.resource_name,log.key])
         log.parent_log = parent_log
         log.api_action = API_ACTION.DELETE
         log.diffs = { k:[v,None] for k,v in original_data.items()}
@@ -13099,7 +13100,7 @@ class AttachedFileResource(DbApiResource):
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
         fields = schema['fields']
-        id_attribute = schema['id_attribute']
+#         id_attribute = schema['id_attribute']
         initializer_dict = {}
         for key in fields.keys():
             if param_hash.get(key, None) is not None:
@@ -13282,11 +13283,12 @@ class AttachedFileResource(DbApiResource):
 
         af.delete()
         
-        id_attribute = resource = schema['id_attribute']
+#         id_attribute = resource = schema['id_attribute']
         log = self.make_log(request, **kwargs)
-        log.ref_resource_name = self._meta.resource_name
-        log.key = '/'.join([str(_dict[x]) for x in id_attribute])
-        log.uri = '/'.join([self._meta.resource_name, log.key])
+#         log.ref_resource_name = self._meta.resource_name
+        self.make_log_key(log, _dict, schema=schema)
+#         log.key = '/'.join([str(_dict[x]) for x in id_attribute])
+#         log.uri = '/'.join([self._meta.resource_name, log.key])
         log.parent_log = parent_log
         log.api_action = API_ACTION.DELETE
         log.diffs = { k: [v,None] for k,v in _dict.items() }
@@ -13933,27 +13935,19 @@ class ActivityResource(DbApiResource):
         logger.info('saved activity: %r', activity)
         return { API_RESULT_OBJ: activity }
 
-    def make_log_key(self, log, attributes, id_attribute=None, schema=None, **kwargs):
+    def make_log_key(self, log, attributes, schema=None, **kwargs):
 
-        logger.info('make_log_key: %r, %r', id_attribute, kwargs)
+        super(ActivityResource, self).make_log_key(
+            log, attributes, schema=schema, **kwargs)
+        serviced_user_id = attributes.get('serviced_user_id')
+        screen_facility_id = attributes.get('screen_facility_id')
+        if serviced_user_id is not None:
+            log.key = '{}/{}'.format(serviced_user_id, log.key)
+        elif screen_facility_id is not None:
+            log.key = '{}/{}'.format(screen_facility_id, log.key)
+        log.uri = '/'.join([log.ref_resource_name,log.key])
         
-        if attributes:
-            super(ActivityResource, self).make_log_key(
-                log, attributes, id_attribute=id_attribute, schema=schema, **kwargs)
-            logger.info('log key: %r, %r', log.key, log)
-    
-            keys = []
-            # Always create the service activity log for the user, if available 
-            if attributes.get('serviced_user_id', None):
-                keys.append('screensaveruser')
-                keys.append(str(attributes['serviced_user_id']))
-            elif attributes.get('screen_facility_id', None):
-                keys.append('screen')
-                keys.append(attributes['screen_facility_id'])
-            keys.append(self._meta.resource_name)
-            log.uri = '%s/%s' % ('/'.join(keys), log.key)
-        
-            logger.info('log uri: %r, %r', log.uri, log)
+        logger.info('log uri: %r, %r', log.uri, log)
 
     @write_authorization
     @un_cache
@@ -15688,10 +15682,12 @@ class LibraryScreeningResource(ActivityResource):
         '''
         TODO: refactor patch/post detail to remove common operations
         '''
+
+        if not deserialized:
+            raise Http404('no data sent')
         schema = kwargs.pop('schema', None)
         if not schema:
             raise Exception('schema not initialized')
-        id_attribute = schema['id_attribute']
         kwargs_for_log = self.get_id(deserialized,schema=schema, validate=True,**kwargs)
 
         # NOTE: 20170321 not creating a screen "parent" log;
@@ -15699,41 +15695,24 @@ class LibraryScreeningResource(ActivityResource):
         # original_screen_data = self.get_screen_resource()._get_detail_response_internal(**{
         #     'facility_id': original_data['screen_facility_id']})
 
-
         original_data = self._get_detail_response_internal(**kwargs_for_log)
         logger.debug('original libraryscreening data: %r', original_data)
         
-        # NOTE: creating a log, even if no data have changed (may be comment only)
+        # FIXME: log needed so patch_obj can set assay plate logs, but this should be done here
         log = self.make_log(request)
-        # FIXME: Set the log URI using the containing screen URI
-        log.key = '/'.join([str(kwargs_for_log[x]) for x in id_attribute])
+        patch_result = self.patch_obj(request, deserialized, log=log, **kwargs)
+        obj = patch_result[API_RESULT_OBJ]
+        plate_meta = patch_result[API_RESULT_META]
+        
+        # Include the screen_facility_id in the log.uri
+        log.key = '{}/{}'.format(obj.screen.facility_id, obj.activity_id)
         log.uri = '/'.join([log.ref_resource_name,log.key])
         log.save()
-
-        obj = None
-        plate_meta = None
-        if deserialized:
-            patch_result = self.patch_obj(request, deserialized, log=log, **kwargs)
-            obj = patch_result[API_RESULT_OBJ]
-            plate_meta = patch_result[API_RESULT_META]
-        for id_field in id_attribute:
-            val = getattr(obj, id_field,None)
-            if val:
-                kwargs_for_log['%s' % id_field] = val
-        log.key = '/'.join([str(kwargs_for_log[x]) for x in id_attribute])
-        screen_facility_id = obj.screen.facility_id
-        log.uri = '/'.join([
-            'screen', screen_facility_id,log.ref_resource_name,log.key])
-        log.save()
-        logger.info('log saved: %r', log)
         
-        # TODO: create a log for the parent screen:
-        # For now, the log.uri can be used to query for logs for screen
-
         new_data = self._get_detail_response_internal(**kwargs_for_log)
         kwargs_for_log[HTTP_PARAM_USE_VOCAB] = True
         new_data_display = self._get_detail_response_internal(**kwargs_for_log)
-        self.log_patch(request, original_data,new_data,log=log, **kwargs)
+        self.log_patch(request, original_data,new_data,log=log, schema=schema, **kwargs)
         log.save()
         meta = { 
             API_MSG_SCREENING_TOTAL_PLATE_COUNT: 
@@ -15758,9 +15737,7 @@ class LibraryScreeningResource(ActivityResource):
         kwargs_for_log = self.get_id(
             deserialized,schema=schema, validate=False,**kwargs)
         
-        id_attribute = schema['id_attribute']
-        
-        logger.info('post detail: %r, %r', kwargs_for_log, id_attribute)
+        logger.info('post detail: %r', kwargs_for_log)
 
         # NOTE: 20170321 not creating a screen "parent" log;
         # libraryScreening activities will stand on their own
@@ -15768,9 +15745,7 @@ class LibraryScreeningResource(ActivityResource):
         #     'facility_id': original_data['screen_facility_id']})
 
         original_data = None
-        log = self.make_log(request)
-        log.save()
-        if kwargs_for_log and len(kwargs_for_log.items())==len(id_attribute):
+        if kwargs_for_log:
             # A full id exists, query for the existing state
             try:
                 original_data = self._get_detail_response_internal(**kwargs_for_log)
@@ -15783,27 +15758,22 @@ class LibraryScreeningResource(ActivityResource):
                     k: '%r Already exists' % v for k,v in kwargs_for_log.items() })
             original_data = None
         
-            # NOTE: create a log if possible, with id_attribute, for downstream
-            log.key = '/'.join([str(kwargs_for_log[x]) for x in id_attribute])
-            log.uri = '/'.join([
-                'screen', deserialized.get('screen_facility_id', None),
-                log.ref_resource_name,log.key])
-            log.save()
-            logger.info('log saved: %r', log)
-
+        # FIXME: log needed so patch_obj can set assay plate logs, but this should be done here
+        log = self.make_log(request)
         patch_result = self.patch_obj(request, deserialized, log=log, **kwargs)
         obj = patch_result[API_RESULT_OBJ]
         plate_meta = patch_result[API_RESULT_META]
         logger.info('patch meta: %r', plate_meta)
+
+        id_attribute = schema['id_attribute']
         for id_field in id_attribute:
             val = getattr(obj, id_field,None)
             if val:
                 kwargs_for_log['%s' % id_field] = val
-        # Note: update the log with the id_attribute after object is created
-        log.key = '/'.join([str(kwargs_for_log[x]) for x in id_attribute])
-        log.uri = '/'.join([
-            'screen', deserialized.get('screen_facility_id', None),
-            log.ref_resource_name,log.key])
+
+        # Include the screen_facility_id in the log.uri
+        log.key = '{}/{}'.format(obj.screen.facility_id, obj.activity_id)
+        log.uri = '/'.join([log.ref_resource_name,log.key])
         log.save()
         
         obj.apilog_uri = log.log_uri
@@ -15816,11 +15786,9 @@ class LibraryScreeningResource(ActivityResource):
                 key='method', 
                 msg='no data found for the new obj created by post: %r' % obj)
         self.log_patch(
-            request, original_data,new_data,log=log, 
+            request, original_data,new_data,log=log, schema=schema,
             full_create_log=True, **kwargs)
         log.save()
-
-        # FIXME: create a log for the parent screen
 
         kwargs_for_log[HTTP_PARAM_USE_VOCAB] = True
         new_data_display = self._get_detail_response_internal(**kwargs_for_log)
@@ -15961,6 +15929,13 @@ class LibraryScreeningResource(ActivityResource):
             if library_plates_screened is not None:
                 logger.debug('save library screening, set assay plates: %r', 
                              library_screening)
+                # FIXME: make_log_key should accept obj
+                ls_log.key = '{}/{}'.format(
+                    library_screening.screen.facility_id, 
+                    library_screening.activity_id)
+                ls_log.uri = '/'.join([ls_log.ref_resource_name,ls_log.key])
+                ls_log.save()
+
                 plate_meta = self._set_assay_plates(
                     request, schema, 
                     library_screening, library_plates_screened, ls_log) 

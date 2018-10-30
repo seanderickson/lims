@@ -846,35 +846,6 @@ class ApiResource(SqlAlchemyResource):
             '_get_filename: %r, is_for_detail: %r', id_parts, is_for_detail)
         return '_'.join(id_parts)
         
-    
-    # def _get_filename_old(self, readable_filter_hash, schema, filename=None, **extra):
-    #     MAX_VAL_LENGTH = 20
-    #     file_elements = [self._meta.resource_name]
-    #     if filename is not None:
-    #         file_elements.append(filename)
-    #     if extra is not None:
-    #         for key,val in extra.items():
-    #             file_elements.append(str(key))
-    #             if val is not None:
-    #                 val = default_converter(str(val))
-    #                 val = val[:MAX_VAL_LENGTH]
-    #                 file_elements.append(val)
-    #     for key,val in readable_filter_hash.items():
-    #         if key not in schema['id_attribute']:
-    #             file_elements.append(str(key))
-    #         val = default_converter(str(val))
-    #         val = val[:MAX_VAL_LENGTH]
-    #         file_elements.append(val)
-    #             
-    #     # if len(file_elements) > 1:
-    #     #     # Add an extra separator for the resource name
-    #     #     file_elements.insert(1,'_')
-    #         
-    #     filename = '_'.join(file_elements)
-    #     logger.info('filename: %r', filename)
-    #     MAX_FILENAME_LENGTH = 128
-    #     filename = filename[:128]
-    
     def get_file_id(self, data,  schema, is_for_detail):
         
         resource_name = schema.get('short_key')
@@ -1465,7 +1436,6 @@ class ApiResource(SqlAlchemyResource):
 
         if schema is None:
             raise Exception('schema not initialized')
-        id_attribute = schema['id_attribute']
         
         # Limit the potential candidates for logging to found id_kwargs
         kwargs_for_log = kwargs.copy()
@@ -1515,6 +1485,7 @@ class ApiResource(SqlAlchemyResource):
         # After patch, the id keys must be present
         if not id_query_params:
             id_query_params = {}
+            id_attribute = schema['id_attribute']
             for idkey in id_attribute:
                 id_param = '%s__in' % idkey
                 extant_ids = set(id_query_params.get(id_param,[]))
@@ -1595,15 +1566,14 @@ class ApiResource(SqlAlchemyResource):
         kwargs_for_log = self.get_id(deserialized,validate=False,schema=schema,**kwargs)
         
         id_attribute = schema['id_attribute']
-        
         logger.info('post detail: %r, %r, %r', 
             self._meta.resource_name, kwargs_for_log, id_attribute)
 
-        # NOTE: create a log if possible, with id_attribute, for downstream
+        # NOTE: create a log if possible, with ids, for downstream
         log = self.make_log(
-            request, kwargs_for_log, id_attribute=id_attribute, schema=schema)
+            request, kwargs_for_log, schema=schema)
         original_data = None
-        if kwargs_for_log and len(kwargs_for_log.items())==len(id_attribute):
+        if kwargs_for_log:
             # A full id exists, query for the existing state
             try:
                 original_data = self._get_detail_response_internal(**kwargs_for_log)
@@ -1643,7 +1613,7 @@ class ApiResource(SqlAlchemyResource):
                 'POST': 'no data found for the new obj created by post: %r' % meta })
         patched_log = self.log_patch(
             request, original_data,new_data,log=log, 
-            id_attribute=id_attribute, schema=schema, **kwargs)
+            schema=schema, **kwargs)
         if patched_log:
             patched_log.save()
             logger.debug('post log: %r', patched_log)
@@ -1698,7 +1668,6 @@ class ApiResource(SqlAlchemyResource):
             raise Exception('schema not initialized')
         logger.info('deserialized: %r', deserialized)
         
-        id_attribute = schema['id_attribute']
         id_kwargs = self.get_id(
             deserialized, validate=False, schema=schema, **kwargs)
 
@@ -1710,8 +1679,7 @@ class ApiResource(SqlAlchemyResource):
 
         original_data = self._get_detail_response_internal(**id_kwargs)
         if not log.key:
-            self.make_log_key(log, original_data, id_attribute=id_attribute,
-                schema=schema, **kwargs)
+            self.make_log_key(log, original_data, schema=schema, **kwargs)
         logger.debug('original data: %r', original_data)
         log.save()
 
@@ -1728,6 +1696,7 @@ class ApiResource(SqlAlchemyResource):
             obj = patch_result
         logger.debug('build patch detail: %r', obj)
         
+        id_attribute = schema['id_attribute']
         for id_field in id_attribute:
             if id_field not in id_kwargs:
                 val = getattr(obj, id_field,None)
@@ -1737,7 +1706,7 @@ class ApiResource(SqlAlchemyResource):
         logger.debug('new_data: %r', new_data)
         patched_log = self.log_patch(
             request, original_data,new_data,log=log, 
-            id_attribute=id_attribute, schema=schema, **kwargs)
+            schema=schema, **kwargs)
         if patched_log:
             patched_log.save()
             meta[SCHEMA.API_MSG_RESULT] = SCHEMA.API_MSG_SUCCESS
@@ -1870,7 +1839,7 @@ class ApiResource(SqlAlchemyResource):
             raise Exception('required id keys %s' % id_attribute)
         original_data = self._get_detail_response_internal(**kwargs_for_log)
         log = self.make_log(
-            request, attributes=original_data, id_attribute=id_attribute, schema=schema)
+            request, attributes=original_data, schema=schema)
         if 'parent_log' in kwargs:
             log.parent_log = kwargs.get('parent_log', None)
         log.api_action = API_ACTION.DELETE
@@ -2289,21 +2258,25 @@ class ApiResource(SqlAlchemyResource):
             self, log, attributes, id_attribute=None, schema=None, **kwargs):
         
         logger.debug('make_log_key: %r, %r, %r', 
-            id_attribute, schema is not None, kwargs)
+            id_attribute, schema is not None)
         
         if id_attribute is None:
             if schema is None:
                 logger.debug('build raw schema for make_log_key')
                 schema = self.build_schema()
-            id_attribute = schema['id_attribute']
+            
+            log_id_attribute = schema.get('log_id_attribute')
+            if not log_id_attribute:
+                log_id_attribute = schema['id_attribute']
+            
         log.key = '/'.join([
-            str(attributes[x]) for x in id_attribute if x in attributes])
+            str(attributes[x]) for x in log_id_attribute if x in attributes])
         log.uri = '/'.join([log.ref_resource_name,log.key])
 
         logger.debug('make_log_key: %r, %r', log.key, log.uri)
     
     def log_patch(self, request, prev_dict, new_dict, log=None, 
-            id_attribute=None, excludes=None, exclude_patterns=None, 
+            schema=None, excludes=None, exclude_patterns=None, 
             full_create_log=False, log_empty_diffs=True, **kwargs):
         '''
         @param full_create_log create a diff log showing initial state on create
@@ -2316,14 +2289,9 @@ class ApiResource(SqlAlchemyResource):
         if exclude_patterns is None:
             exclude_patterns = default_exclude_patterns
             
-        if DEBUG_PATCH_LOG:
-            logger.info(
-                'prev_dict: %s, ======new_dict====: %s', 
-                prev_dict, new_dict)
-
         if log is None:
             log = self.make_log(
-                request, attributes=new_dict, id_attribute=id_attribute, **kwargs)
+                request, attributes=new_dict, schema=schema, **kwargs)
         if not log.comment:
             if HEADER_APILOG_COMMENT in request.META:
                 log.comment = request.META[HEADER_APILOG_COMMENT]
@@ -2332,22 +2300,21 @@ class ApiResource(SqlAlchemyResource):
         if log.comment is not None and DEBUG_PATCH_LOG is True:
             logger.info('log comment: %r', log.comment)
 
-        
         if not log.key:
-            self.make_log_key(log, new_dict, id_attribute=id_attribute,
-                **kwargs)
+            self.make_log_key(log, new_dict, schema=schema)
 
         log.parent_log = kwargs.get('parent_log', None)
         
+        if DEBUG_PATCH_LOG:
+            logger.info(
+                'prev_dict: %s, ======new_dict====: %s', 
+                prev_dict, new_dict)
+
         if prev_dict:
             log.diffs = compare_dicts(prev_dict,new_dict, excludes,exclude_patterns)
             if not log.diffs:
                 if DEBUG_PATCH_LOG:
-                    logger.info('no diffs found: %r, %r' 
-                        % (prev_dict,new_dict))
-                else:
-                    if DEBUG_PATCH_LOG:
-                        logger.info('no diffs found: %r', log.uri) 
+                    logger.info('no diffs found: %r', log.uri) 
                 if log_empty_diffs is not True:
                     log = None
                 elif not log.comment:
@@ -2355,8 +2322,7 @@ class ApiResource(SqlAlchemyResource):
                     log = None
             else:
                 if DEBUG_PATCH_LOG:
-                    logger.info('log PATCH for %r', log.uri) 
-                    logger.debug('log diffs for %r: %r', log.uri, log.diffs) 
+                    logger.info('log diffs for %r: %r', log.uri, log.diffs) 
                 
         else: # creating
             log.api_action = API_ACTION.CREATE
@@ -2384,7 +2350,7 @@ class ApiResource(SqlAlchemyResource):
         log differences between dicts having the same identity in the arrays:
         @param original_data - data from before the API action
         @param new_data - data from after the API action
-        - dicts have the same identity if the id_attribute keys have the same
+        - dicts have the same identity if the schema:id_attribute keys have the same
         value.
         '''
         logs = []
@@ -2421,8 +2387,8 @@ class ApiResource(SqlAlchemyResource):
                 deleted_items.remove(prev_dict)
                 
             log = self.log_patch(
-                request, prev_dict, new_dict, id_attribute=id_attribute, 
-                schema=schema, full_create_log=full_create_log, 
+                request, prev_dict, new_dict, schema=schema, 
+                full_create_log=full_create_log, 
                 log_empty_diffs=log_empty_diffs, **kwargs)  
             if DEBUG_PATCH_LOG:
                 logger.info('patch log: %r', log)          
@@ -2432,8 +2398,7 @@ class ApiResource(SqlAlchemyResource):
         for deleted_dict in deleted_items:
             
             log = self.make_log(
-                request, attributes=deleted_dict, id_attribute=id_attribute,
-                schema=schema)
+                request, attributes=deleted_dict, schema=schema)
             if 'parent_log' in kwargs:
                 log.parent_log = kwargs.get('parent_log', None)
 
@@ -5940,7 +5905,7 @@ class JobResource(ApiResource):
                     kwargs_for_log)
         try:
             parent_log = kwargs.get('parent_log', None)
-            log = self.make_log(request)
+            log = self.make_log(request, schema=schema)
             log.parent_log = parent_log
             log.save()
             kwargs['parent_log'] = log
@@ -5961,7 +5926,7 @@ class JobResource(ApiResource):
         new_data = self._get_detail_response_internal(**kwargs_for_log)
         logger.debug('original: %r, new: %r', original_data, new_data)
         log = self.log_patch(
-            request, original_data,new_data,log=log, full_create_log=True, 
+            request, original_data,new_data,log=log, schema=schema, full_create_log=True, 
             **kwargs_for_log)
         if log:
             log.save()

@@ -5644,11 +5644,13 @@ class ScreenResource(DBResourceTestCase):
                 expected_volume, Decimal(new_copywell_data['volume'])) )
 
         # 1.D Check logs (17 plate, 1 copywell)
+        ls_key = '{screen_facility_id}/{activity_id}'.format(
+            **library_screening_output)
         data_for_get={ 
             'limit': 0, 
             'includes': ['*'],
             'ref_resource_name': 'libraryscreening', 
-            'key': library_screening_output['activity_id'],
+            'key': ls_key,
             'api_action': API_ACTION.CREATE
         }
         apilogs = self.get_list_resource(
@@ -5656,7 +5658,7 @@ class ScreenResource(DBResourceTestCase):
             data_for_get=data_for_get )
         logger.debug('logs: %d', len(apilogs))
         self.assertTrue(
-            len(apilogs) == 1, 'too many apilogs found: %r' % apilogs)
+            len(apilogs) == 1, 'exactly one apilog should be found: %r' % apilogs)
         apilog = apilogs[0]
         logger.info('apilog: %r', apilog)
         
@@ -5757,11 +5759,13 @@ class ScreenResource(DBResourceTestCase):
                 expected_volume, Decimal(deallocated_copywell_data['volume'])))
         
         # 2.D Check logs (1 plate, 1 copywell)
+        ls_key = '{screen_facility_id}/{activity_id}'.format(
+            **library_screening_output)
         data_for_get={ 
             'limit': 0, 
             'includes': ['*'],
             'ref_resource_name': 'libraryscreening', 
-            'key': library_screening_output['activity_id'],
+            'key': ls_key,
             'api_action': API_ACTION.PATCH
         }
         apilogs = self.get_list_resource(
@@ -6104,11 +6108,13 @@ class ScreenResource(DBResourceTestCase):
 
         # 10.e Logs
         
+        ls_key = '{screen_facility_id}/{activity_id}'.format(
+            **library_screening_output)
         data_for_get={ 
             'limit': 0, 
             'includes': ['*'],
             'ref_resource_name': 'libraryscreening', 
-            'key': library_screening_output['activity_id'],
+            'key': ls_key,
             'api_action': API_ACTION.CREATE
         }
         apilogs = self.get_list_resource(
@@ -6217,11 +6223,13 @@ class ScreenResource(DBResourceTestCase):
         # 11.c Inspect PATCH logs after adding a plate range
         logger.info('new plate ranges: %r', 
             library_screening_output2['library_plates_screened'])
+        ls_key = '{screen_facility_id}/{activity_id}'.format(
+            **library_screening_output)
         data_for_get={ 
             'limit': 0, 
             'includes': ['*'],
             'ref_resource_name': 'libraryscreening', 
-            'key': library_screening_output2['activity_id'],
+            'key': ls_key,
             'api_action': API_ACTION.PATCH
         }
         apilogs = self.get_list_resource(
@@ -6229,7 +6237,7 @@ class ScreenResource(DBResourceTestCase):
             data_for_get=data_for_get )
         logger.info('logs: %r', apilogs)
         self.assertTrue(
-            len(apilogs) == 1, 'too many apilogs found: %r' % apilogs)
+            len(apilogs) == 1, 'expected exactly one apilog: %r' % apilogs)
         apilog = apilogs[0]
         self.assertTrue(apilog['diff_keys'] is not None, 'no diff_keys' )
         self.assertTrue('library_plates_screened' in apilog['diff_keys'])

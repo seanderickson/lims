@@ -18606,14 +18606,15 @@ class ScreenResource(DbApiResource):
                     new_screen_result.c.date_loaded,
                 'experimental_well_count': 
                     literal_column('screen_result.experimental_well_count'),
-                'pin_transfer_approved_by_name': (
-                    select([_concat(_su.c.first_name, ' ', _su.c.last_name)])
-                    .select_from(_su)
-                    .where(_su.c.screensaver_user_id == _screen.c.pin_transfer_approved_by_id)),
-                'pin_transfer_approved_by_username': (
-                    select([_su.c.username])
-                    .select_from(_su)
-                    .where(_su.c.screensaver_user_id == _screen.c.pin_transfer_approved_by_id)),
+                # 20181030 - Migrated to status
+                # 'pin_transfer_approved_by_name': (
+                #     select([_concat(_su.c.first_name, ' ', _su.c.last_name)])
+                #     .select_from(_su)
+                #     .where(_su.c.screensaver_user_id == _screen.c.pin_transfer_approved_by_id)),
+                # 'pin_transfer_approved_by_username': (
+                #     select([_su.c.username])
+                #     .select_from(_su)
+                #     .where(_su.c.screensaver_user_id == _screen.c.pin_transfer_approved_by_id)),
                 'keywords': (
                     select([
                         func.array_to_string(
@@ -19062,27 +19063,27 @@ class ScreenResource(DbApiResource):
                         msg='No such username: %r' % collaborator_username)
             initializer_dict['collaborators'] = alternate_collaborators
                 
-        _key = 'pin_transfer_approved_by_username'
-        pin_transfer_approved_by = None
-        if _key in initializer_dict:
-            val = initializer_dict[_key]
-            if val:
-                pin_transfer_approved_by = \
-                    self.get_su_resource()._get_detail_response_internal(
-                    exact_fields=['screensaver_user_id','is_staff'],
-                    username=val)
-                if not pin_transfer_approved_by: 
-                    raise ValidationError(
-                        key=_key,
-                        msg='No such username: %r' % val)
-                if pin_transfer_approved_by.get('is_staff',False) != True:
-                    raise ValidationError(
-                        key='pin_transfer_approved_by_username',
-                        msg='Must be a staff user')
-        pin_transfer_date_approved = \
-            initializer_dict.get('pin_transfer_date_approved',None)
-        pin_transfer_comments = \
-            initializer_dict.get('pin_transfer_comments', None)
+        # _key = 'pin_transfer_approved_by_username'
+        # pin_transfer_approved_by = None
+        # if _key in initializer_dict:
+        #     val = initializer_dict[_key]
+        #     if val:
+        #         pin_transfer_approved_by = \
+        #             self.get_su_resource()._get_detail_response_internal(
+        #             exact_fields=['screensaver_user_id','is_staff'],
+        #             username=val)
+        #         if not pin_transfer_approved_by: 
+        #             raise ValidationError(
+        #                 key=_key,
+        #                 msg='No such username: %r' % val)
+        #         if pin_transfer_approved_by.get('is_staff',False) != True:
+        #             raise ValidationError(
+        #                 key='pin_transfer_approved_by_username',
+        #                 msg='Must be a staff user')
+        # pin_transfer_date_approved = \
+        #     initializer_dict.get('pin_transfer_date_approved',None)
+        # pin_transfer_comments = \
+        #     initializer_dict.get('pin_transfer_comments', None)
 
         errors = self.validate(initializer_dict,  schema=schema, patch=not create)
         if errors:
@@ -19144,21 +19145,21 @@ class ScreenResource(DbApiResource):
                         screen=screen,
                         funding_support=funding_support)
         
-        # Set the pin transfer approval data
-        if pin_transfer_approved_by is not None:
-            screen.pin_transfer_approved_by_id \
-                = pin_transfer_approved_by['screensaver_user_id']
-            
-        elif screen.pin_transfer_approved_by is None:
-            # secondary pin transfer validation
-            if pin_transfer_date_approved:
-                raise ValidationError(
-                    key='pin_transfer_date_approved',
-                    msg='requires pin_transfer_approved_by_username')    
-            if pin_transfer_comments:
-                raise ValidationError(
-                    key='pin_transfer_comments',
-                    msg='requires pin_transfer_approved_by_username')    
+        # # Set the pin transfer approval data
+        # if pin_transfer_approved_by is not None:
+        #     screen.pin_transfer_approved_by_id \
+        #         = pin_transfer_approved_by['screensaver_user_id']
+        #     
+        # elif screen.pin_transfer_approved_by is None:
+        #     # secondary pin transfer validation
+        #     if pin_transfer_date_approved:
+        #         raise ValidationError(
+        #             key='pin_transfer_date_approved',
+        #             msg='requires pin_transfer_approved_by_username')    
+        #     if pin_transfer_comments:
+        #         raise ValidationError(
+        #             key='pin_transfer_comments',
+        #             msg='requires pin_transfer_approved_by_username')    
             
         # TODO: deprecated <20180925
         _key = 'keywords'

@@ -20,90 +20,6 @@ logger = logging.getLogger(__name__)
 
 DB_API_URI = '/db/api/v1'
 
-# def make_log(
-#     apps, input_date, ref_resource_name, key, 
-#     diffs=None, comment=None, user_id=None, username=None):
-# 
-# #     ApiLog = apps.get_model('reports','apilog')
-#     collision_counter=0
-# 
-#     if diffs is None:
-#         diffs = {}
-#     
-#     log = ApiLog()
-#     log.date_time = create_log_time(key,input_date) 
-#     log.user_id = user_id or 1
-#     log.username = username
-#     log.ref_resource_name = ref_resource_name
-#     log.key = key
-#     log.uri = '/'.join([DB_API_URI, ref_resource_name, key])
-#     log.diffs = diffs
-#     log.comment = comment
-#     try:
-#         # check for log key (date_time) collisions; this shouldn't 
-#         # happen with the "create_log_time()", but, in case it does
-#         with transaction.atomic():
-#             log.save()
-#     except IntegrityError as e:
-#         q = ApiLog.objects.filter(
-#                 ref_resource_name=ref_resource_name,
-#                 key = key).order_by('-date_time')        
-#         if q.exists():    
-#             max_datetime = ( q.values_list('date_time', flat=True))[0]
-#         else:
-#             max_datetime = log.date_time
-#         logger.info('log time collision: %s, adjust log time from : %s to %s', 
-#             e, max_datetime.isoformat(), 
-#             (max_datetime + datetime.timedelta(0,collision_counter)))
-#         max_datetime += datetime.timedelta(0,collision_counter)
-#         times_seen.add(max_datetime)
-#         log.date_time = max_datetime
-#         collision_counter = collision_counter + 1
-#     
-#     log.save()   
-#     return log
-
-# def migrate_pin_transfer_approval(apps, schema_editor):
-#     '''
-#     Migrate the pin_transfer_approval activities to the
-#     "pin_transfer_approved_by" field, and record the date and comment
-#     '''
-#     logger.info('1 - migrate_pin_transfer_approval')
-#     Screen = apps.get_model('db', 'Screen')
-#     count = 0
-#     for s in ( Screen.objects.all()
-#         .filter(pin_transfer_admin_activity_id__isnull=False)):
-#         activity = s.pin_transfer_admin_activity;
-#         
-#         logger.info('migrate pin transfer activity for screen: %r', s)
-#         logger.debug('process pin transfer activity: %r', activity)
-# 
-#         # Create an ApiLog - note, no de-duplication needed; for the current 
-#         # database, the pin transfer approval has only been set once
-#         diffs = {
-#             'pin_transfer_approved_by_username': 
-#                 [None, activity.performed_by.username],
-#             'pin_transfer_date_approved': 
-#                 [None, activity.date_of_activity.strftime("%Y-%m-%d")],
-#             'pin_transfer_comments': [None, activity.comments],
-#         }
-#         
-#         log = make_log(
-#             apps,
-#             activity.date_of_activity, 'screen', 
-#             s.facility_id, 
-#             diffs=diffs, comment=activity.comments,
-#             user_id=activity.created_by.screensaver_user_id,
-#             username=activity.created_by.username)
-#         
-#         count = count + 1
-#         
-#         s.pin_transfer_approved_by = activity.created_by
-#         s.pin_transfer_approval_date = activity.date_of_activity
-#         s.pin_transfer_approval_comment = activity.comments
-#         s.save()
-#         
-#     logger.info('migrated %d pin_transfer_admin_activity logs', count)
 
 def make_log(status_item):
 
@@ -146,16 +62,17 @@ def migrate_screen_status(apps,schema_editor):
     - adds an "id" field to screen_status_item
     - copies the latest status to the screen.status field    
     '''
+    Screen = apps.get_model('db', 'Screen')
+    ScreenStatusItem = apps.get_model('db','ScreenStatusItem')
         
     # Create a history log for all of the status's for each screen, 
     # and store the _current/latest_ status on the new screen.status field
     count=0
-    ScreenStatusItem = apps.get_model('db','ScreenStatusItem')
-    for screen in (
-            apps.get_model('db','Screen').objects.all().order_by('facility_id')):
+    for screen in Screen.objects.all().order_by('facility_id'):
         
         logger.info('process screen: %s', screen.facility_id)
         if screen.status:
+            # Note: screen.status is set in manual/0002
             # Clean up the vocabulary used in the status_item table
             # NOTE: migration 0003 shows a newer way of generating the vocabs
             # - this is ok for these
@@ -167,8 +84,8 @@ def migrate_screen_status(apps,schema_editor):
         
         status_items= []
         
-        for status in ( ScreenStatusItem.objects.filter(screen=screen)
-                .order_by('status_date')):
+        for status in ScreenStatusItem.objects\
+            .filter(screen=screen).order_by('status_date'):
             
             status_item = {
                 'date': status.status_date,
@@ -178,8 +95,9 @@ def migrate_screen_status(apps,schema_editor):
                 }
             status_items.append(status_item)
 
-        for s in ( Screen.objects.all()
-            .filter(pin_transfer_admin_activity_id__isnull=False)):
+        for s in Screen.objects\
+            .filter(pin_transfer_admin_activity_id__isnull=False):
+        
             activity = s.pin_transfer_admin_activity;
 
             status_item = {
@@ -195,50 +113,23 @@ def migrate_screen_status(apps,schema_editor):
         prev_item = None
         status_items = sorted(status_items, key=lambda x: x['date'])
         for status_item in status_items:
-            diffs = {}
+            diffs = {
+                'status': [None, status_item['status']],
+                'date': [None, status_item['date'].strftime(DATE_FORMAT)]
+                }
             if prev_item:
-                diffs['date'] = [
-                    prev_item['date'].strftime(DATE_FORMAT),
-                    status_item['date'].strftime(DATE_FORMAT) ]
-                diffs['status'] = [
-                    prev_item['status'], status_item['status']]
+                diffs['status'][0] = prev_item['status']
+                diffs['date'][0] = prev_item['date'].strftime(DATE_FORMAT)
+
             status_item['diffs'] = diffs
             prev_item = status_item
             
         for status_item in status_items:
             make_log(*status_item)
             count = count+1
+
     logger.info('updated: %d screen status entries', count)
 
-#         # now scan the screen_status_items to recreate logs
-#         prev_status = None
-#         prev_status_date = None
-#         for status in ( ScreenStatusItem.objects.filter(screen=screen)
-#                 .order_by('status_date')):
-#             new_status = default_converter(status.status)
-#             diffs = {}
-#             if prev_status:
-#                 diffs['status'] = [prev_status, new_status]
-#             else:
-#                 diffs['status'] = [None, new_status]
-#             
-#             if prev_status_date:
-#                 diffs['status_date'] = [prev_status_date, status.status_date]
-#             else:
-#                 diffs['status_date'] = [None, status.status_date]
-#                 
-#             # Note: Screen status is not accompanied by an activity log in SS1:
-#             # - so username is set arbitrarily
-#             log = make_log(
-#                 apps,status.status_date, 'screen', screen.facility_id, 
-#                 diffs, username='sde')
-#             logger.debug('created log: %d: %r', count, log)
-# 
-#             prev_status_date = status.status_date
-#             prev_item = status
-#             count = count + 1
-#     
-#     logger.info('updated: %d screen status entries', count)
 
 def migrate_screen_project_phase(apps,schema_editor):
     '''

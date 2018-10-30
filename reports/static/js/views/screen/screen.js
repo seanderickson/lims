@@ -177,17 +177,17 @@ define([
         fields['reconfirmation_screens'].visibility=['d'];
       }
       
-      // Hack to change group name:
-      _.each(fields, function(field){
-        if (field.display_options && 
-            field.display_options.group == 'Pin Transfer / RNAi Transfection'){
-          if (self.model.get('screen_type')=='small_molecule'){
-            field.display_options.group = 'Pin Transfer';
-          } else {
-            field.display_options.group = 'RNAi Transfection';
-          }
-        }
-      });
+      //// Hack to change group name:
+      //_.each(fields, function(field){
+      //  if (field.display_options && 
+      //      field.display_options.group == 'Pin Transfer / RNAi Transfection'){
+      //    if (self.model.get('screen_type')=='small_molecule'){
+      //      field.display_options.group = 'Pin Transfer';
+      //    } else {
+      //      field.display_options.group = 'RNAi Transfection';
+      //    }
+      //  }
+      //});
       
       // Manage visible fields; admin fields
       var editableKeys = model.resource.updateKeys();
@@ -288,7 +288,7 @@ define([
       
       // Custom showEdit function allows lazy loading of user choices fields
       // FIXME: it would be better to extend DetailLayout.showEdit
-      var showEdit = function(updateModel) {
+      var showEdit = function showEdit(updateModel) {
         var self = this;
         var model = updateModel || self.model;
         var fields = model.resource.fields;
@@ -305,10 +305,10 @@ define([
               [{ val: '', label: ''}].concat(userOptions));
           fields['lab_head_id'].choiceHash = (
               appModel.getPrincipalInvestigatorOptions() );
-          if (_.has(fields,'pin_transfer_approved_by_username')){
-            fields['pin_transfer_approved_by_username'].choiceHash = 
-              appModel.getUsernamesInGroupOptions('serviceActivityPerformers');
-          }
+          //if (_.has(fields,'pin_transfer_approved_by_username')){
+          //  fields['pin_transfer_approved_by_username'].choiceHash = 
+          //    appModel.getUsernamesInGroupOptions('pinTransferApprovers');
+          //}
           
           // pick just the non-billing fields: prevent backbone save from sending
           // uninitialized billing fields on create
@@ -325,7 +325,10 @@ define([
             { 
               model: editModel,
               uriStack: self.uriStack,
-              isCreate: true
+              isCreate: true,
+              editableKeys: editableKeys,
+              detailKeys: detailKeys,
+              editVisibleKeys: editVisibleKeys
             }));
           Backbone.Layout.setupView(editViewInstance);
           view.listenTo(editViewInstance,'remove',function(){
@@ -379,7 +382,7 @@ define([
             
             var addReconfirmationScreenControl = $([
               '<a class="btn btn-default btn-sm pull-right" ',
-                'role="button" id="reconfirmationScreenButton" href="#">',
+                'role="button" id="ScreenButton" href="#">',
                 'Add a Reconfirmation Screen</a>'
               ].join(''));
             if (appModel.hasPermission('screen','write')) {
@@ -410,7 +413,7 @@ define([
                 return resource.apiUri + '?override=true';
               }
               
-              console.log('new reconfirmation up screen:', newModel);
+              console.log('new reconfirmation screen:', newModel);
               self.consumedStack = ['+add'];
               editVisibleKeys.push('primary_screen');
               showEdit(newModel);

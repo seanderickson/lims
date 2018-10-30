@@ -387,7 +387,7 @@ define([
       //  });
       
       // Select2
-      function matchCustom(params, data) {
+      function matchLibrary(params, data) {
         // User term: params.term
         // Option title: data.text
         if (typeof data.text === 'undefined' || _.isEmpty(data.text)) {
@@ -416,20 +416,64 @@ define([
           }
         }      
         return null;
-      }      
+      };
+      function matchUser(params, data) {
+        // User term: params.term
+        // Option title: data.text
+        if (typeof data.text === 'undefined' || _.isEmpty(data.text)) {
+          return null;
+        }
+        var term = $.trim(params.term);
+        if (term === '') {
+          return data;
+        }
+        term = term.toLowerCase();
+        var label = data.text.trim().toLowerCase();
+
+        var parts = appModel.USER_OPTION_PATTERN.exec(label);
+        if (!_.isEmpty(parts)){
+          
+          var name = parts[1];
+          var username = parts[3];
+          var ss_id = parseInt(parts[4]);
+          var val = parseInt(params.term);
+          if (!_.isNaN(val)){
+            if (ss_id==val){
+              return data;
+            }
+          }
+          else if (username && username.indexOf(term)==0){
+            return data;
+          }else{
+            var name = name.toLowerCase();
+            var found = _.find(name.split(','), function(first_last){
+              if (first_last){
+                return first_last.trim().indexOf(term)==0;
+              }
+            });
+            if (found) {
+              return data;
+            } else if (name.trim().indexOf(term) == 0){
+              return data;
+            }
+          }
+        }else if (label.indexOf(term) > -1) {
+          return data;
+        }
+        return null;
+      };
       self.$el.find('.library-select').select2({
         placeholder : { id:'-1', text:'Find a Library...'},
-        matcher: matchCustom,
+        matcher: matchLibrary,
       });
 
       self.$el.find('.screen-select').select2({
-        placeholder : { id:'-1', text:'Find a Screen...'},
-        matcher: matchCustom,
+        placeholder : { id:'-1', text:'Find a Screen...'}
       });
 
       self.$el.find('.user-select').select2({
         placeholder : { id:'-1', text:'Find a User...'},
-        matcher: matchCustom,
+        matcher: matchUser,
       });
 
       

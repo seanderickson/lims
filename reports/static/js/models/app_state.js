@@ -642,11 +642,16 @@ define([
         self.getUsers(function(users){
           var options = [];
           users.each(function(user){
+            // Construct the option label:
+            // NOTE: for search box searching, must match the patttern:
+            // appState.USER_OPTION_PATTERN
+            // /([^\[]+)(\[(\w+)\])?\:\s+(\d+)/
+            // where (1=name) (3=ecommons) (4=ssID)
             var user_id = user.get('screensaver_user_id');
             var username = user.get('username');
             var name = user.get('name');
             var _label = name;
-            if(!_.isEmpty(username)) _label += ' (' + username + ')';
+            if(!_.isEmpty(username)) _label += ' [' + username + ']';
             _label += ': ' + user_id;
             options.unshift({ val: user_id, label: _label});
           });
@@ -2835,6 +2840,8 @@ define([
     ', number of terms entered: {actual_size}';
   appState.API_MSG_LCPS_INSUFFICIENT_VOLUME = 'Insufficient volume';
   appState.VOCAB_USER_CLASSIFICATION_PI = 'principal_investigator';
+  
+  appState.USER_OPTION_PATTERN = /([^\[]+)(\[(\w+)\])?\:\s+(\d+)/;
   
   /**
    * URIStack search element SEARCH_DELIMITER

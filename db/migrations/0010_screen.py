@@ -14,21 +14,27 @@ import pytz
 from db.migrations import create_log_time, times_seen
 from reports.utils import default_converter
 from reports.models import ApiLog
+from reports.schema import DATE_FORMAT
 
 
 logger = logging.getLogger(__name__)
 
 DB_API_URI = '/db/api/v1'
 
+# Default Admin User for log records (should be updated for other facilities)
+USERNAME_ADMIN = 'sde_EDIT'
+USER_ID_ADMIN = 7
 
 def make_log(status_item):
 
-    collision_counter=0
+    logger.debug('make status log: %r', status_item)
+    collision_counter=1
 
     log = ApiLog()
     log.key = status_item['screen_facility_id']
-    log.date_time = create_log_time(key,status_item['date']) 
+    log.date_time = create_log_time(log.key,status_item['date']) 
     log.username = status_item['username']
+    log.user_id = status_item['user_id']
     log.ref_resource_name = 'screen'
     log.uri = '/'.join([DB_API_URI, log.ref_resource_name, log.key])
     log.diffs = status_item.get('diffs')
@@ -40,8 +46,7 @@ def make_log(status_item):
             log.save()
     except IntegrityError as e:
         q = ApiLog.objects.filter(
-                ref_resource_name=ref_resource_name,
-                key = key).order_by('-date_time')        
+                ref_resource_name=log.ref_resource_name, key = log.key).order_by('-date_time')        
         if q.exists():    
             max_datetime = ( q.values_list('date_time', flat=True))[0]
         else:
@@ -90,7 +95,8 @@ def migrate_screen_status(apps,schema_editor):
             status_item = {
                 'date': status.status_date,
                 'status': default_converter(status.status),
-                'username': 'sde_EDIT', # NOTE: no logs available in SS1
+                'username': USERNAME_ADMIN, # NOTE: no logs available in SS1
+                'user_id': USER_ID_ADMIN,
                 'screen_facility_id': str(screen.facility_id)
                 }
             status_items.append(status_item)
@@ -104,6 +110,7 @@ def migrate_screen_status(apps,schema_editor):
                 'date': activity.date_of_activity, 
                 'status': 'transfer_approved',
                 'username': activity.created_by.username,
+                'user_id': activity.created_by.user_id,
                 'screen_facility_id': str(screen.facility_id),
                 'comment': activity.comments
                 }
@@ -125,7 +132,7 @@ def migrate_screen_status(apps,schema_editor):
             prev_item = status_item
             
         for status_item in status_items:
-            make_log(*status_item)
+            make_log(status_item)
             count = count+1
 
     logger.info('updated: %d screen status entries', count)

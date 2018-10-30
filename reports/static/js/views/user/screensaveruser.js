@@ -610,6 +610,7 @@ define([
       var url = [self.model.resource.apiUri, 
                  self.model.key,
                  'useragreement'].join('/');
+      // TODO: replace with appState._form_template
       var form_template = [
          "<div class='form-horizontal container' id='uploadUAButton_form' >",
          "<form class='form-horizontal container' >",

@@ -1466,6 +1466,11 @@ define([
       var self = this;
       var key = 'attachedfile';
       var resource = appModel.getResource('attachedfile');
+      
+      _.each(['user_fullname','screen_facility_id','publication_id'], function(field_key){
+        resource.fields[field_key]['visibility'] = [];
+      });
+      
       var url = [self.model.resource.apiUri, 
                  self.model.key,
                  'attachedfiles'].join('/');

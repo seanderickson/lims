@@ -5525,7 +5525,7 @@ class ScreenResource(DBResourceTestCase):
         # Only modify one well here
         copywell_input = copywell_data[0]
         copywell_id = copywell_input['copywell_id']
-        copywell_log_id = copywell_input['library_short_name'] + '/' + copywell_input['copywell_id']
+#         copywell_log_id = copywell_input['library_short_name'] + '/' + copywell_input['copywell_id']
         logger.info('copywell input: %r', copywell_input)
         copywell_plate = '%s/%s' % (
             copywell_input['copy_name'],str(copywell_input['plate_number']))
@@ -5644,13 +5644,13 @@ class ScreenResource(DBResourceTestCase):
                 expected_volume, Decimal(new_copywell_data['volume'])) )
 
         # 1.D Check logs (17 plate, 1 copywell)
-        ls_key = '{screen_facility_id}/{activity_id}'.format(
+        ls_uri_key = 'libraryscreening/screen/{screen_facility_id}/{activity_id}'.format(
             **library_screening_output)
         data_for_get={ 
             'limit': 0, 
             'includes': ['*'],
             'ref_resource_name': 'libraryscreening', 
-            'key': ls_key,
+            'uri': ls_uri_key,
             'api_action': API_ACTION.CREATE
         }
         apilogs = self.get_list_resource(
@@ -5685,7 +5685,7 @@ class ScreenResource(DBResourceTestCase):
                 self.assertTrue('screening_count' in apilog['diff_keys'])
             elif apilog['ref_resource_name'] == 'copywell':
                 logger.info('copywell log: %r', apilog)
-                self.assertEqual(copywell_log_id, apilog['key'])
+                self.assertEqual(copywell_id, apilog['key'])
                 self.assertTrue('volume' in apilog['diff_keys'])
             else:
                 self.fail('unknown log: %r', apilog)
@@ -5759,13 +5759,13 @@ class ScreenResource(DBResourceTestCase):
                 expected_volume, Decimal(deallocated_copywell_data['volume'])))
         
         # 2.D Check logs (1 plate, 1 copywell)
-        ls_key = '{screen_facility_id}/{activity_id}'.format(
+        ls_uri_key = 'libraryscreening/screen/{screen_facility_id}/{activity_id}'.format(
             **library_screening_output)
         data_for_get={ 
             'limit': 0, 
             'includes': ['*'],
             'ref_resource_name': 'libraryscreening', 
-            'key': ls_key,
+            'uri': ls_uri_key,
             'api_action': API_ACTION.PATCH
         }
         apilogs = self.get_list_resource(
@@ -5802,7 +5802,7 @@ class ScreenResource(DBResourceTestCase):
                 logger.info('lcp log: %r', apilog)
                 self.assertEqual(plate_removed_key, apilog['key'])
             elif apilog['ref_resource_name'] == 'copywell':
-                self.assertEqual(copywell_log_id, apilog['key'])
+                self.assertEqual(copywell_id, apilog['key'])
                 logger.info('copywell log: %r', apilog)
             else:
                 self.fail('unknown log: %r', apilog)
@@ -6108,13 +6108,13 @@ class ScreenResource(DBResourceTestCase):
 
         # 10.e Logs
         
-        ls_key = '{screen_facility_id}/{activity_id}'.format(
+        ls_uri_key = 'libraryscreening/screen/{screen_facility_id}/{activity_id}'.format(
             **library_screening_output)
         data_for_get={ 
             'limit': 0, 
             'includes': ['*'],
             'ref_resource_name': 'libraryscreening', 
-            'key': ls_key,
+            'uri': ls_uri_key,
             'api_action': API_ACTION.CREATE
         }
         apilogs = self.get_list_resource(
@@ -6223,13 +6223,13 @@ class ScreenResource(DBResourceTestCase):
         # 11.c Inspect PATCH logs after adding a plate range
         logger.info('new plate ranges: %r', 
             library_screening_output2['library_plates_screened'])
-        ls_key = '{screen_facility_id}/{activity_id}'.format(
+        ls_uri_key = 'libraryscreening/screen/{screen_facility_id}/{activity_id}'.format(
             **library_screening_output)
         data_for_get={ 
             'limit': 0, 
             'includes': ['*'],
             'ref_resource_name': 'libraryscreening', 
-            'key': ls_key,
+            'uri': ls_uri_key,
             'api_action': API_ACTION.PATCH
         }
         apilogs = self.get_list_resource(
@@ -6644,85 +6644,85 @@ class ScreenResource(DBResourceTestCase):
             logger.exception('exception when trying to locate: %r', uri)
             raise
     
-    def test5_pin_transfer_approval(self):
-        
-        logger.info('test5_pin_transfer_approval...')
-        # Create a Screen
-        data = {
-            SCREEN_TYPE: 'small_molecule',
-        }
-        screen_item = self.create_screen(data=data)
-        
-        self.assertTrue(
-            'facility_id' in screen_item, 
-            'the facility_id was not created')
-        
-        for key, value in data.items():
-            self.assertEqual(value, screen_item[key], 
-                'key %r, val: %r not expected: %r' 
-                % (key, value, screen_item[key]))
-
-        logger.info('screen created: %r', screen_item)
-
-        self.pin_transfer_user = self.create_staff_user({ 
-            'username': 'pin_transfer_admin1'
-        })
-
-        # 1. Set the pin_transfer data
-        # FIXME: admin approved pin tranfer user only
-        pin_transfer_data_expected = {
-            'pin_transfer_approved_by_username': self.pin_transfer_user['username'],
-            'pin_transfer_date_approved': _now().date().strftime("%Y-%m-%d"),
-            'pin_transfer_comments': 'test pin_transfer_comments' }
-        
-        screen_update_data = {
-            'facility_id': screen_item['facility_id']
-            }
-        screen_update_data.update(pin_transfer_data_expected)
-        resource_uri = \
-            BASE_URI_DB + '/screen/' + screen_update_data['facility_id']
-        resp = self.api_client.patch(
-            resource_uri, 
-            format='json', data=screen_update_data, 
-            authentication=self.get_credentials())
-        self.assertTrue(
-            resp.status_code in [200], 
-            (resp.status_code, self.get_content(resp)))
-        
-        logger.info('get the updated pin_transfer screen data')
-        new_screen_item = self.get_single_resource(resource_uri)
-        logger.info('retrieved: %r', new_screen_item)
-        for key,val in pin_transfer_data_expected.items():
-            self.assertEqual(
-                new_screen_item[key],pin_transfer_data_expected[key],
-                'key: %r, %r, %r' 
-                % (key,new_screen_item[key],pin_transfer_data_expected[key]))
-            
-        # 2. Modify the pin_transfer comment
-        screen_update_data = {
-            'facility_id': screen_item['facility_id']
-            }
-        screen_update_data['pin_transfer_comments'] = \
-            'New test pin transfer comment'
-        resp = self.api_client.patch(
-            resource_uri, 
-            format='json', data=screen_update_data,
-            authentication=self.get_credentials())
-        self.assertTrue(
-            resp.status_code in [200], 
-            (resp.status_code, self.get_content(resp)))
-        
-        logger.info('get the updated pin_transfer screen data')
-        new_screen_item = self.get_single_resource(resource_uri)
-        for key,val in pin_transfer_data_expected.items():
-            if key == 'pin_transfer_comments':
-                self.assertEqual(new_screen_item[key],screen_update_data[key])
-            else:
-                self.assertEqual(new_screen_item[key],
-                    pin_transfer_data_expected[key],
-                    'key: %r, %r, %r' 
-                    % (key,new_screen_item[key],
-                        pin_transfer_data_expected[key]))
+#     def test5_pin_transfer_approval(self):
+#         
+#         logger.info('test5_pin_transfer_approval...')
+#         # Create a Screen
+#         data = {
+#             SCREEN_TYPE: 'small_molecule',
+#         }
+#         screen_item = self.create_screen(data=data)
+#         
+#         self.assertTrue(
+#             'facility_id' in screen_item, 
+#             'the facility_id was not created')
+#         
+#         for key, value in data.items():
+#             self.assertEqual(value, screen_item[key], 
+#                 'key %r, val: %r not expected: %r' 
+#                 % (key, value, screen_item[key]))
+# 
+#         logger.info('screen created: %r', screen_item)
+# 
+#         self.pin_transfer_user = self.create_staff_user({ 
+#             'username': 'pin_transfer_admin1'
+#         })
+# 
+#         # 1. Set the pin_transfer data
+#         # FIXME: admin approved pin tranfer user only
+#         pin_transfer_data_expected = {
+#             'pin_transfer_approved_by_username': self.pin_transfer_user['username'],
+#             'pin_transfer_date_approved': _now().date().strftime("%Y-%m-%d"),
+#             'pin_transfer_comments': 'test pin_transfer_comments' }
+#         
+#         screen_update_data = {
+#             'facility_id': screen_item['facility_id']
+#             }
+#         screen_update_data.update(pin_transfer_data_expected)
+#         resource_uri = \
+#             BASE_URI_DB + '/screen/' + screen_update_data['facility_id']
+#         resp = self.api_client.patch(
+#             resource_uri, 
+#             format='json', data=screen_update_data, 
+#             authentication=self.get_credentials())
+#         self.assertTrue(
+#             resp.status_code in [200], 
+#             (resp.status_code, self.get_content(resp)))
+#         
+#         logger.info('get the updated pin_transfer screen data')
+#         new_screen_item = self.get_single_resource(resource_uri)
+#         logger.info('retrieved: %r', new_screen_item)
+#         for key,val in pin_transfer_data_expected.items():
+#             self.assertEqual(
+#                 new_screen_item[key],pin_transfer_data_expected[key],
+#                 'key: %r, %r, %r' 
+#                 % (key,new_screen_item[key],pin_transfer_data_expected[key]))
+#             
+#         # 2. Modify the pin_transfer comment
+#         screen_update_data = {
+#             'facility_id': screen_item['facility_id']
+#             }
+#         screen_update_data['pin_transfer_comments'] = \
+#             'New test pin transfer comment'
+#         resp = self.api_client.patch(
+#             resource_uri, 
+#             format='json', data=screen_update_data,
+#             authentication=self.get_credentials())
+#         self.assertTrue(
+#             resp.status_code in [200], 
+#             (resp.status_code, self.get_content(resp)))
+#         
+#         logger.info('get the updated pin_transfer screen data')
+#         new_screen_item = self.get_single_resource(resource_uri)
+#         for key,val in pin_transfer_data_expected.items():
+#             if key == 'pin_transfer_comments':
+#                 self.assertEqual(new_screen_item[key],screen_update_data[key])
+#             else:
+#                 self.assertEqual(new_screen_item[key],
+#                     pin_transfer_data_expected[key],
+#                     'key: %r, %r, %r' 
+#                     % (key,new_screen_item[key],
+#                         pin_transfer_data_expected[key]))
     
     def test6_service_activity(self):
         logger.info('test6_service_activity...')
@@ -11377,7 +11377,7 @@ class ScreensaverUserResource(DBResourceTestCase):
         self.assertTrue(apilog['api_action'] == 'CREATE')
         self.assertEquals(
             apilog['uri'], 
-            'screensaveruser/{serviced_user_id}/activity/{activity_id}'
+            'activity/screensaveruser/{serviced_user_id}/{activity_id}'
                 .format(**new_obj))
         
         # TODO: test with a serviced screen
@@ -11430,7 +11430,7 @@ class ScreensaverUserResource(DBResourceTestCase):
         self.assertTrue(apilog['api_action'] == 'PATCH')
         self.assertEquals(
             apilog['uri'], 
-            'screensaveruser/{serviced_user_id}/activity/{activity_id}'
+            'activity/screensaveruser/{serviced_user_id}/{activity_id}'
                 .format(**new_obj))
         
         # 3 delete activity
@@ -11467,7 +11467,7 @@ class ScreensaverUserResource(DBResourceTestCase):
         self.assertTrue(apilog['api_action'] == 'DELETE')
         self.assertEquals(
             apilog['uri'], 
-            'screensaveruser/{serviced_user_id}/activity/{activity_id}'
+            'activity/screensaveruser/{serviced_user_id}/{activity_id}'
                 .format(**new_obj))
 
 

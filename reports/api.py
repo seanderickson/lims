@@ -1066,14 +1066,14 @@ class ApiResource(SqlAlchemyResource):
  
         return self.get_list(request,**kwargs)
     
-    def _parse_list_ids(self, deserialized, schema):
+    def _parse_list_ids(self, deserialized, schema, validate=False):
         
         id_query_params = defaultdict(list)
         # store ids by row for ValidationError key
         rows_to_ids = defaultdict(dict)
         for _row,_data in enumerate(deserialized):
             try:
-                id_kwargs = self.get_id(_data, schema=schema, validate=True)
+                id_kwargs = self.get_id(_data, schema=schema, validate=validate)
             except ValidationError as e:
                 # Consider CumulativeError
                 e.errors['input_row'] = _row

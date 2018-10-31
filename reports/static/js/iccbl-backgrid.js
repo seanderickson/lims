@@ -3652,7 +3652,44 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
 
 //// Header Cell Definitions /////
 
-var MultiSortHeaderCell = Iccbl.MultiSortHeaderCell = Backgrid.HeaderCell.extend({
+var SortableHeaderCell = Iccbl.SortableHeaderCell = Backgrid.HeaderCell.extend({
+  ___klass: 'SortableHeaderCell',
+
+  /**
+   * Renders a header cell with a sorter and a label.
+   * - labels are constrained to 10 characters wide
+   */
+  render : function() {
+    var self = this;
+    this.$el.empty();
+    var column = this.column;
+    var sortable = Backgrid.callByNeed(column.sortable(), column, this.collection);
+    if(sortable){
+      var label = Iccbl.createLabel(column.get("label"), 10);
+      self.sorter = $("<div id='sorter'></div>");
+      label = $("<a>" + label +"</a>").append(self.sorter);
+    } else {
+      // NOTE: using anchor node to set the text color/style the same as other
+      // cells
+      // label = document.createTextNode(column.get("label"));
+      label = $("<a>" + column.get("label") +"</a>");
+    }
+    this.$el.append(label);
+    this.$el.addClass(column.get("direction"));
+    this.$el.addClass(column.get("name"));
+    this.delegateEvents();
+
+    var mouseover = column.get('description');
+    if (column.has('mouseover')){
+      mouseover = column.get('mouseover');
+    }
+    this.$el.prop('title', mouseover);
+
+    return this;
+  }
+});
+
+var MultiSortHeaderCell = Iccbl.MultiSortHeaderCell = SortableHeaderCell.extend({
 
   ___klass: 'MultiSortHeaderCell',
 
@@ -3836,37 +3873,37 @@ var MultiSortHeaderCell = Iccbl.MultiSortHeaderCell = Backgrid.HeaderCell.extend
     if(self.sorter) self.sorter.empty();
   },
 
-   /**
-   * Renders a header cell with a sorter and a label.
-   */
-  render : function() {
-    var self = this;
-    this.$el.empty();
-    var column = this.column;
-    var sortable = Backgrid.callByNeed(column.sortable(), column, this.collection);
-    if(sortable){
-      var label = Iccbl.createLabel(column.get("label"), 10);
-      self.sorter = $("<div id='sorter'></div>");
-      label = $("<a>" + label +"</a>").append(self.sorter);
-    } else {
-      // NOTE: using anchor node to set the text color/style the same as other
-      // cells
-      // label = document.createTextNode(column.get("label"));
-      label = $("<a>" + column.get("label") +"</a>");
-    }
-    this.$el.append(label);
-    this.$el.addClass(column.get("direction"));
-    this.$el.addClass(column.get("name"));
-    this.delegateEvents();
-
-    var mouseover = this.options['column']['attributes']["description"];
-    if (this.options['column'].has('mouseover')){
-      mouseover = this.options['column'].get('mouseover');
-    }
-    this.$el.prop('title', mouseover);
-
-    return this;
-  }
+//   /**
+//   * Renders a header cell with a sorter and a label.
+//   */
+//  render : function() {
+//    var self = this;
+//    this.$el.empty();
+//    var column = this.column;
+//    var sortable = Backgrid.callByNeed(column.sortable(), column, this.collection);
+//    if(sortable){
+//      var label = Iccbl.createLabel(column.get("label"), 10);
+//      self.sorter = $("<div id='sorter'></div>");
+//      label = $("<a>" + label +"</a>").append(self.sorter);
+//    } else {
+//      // NOTE: using anchor node to set the text color/style the same as other
+//      // cells
+//      // label = document.createTextNode(column.get("label"));
+//      label = $("<a>" + column.get("label") +"</a>");
+//    }
+//    this.$el.append(label);
+//    this.$el.addClass(column.get("direction"));
+//    this.$el.addClass(column.get("name"));
+//    this.delegateEvents();
+//
+//    var mouseover = this.options['column']['attributes']["description"];
+//    if (this.options['column'].has('mouseover')){
+//      mouseover = this.options['column'].get('mouseover');
+//    }
+//    this.$el.prop('title', mouseover);
+//
+//    return this;
+//  }
 
 }); // end MultiSortHeaderCell
 

@@ -2396,6 +2396,7 @@ class LibraryCopyPlateResource(DbApiResource):
             new_data = self._get_list_response_internal(**plate_kwargs)
             
             parent_log = self.make_log(request)
+            # NOTE: "batch" log is keyed for the resource name only
             parent_log.key = self._meta.resource_name
             parent_log.uri = self._meta.resource_name
             parent_log.save()
@@ -2459,6 +2460,7 @@ class LibraryCopyPlateResource(DbApiResource):
             location_copy_ranges.extend(copy_plate_ranges)
             location_data['copy_plate_ranges'] = location_copy_ranges
             
+            # NOTE: "batch" log is keyed for the resource name only
             parent_log = self.make_log(request)
             parent_log.key = self._meta.resource_name
             parent_log.uri = self._meta.resource_name
@@ -5167,7 +5169,6 @@ class ScreenResultResource(DbApiResource):
                 screen_result.assaywell_set.all().delete()
                 screen_result.screen.assayplate_set\
                     .filter(library_screening__isnull=True).delete()
-#                 screen_log.diff_keys = ['last_data_loading_date']
                 screen_log.diffs = { 
                     'last_data_loading_date': 
                         [screen_result.date_loaded, screen_log.date_time]
@@ -7134,8 +7135,9 @@ class CopyWellResource(DbApiResource):
             new_volume = copywell.volume + volume
             
             log = self.make_child_log(parent_log)
-            log.key = '/'.join([copy.library.short_name, copy.name, copywell.well_id])
-            log.uri = '/'.join([log.ref_resource_name,log.key])
+            log.key = '/'.join([copy.name, copywell.well_id])
+            log.uri = '/'.join([
+                log.ref_resource_name,'library',copy.library.short_name, log.key])
             log.diffs = {
                 'volume': [copywell.volume, new_volume]}
             log.parent_log = parent_log
@@ -7159,10 +7161,8 @@ class CopyWellResource(DbApiResource):
         copywells_allocated = set()
         for copywell in copywells_to_allocate:
             copy = copywell.copy
-            # NOTE: make the log key more robust, with library name as well
-            # - library name should be optional for the copywell key
-            key = '/'.join([copy.library.short_name, copy.name, copywell.well_id])
-            logger.info('copywell: %r: vol: %r, requested: %r', 
+            key = '/'.join([copy.name, copywell.well_id])
+            logger.debug('copywell: %r: vol: %r, requested: %r', 
                 copywell, copywell.volume, volume)
             if copywell.volume < volume:
                 copywell_volume_warnings.append(
@@ -7178,7 +7178,9 @@ class CopyWellResource(DbApiResource):
             
             log = self.make_child_log(parent_log)
             log.key = key
-            log.uri = '/'.join([log.ref_resource_name,log.key])
+            # NOTE: make the log uri more robust, with library name as well
+            log.uri = '/'.join([
+                log.ref_resource_name,'library',copy.library.short_name,log.key])
             log.diffs = {
                 'volume': [copywell.volume, new_volume]}
             log.parent_log = parent_log
@@ -7238,9 +7240,10 @@ class CopyWellResource(DbApiResource):
                     'copywell to deallocate not located: %r', copywell_id)
                 
             log = self.make_child_log(parent_log)
-            log.key = '/'.join([
-                copy.library.short_name, copy.name, copywell.well_id])
-            log.uri = '/'.join([log.ref_resource_name,log.key])
+            log.key = '/'.join([copy.name, copywell.well_id])
+            # NOTE: make the log uri more robust, with library name as well
+            log.uri = '/'.join([
+                log.ref_resource_name,'library',copy.library.short_name,log.key])
             if set_deselected_to_zero is False:
                 new_volume = copywell.volume + cpr.transfer_volume_per_well_approved
             else:
@@ -7272,9 +7275,10 @@ class CopyWellResource(DbApiResource):
             for plate in plates_adjusted:
                 plate_log = self.get_plate_resource().make_child_log(parent_log)
                 plate_log.key = '/'.join([
-                    copy.library.short_name, plate.copy.name, 
-                    str(plate.plate_number)])
-                plate_log.uri = '/'.join([log.ref_resource_name,log.key])
+                    plate.copy.name, str(plate.plate_number)])
+                # NOTE: make the log uri more robust, with library name as well
+                plate_log.uri = '/'.join([
+                    log.ref_resource_name,'library',copy.library.short_name,log.key])
                 if plate.cplt_screening_count < 1:
                     logger.warn(
                         'deallocation: plate: %r, cplt_screening_count already 0',
@@ -7347,8 +7351,10 @@ class CopyWellResource(DbApiResource):
                         key='library_plate',
                         msg=msg)
             log = self.make_child_log(parent_log)
-            log.key = '/'.join([copy.library.short_name, copy.name, copywell.well_id])
-            log.uri = '/'.join([log.ref_resource_name,log.key])
+            log.key = '/'.join([copy.name, copywell.well_id])
+            # NOTE: make the log uri more robust, with library name as well
+            log.uri = '/'.join([
+                log.ref_resource_name,'library',copy.library.short_name,log.key])
             logger.debug('copywell: %r, volume: %r, cpr.transfer volume: %r', 
                 copywell, copywell.volume, cpr.transfer_volume_per_well_approved)
             new_volume = copywell.volume - cpr.transfer_volume_per_well_approved
@@ -7378,9 +7384,11 @@ class CopyWellResource(DbApiResource):
                 continue
             
             plate_log = self.get_plate_resource().make_child_log(parent_log)
-            plate_log.key = '/'.join([
-                copy.library.short_name, plate.copy.name, str(plate.plate_number)])
-            plate_log.uri = '/'.join([log.ref_resource_name,log.key])
+            plate_log.key = '/'.join([ 
+                plate.copy.name, str(plate.plate_number)])
+            # NOTE: make the log uri more robust, with library name as well
+            plate_log.uri = '/'.join([
+                log.ref_resource_name,'library',copy.library.short_name,log.key])
             new_plate_cplt_screening_count = plate.cplt_screening_count +1
             plate_log.diffs = {
                 'cplt_screening_count': [
@@ -8690,9 +8698,10 @@ class CherryPickRequestResource(DbApiResource):
             **kwargs_for_log)
         # Set the log URI using the containing screen URI
         if log:
+            # NOTE: make the log uri more robust, with screen id as well
             log.uri = '/'.join([
-                'screen',new_data['screen_facility_id'],
-                log.ref_resource_name,log.key])
+                log.ref_resource_name,'screen',new_data['screen_facility_id'],
+                log.key])
             log.save()
             logger.debug('log info: %r, %r', log, log.diffs )
         
@@ -9033,9 +9042,10 @@ class CherryPickRequestResource(DbApiResource):
         # Create parent log: cherry pick request: date_volume_reserved
         parent_log = self.make_log(request)
         parent_log.key = str(cpr.cherry_pick_request_id)
+        # NOTE: make the log uri more robust, with screen id as well
         parent_log.uri = '/'.join([
-            'screen',cpr.screen.facility_id, 
-            parent_log.ref_resource_name,parent_log.key])        
+            parent_log.ref_resource_name, 'screen',cpr.screen.facility_id, 
+            parent_log.key])        
         parent_log.save()
         
         previous_date_reserved = cpr.date_volume_reserved
@@ -9407,9 +9417,10 @@ class CherryPickRequestResource(DbApiResource):
             logger.debug('original_cpr: %r', original_cpr)
             parent_log = self.make_log(request)
             parent_log.key = str(cpr_id)
+            # NOTE: make the log uri more robust, with screen id as well
             parent_log.uri = '/'.join([
-                'screen',cpr.screen.facility_id,
-                parent_log.ref_resource_name,parent_log.key])        
+                parent_log.ref_resource_name,'screen',cpr.screen.facility_id,
+                parent_log.key])        
             parent_log.comment = API_MSG_LCPS_REMOVED
             
             meta = {}
@@ -9465,9 +9476,10 @@ class CherryPickRequestResource(DbApiResource):
                     'cherry_pick_request_id': cpr_id })
                 parent_log = self.make_log(request)
                 parent_log.key = str(cpr_id)
+                # NOTE: make the log uri more robust, with screen id as well
                 parent_log.uri = '/'.join([
-                    'screen',cpr.screen.facility_id,
-                    parent_log.ref_resource_name,parent_log.key])        
+                    parent_log.ref_resource_name, 'screen',
+                    cpr.screen.facility_id,parent_log.key])        
         
                 meta = self._cancel_reservation(cpr, parent_log)
 
@@ -9588,9 +9600,10 @@ class CherryPickRequestResource(DbApiResource):
         
         parent_log = self.make_log(request)
         parent_log.key = str(cpr_id)
+        # NOTE: make the log uri more robust, with screen id as well
         parent_log.uri = '/'.join([
-            'screen',cpr.screen.facility_id,
-            parent_log.ref_resource_name,parent_log.key])        
+            parent_log.ref_resource_name, 'screen',
+            cpr.screen.facility_id, parent_log.key])        
         
         lcp_query = cpr.lab_cherry_picks.all() 
         if lcp_query.exists():
@@ -9699,9 +9712,10 @@ class CherryPickRequestResource(DbApiResource):
         
         parent_log = self.make_log(request)
         parent_log.key = str(cpr_id)
+        # NOTE: make the log uri more robust, with screen id as well
         parent_log.uri = '/'.join([
-            'screen',cpr.screen.facility_id,
-            parent_log.ref_resource_name,parent_log.key])        
+            parent_log.ref_resource_name,'screen',cpr.screen.facility_id,
+            parent_log.key])        
         
         lcp_query = cpr.lab_cherry_picks.all() 
         if lcp_query.exists():
@@ -10117,8 +10131,9 @@ class ScreenerCherryPickResource(DbApiResource):
         logger.debug('old cpr: %r, new cpr: %r', original_cpr_data, new_cpr_data)
         log = self.get_cpr_resource().make_log(request)
         log.key = str(cpr.cherry_pick_request_id)
+        # NOTE: make the log uri more robust, with screen id as well
         log.uri = '/'.join([
-            'screen',cpr.screen.facility_id,log.ref_resource_name,log.key])        
+            log.ref_resource_name,'screen',cpr.screen.facility_id,log.key])        
         log.json_field = json.dumps(result_message, cls=LimsJSONEncoder)
         self.get_cpr_resource().log_patch(
             request, original_cpr_data,new_cpr_data, 
@@ -10588,9 +10603,10 @@ class LabCherryPickResource(DbApiResource):
             lcp.source_well_id:lcp for lcp in cpr.lab_cherry_picks.all() }
         parent_log = self.get_cpr_resource().make_log(request)
         parent_log.key = str(cpr.cherry_pick_request_id)
+        # NOTE: make the log uri more robust, with screen id as well
         parent_log.uri = '/'.join([
-            'screen',cpr.screen.facility_id,
-            parent_log.ref_resource_name,parent_log.key])        
+            parent_log.ref_resource_name,'screen',cpr.screen.facility_id,
+            parent_log.key])        
         parent_log.save()
 
         is_mapped = cpr.lab_cherry_picks.filter(
@@ -11786,8 +11802,6 @@ class CherryPickPlateResource(DbApiResource):
             deserialized = deserialized[self._meta.collection_name]
         logger.debug('patch cpaps: %r', deserialized)
         
-#         id_attribute = schema['id_attribute']
-        
         assay_plates = { cpap.plate_ordinal:cpap 
             for cpap in cpr.cherry_pick_assay_plates.all() }
         
@@ -11799,9 +11813,10 @@ class CherryPickPlateResource(DbApiResource):
         parent_log = self.make_log(request)
         parent_log.ref_resource_name = 'cherrypickrequest'
         parent_log.key = str(cpr.cherry_pick_request_id)
+        # NOTE: make the log uri more robust, with screen id as well
         parent_log.uri = '/'.join([
-            'screen',cpr.screen.facility_id,
-            parent_log.ref_resource_name,parent_log.key])        
+            parent_log.ref_resource_name,'screen',cpr.screen.facility_id,
+            parent_log.key])        
         parent_log.save()
         
         original_cpr = self.get_cherry_pick_resource()\
@@ -12861,7 +12876,6 @@ class PublicationResource(DbApiResource):
         parent_log.api_action = API_ACTION.PATCH
         parent_log.key = screen.facility_id
         parent_log.uri = '/'.join([parent_log.ref_resource_name,parent_log.key])
-#         parent_log.diff_keys = ['publications']
         current_pubs = _screen_data['publications'] or []
         if is_delete:
             new_pubs = [x for x in current_pubs 
@@ -12918,12 +12932,7 @@ class PublicationResource(DbApiResource):
             log_comment = request.META[HEADER_APILOG_COMMENT]
         
         log = self.make_log(request)
-
-#         id_attribute = schema['id_attribute']
-#         log.ref_resource_name = self._meta.resource_name
         self.make_log_key(log, original_data, schema=schema)
-#         log.key = '/'.join([str(original_data[x]) for x in id_attribute])
-#         log.uri = '/'.join([self._meta.resource_name,log.key])
         log.parent_log = parent_log
         log.api_action = API_ACTION.DELETE
         log.diffs = { k:[v,None] for k,v in original_data.items()}
@@ -13058,7 +13067,6 @@ class AttachedFileResource(DbApiResource):
         parent_log.api_action = API_ACTION.PATCH
         parent_log.key = str(screen.facility_id)
         parent_log.uri = '/'.join([parent_log.ref_resource_name,parent_log.key])
-#         parent_log.diff_keys = ['attached_files']
         current_files = _screen_data['attached_files'] or []
         if is_delete:
             new_files = [x for x in current_files 
@@ -13285,12 +13293,8 @@ class AttachedFileResource(DbApiResource):
 
         af.delete()
         
-#         id_attribute = resource = schema['id_attribute']
         log = self.make_log(request, **kwargs)
-#         log.ref_resource_name = self._meta.resource_name
         self.make_log_key(log, _dict, schema=schema)
-#         log.key = '/'.join([str(_dict[x]) for x in id_attribute])
-#         log.uri = '/'.join([self._meta.resource_name, log.key])
         log.parent_log = parent_log
         log.api_action = API_ACTION.DELETE
         log.diffs = { k: [v,None] for k,v in _dict.items() }
@@ -13947,10 +13951,14 @@ class ActivityResource(DbApiResource):
         serviced_user_id = attributes.get('serviced_user_id')
         screen_facility_id = attributes.get('screen_facility_id')
         if serviced_user_id is not None:
-            log.key = '{}/{}'.format(serviced_user_id, log.key)
+            # NOTE: make the log uri more robust, with SU id as well
+            log.uri = '/'.join(map(str,[
+                log.ref_resource_name,'screensaveruser', serviced_user_id, 
+                log.key]))
         elif screen_facility_id is not None:
-            log.key = '{}/{}'.format(screen_facility_id, log.key)
-        log.uri = '/'.join([log.ref_resource_name,log.key])
+            # NOTE: make the log uri more robust, with Screen id as well
+            log.uri = '/'.join(map(str,[
+                log.ref_resource_name,'screen', screen_facility_id, log.key]))
         
         logger.info('log uri: %r, %r', log.uri, log)
 
@@ -15231,6 +15239,7 @@ class LibraryScreeningResource(ActivityResource):
             errorDict = ErrorDict()
             plate_locations = set()
             plate_keys = set()
+            plate_volumes = []
             for _row in cursor_generator(_result,fields):
                 logger.debug('row: %r', _row)
                 librarycopy = '{library_short_name}/{copy_name}'.format(**_row)
@@ -15241,6 +15250,12 @@ class LibraryScreeningResource(ActivityResource):
                     if new_row:
                         new_row['plate_locations'] = [x for x in plate_locations]
                         new_row['plate_keys'] = [x for x in plate_keys]
+                        sum_vol = sum([Decimal(x) for x in plate_volumes])/Decimal(len(plate_volumes))
+                        sum_vol = u'{} {}L'.format(
+                                si_unit.convert_decimal(
+                                    sum_vol,1e-6, 2),
+                                si_unit.get_siunit_symbol(1e-6))
+                        new_row['avg_plate_volume'] = sum_vol
                         new_row['end_plate'] = end_plate
                         new_row['errors'] = errorDict.showErrors()
                         new_row['warnings'] = errorDict.showWarnings()
@@ -15248,6 +15263,7 @@ class LibraryScreeningResource(ActivityResource):
                     errorDict = ErrorDict()
                     plate_locations = set()
                     plate_keys = set()
+                    plate_volumes = []
                     new_row = OrderedDict((
                         ('library_screening_id', _row['activity_id']),
                         ('library_short_name', _row['library_short_name']),
@@ -15262,9 +15278,19 @@ class LibraryScreeningResource(ActivityResource):
                 errorDict.check_row(_row)
                 plate_locations.add(_row['plate_location'])
                 plate_keys.add(_row['plate_key'])
+                if _row['remaining_well_volume']:
+                    plate_volumes.append(_row['remaining_well_volume'])
+                else:
+                    plate_volumes.append(0)
             if librarycopy:
                 new_row['plate_locations'] = [x for x in plate_locations]
                 new_row['plate_keys'] = [x for x in plate_keys]
+                sum_vol = sum([Decimal(x) for x in plate_volumes])/Decimal(len(plate_volumes))
+                sum_vol = u'{} {}L'.format(
+                        si_unit.convert_decimal(
+                            sum_vol,1e-6, 2),
+                        si_unit.get_siunit_symbol(1e-6))
+                new_row['avg_plate_volume'] = sum_vol
                 new_row['end_plate'] = end_plate
                 new_row['errors'] = errorDict.showErrors()
                 new_row['warnings'] = errorDict.showWarnings()
@@ -15709,9 +15735,9 @@ class LibraryScreeningResource(ActivityResource):
         obj = patch_result[API_RESULT_OBJ]
         plate_meta = patch_result[API_RESULT_META]
         
-        # Include the screen_facility_id in the log.uri
-        log.key = '{}/{}'.format(obj.screen.facility_id, obj.activity_id)
-        log.uri = '/'.join([log.ref_resource_name,log.key])
+        # NOTE: make the log uri more robust, with Screen id as well
+        log.uri = '/'.join([
+            log.ref_resource_name,'screen', obj.screen.facility_id, log.key])
         log.save()
         
         new_data = self._get_detail_response_internal(**kwargs_for_log)
@@ -15776,9 +15802,9 @@ class LibraryScreeningResource(ActivityResource):
             if val:
                 kwargs_for_log['%s' % id_field] = val
 
-        # Include the screen_facility_id in the log.uri
-        log.key = '{}/{}'.format(obj.screen.facility_id, obj.activity_id)
-        log.uri = '/'.join([log.ref_resource_name,log.key])
+        # NOTE: make the log uri more robust, with Screen id as well
+        log.uri = '/'.join([
+            log.ref_resource_name,'screen', obj.screen.facility_id, log.key])
         log.save()
         
         obj.apilog_uri = log.log_uri
@@ -15935,10 +15961,11 @@ class LibraryScreeningResource(ActivityResource):
                 logger.debug('save library screening, set assay plates: %r', 
                              library_screening)
                 # FIXME: make_log_key should accept obj
-                ls_log.key = '{}/{}'.format(
-                    library_screening.screen.facility_id, 
-                    library_screening.activity_id)
-                ls_log.uri = '/'.join([ls_log.ref_resource_name,ls_log.key])
+                ls_log.key = str(library_screening.activity_id)
+                # NOTE: make the log uri more robust, with library key as well
+                ls_log.uri = '/'.join(map(str,[
+                    ls_log.ref_resource_name,'screen', 
+                    library_screening.screen.facility_id, ls_log.key]))
                 ls_log.save()
 
                 plate_meta = self._set_assay_plates(

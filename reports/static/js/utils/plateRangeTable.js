@@ -42,7 +42,9 @@ function($, _, Backgrid, Iccbl, appModel, EditView) {
         plate_collection, $target_el, editable, extra_cols, screen_facility_id){
       var self = this;
       $target_el.empty();
-      
+      var NarrowTextWrapCell = Iccbl.TextWrapCell.extend({
+        className: 'text-wrap-cell-extra-narrow'
+      });
       var colTemplate = {
         'cell' : 'string',
         'order' : -1,
@@ -50,7 +52,7 @@ function($, _, Backgrid, Iccbl, appModel, EditView) {
         'searchable': false,
         'editable' : false,
         'visible': true,
-        'headerCell': Backgrid.HeaderCell
+        'headerCell': Iccbl.SortableHeaderCell
       };
       var columns = [];
       
@@ -62,6 +64,7 @@ function($, _, Backgrid, Iccbl, appModel, EditView) {
           'sortable': true,
           'cell':
             Iccbl.CommentArrayLinkCell.extend({
+              className: 'text-wrap-cell-narrow',
               hrefTemplate: '#library/{library_short_name}',
               comment_attribute: 'library_comment_array',
               title_function: function(model){
@@ -80,7 +83,8 @@ function($, _, Backgrid, Iccbl, appModel, EditView) {
           'order': 1,
           'sortable': true,
           'cell': Iccbl.LinkCell.extend({
-            'hrefTemplate': '#library/{library_short_name}/copy/{copy_name}',
+            className: 'text-wrap-cell-narrow',
+            hrefTemplate: '#library/{library_short_name}/copy/{copy_name}',
             render: function(){
               var self = this;
               Iccbl.LinkCell.prototype.render.apply(this, arguments);
@@ -106,7 +110,8 @@ function($, _, Backgrid, Iccbl, appModel, EditView) {
           'order': 1,
           'sortable': true,
           'cell': Iccbl.LinkCell.extend({
-            'hrefTemplate': 
+            className: 'text-wrap-cell-narrow',
+            hrefTemplate: 
               '#library/{library_short_name}/copy/{copy_name}/plate' +
               '/search/plate_number__range={start_plate},{end_plate}',
             render : function() {
@@ -146,7 +151,7 @@ function($, _, Backgrid, Iccbl, appModel, EditView) {
       }
       else if(_.contains(extra_cols,'library_screening_id') ||
           (!plate_collection.isEmpty() 
-              && plate_collection.at(0).has('library_screening_id'))){
+              && plate_collection.at(0).get('library_screening_id'))){
         columns.push(          
           _.extend({},colTemplate,{
             'name' : 'library_screening_id',
@@ -162,7 +167,8 @@ function($, _, Backgrid, Iccbl, appModel, EditView) {
               }
             }),
             'cell': Iccbl.LinkCell.extend({
-              'hrefTemplate': '#screen/'+ screen_facility_id 
+              className: 'text-wrap-cell-narrow',
+              hrefTemplate: '#screen/'+ screen_facility_id 
               +'/summmary/libraryscreening/{library_screening_id}'
             })
           })
@@ -181,10 +187,28 @@ function($, _, Backgrid, Iccbl, appModel, EditView) {
             'description' : 'Plate Locations',
             'order': 1,
             'sortable': true,
-            'cell': Iccbl.TextWrapCell
+            'cell': NarrowTextWrapCell
           })
         );
-      }      
+      } 
+    
+      if(_.contains(extra_cols, '-avg_plate_volume')){
+        // omit this column
+      }
+      else if(_.contains(extra_cols,'avg_plate_volume') ||
+          (!plate_collection.isEmpty() 
+              && plate_collection.at(0).has('avg_plate_volume'))){
+        columns.push(          
+          _.extend({},colTemplate,{
+            'name' : 'avg_plate_volume',
+            'label' : 'Average Plate Volume',
+            'description' : 'Average Plate Volume',
+            'order': 1,
+            'sortable': true,
+            'cell': NarrowTextWrapCell
+          })
+        );
+      } 
       
       if(_.contains(extra_cols,'library_screening_status') ||
           (!plate_collection.isEmpty() 
@@ -251,9 +275,7 @@ function($, _, Backgrid, Iccbl, appModel, EditView) {
                 return '';
               }
             }),
-            'cell': Iccbl.TextWrapCell.extend({
-              className: 'text-wrap-cell-narrow'
-            })
+            'cell': NarrowTextWrapCell
           })
         );
       }
@@ -277,9 +299,7 @@ function($, _, Backgrid, Iccbl, appModel, EditView) {
                 return '';
               }
             }),
-            'cell': Iccbl.TextWrapCell.extend({
-              className: 'text-wrap-cell-narrow'
-            })
+            'cell': NarrowTextWrapCell
           })
         );
       }

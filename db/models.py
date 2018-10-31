@@ -611,11 +611,11 @@ class Screen(models.Model):
 #         'Activity', null=True, on_delete=models.CASCADE, 
 #         related_name='pin_transfer_approved_screen')
 #     # New
-    pin_transfer_approved_by = models.ForeignKey(
-        'ScreensaverUser', null=True,
-        related_name='pin_transfer_approved_screen', on_delete=models.SET_NULL)
-    pin_transfer_date_approved = models.DateField(null=True)
-    pin_transfer_comments = models.TextField(null=True)
+#     pin_transfer_approved_by = models.ForeignKey(
+#         'ScreensaverUser', null=True,
+#         related_name='pin_transfer_approved_screen', on_delete=models.SET_NULL)
+#     pin_transfer_date_approved = models.DateField(null=True)
+#     pin_transfer_comments = models.TextField(null=True)
     
     abase_study_id = models.TextField(null=True)
     abase_protocol_id = models.TextField(null=True)

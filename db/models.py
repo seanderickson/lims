@@ -902,9 +902,9 @@ class ScreensaverUser(models.Model):
     def __repr__(self):
         return (
             '<ScreensaverUser(screensaver_user_id: %r, '
-            '%r, %r, ecommons_id: %r, username: %r)>' 
+            '%r, %r, ecommons_id: %r, username: %r, user: %r)>' 
             % (self.screensaver_user_id, self.first_name, self.last_name,
-                self.ecommons_id, self.username ))
+                self.ecommons_id, self.username, self.user ))
 
     def __str__(self):
         return self.__repr__()

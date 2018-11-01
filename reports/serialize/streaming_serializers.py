@@ -225,17 +225,18 @@ def csv_generator(data, title_function=None, list_brackets=None):
         pseudo_buffer, delimiter=CSV_DELIMITER, quotechar=quotechar, 
         quoting=unicodecsv.QUOTE_MINIMAL, lineterminator="\n")
     try:
+        count = 0
         for rownum, row in enumerate(data):
             if rownum == 0:
                 titles = row.keys()
                 if title_function:
                     titles = [title_function(key) for key in titles]
                 yield csvwriter.writerow(titles)
-
+            count = rownum
             yield csvwriter.writerow([
                 csvutils.convert_list_vals(val, list_brackets=list_brackets) 
                     for val in row.values()])
-        logger.debug('wrote %d rows to csv', rownum)
+        logger.debug('wrote %d rows to csv', count)
     except Exception, e:
         logger.exception('CSV streaming error')
         raise e                      

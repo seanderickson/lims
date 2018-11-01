@@ -4804,7 +4804,7 @@ class UserResource(ApiResource):
                     setattr(userprofile,key,val)
 
             userprofile.save()
-            logger.info('created/updated userprofile %r', user.username)
+            logger.info('created: %r, userprofile %r', not is_patch, user.username)
         else:
             logger.info('no reports_userprofile fields to update')
 

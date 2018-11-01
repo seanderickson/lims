@@ -390,17 +390,27 @@ define([
       function matchLibrary(params, data) {
         // User term: params.term
         // Option title: data.text
-        if (typeof data.text === 'undefined' || _.isEmpty(data.text)) {
+        
+        if (_.isUndefined(data.text)){
           return null;
         }
-        if ($.trim(params.term) === '') {
+        if (_.isUndefined(params.term)){
           return data;
         }
+        var label = data.text.trim().toLowerCase();
+        var term = params.term.trim().toLowerCase();
         
-        if (data.text.indexOf(params.term) > -1) {
+        if (_.isEmpty(label)) {
+          return null;
+        }
+        if (_.isEmpty(term)){
+          return data;
+        }
+
+        if (label.indexOf(term) > -1) {
           return data;
         }else{
-          var val = parseInt(params.term);
+          var val = parseInt(term);
           if (!_.isNaN(val)){
             // Match the special plate range text created for the options
             var PLATE_RANGE_PATTERN = /\((\d+)-(\d+)\)/;
@@ -420,22 +430,28 @@ define([
       function matchUser(params, data) {
         // User term: params.term
         // Option title: data.text
-        if (typeof data.text === 'undefined' || _.isEmpty(data.text)) {
+        if (_.isUndefined(data.text)){
           return null;
         }
-        var term = $.trim(params.term);
-        if (term === '') {
+        if (_.isUndefined(params.term)){
           return data;
         }
-        term = term.toLowerCase();
         var label = data.text.trim().toLowerCase();
+        var term = params.term.trim().toLowerCase();
+        
+        if (_.isEmpty(label)) {
+          return null;
+        }
+        if (_.isEmpty(term)){
+          return data;
+        }
 
         var parts = appModel.USER_OPTION_PATTERN.exec(label);
         if (!_.isEmpty(parts)){
           
           var name = parts[1];
           var username = parts[3];
-          var ss_id = parseInt(parts[4]);
+          var ss_id = parseInt(parts[5]);
           var val = parseInt(params.term);
           if (!_.isNaN(val)){
             if (ss_id==val){

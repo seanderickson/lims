@@ -636,6 +636,7 @@ define([
     
     getUserOptions: function(callBack){
       var self = this;
+      var is_super = this.getCurrentUser().is_superuser;
       var prop = 'userOptions';
       var options = this.get(prop);
       if(!options){
@@ -645,14 +646,21 @@ define([
             // Construct the option label:
             // NOTE: for search box searching, must match the patttern:
             // appState.USER_OPTION_PATTERN
-            // /([^\[]+)(\[(\w+)\])?\:\s+(\d+)/
+            // /([^\[]+)(\[(\w+)\])?(\:\s+(\d+))?/
             // where (1=name) (3=ecommons) (4=ssID)
             var user_id = user.get('screensaver_user_id');
             var username = user.get('username');
+            var ecommons = user.get('ecommons')
             var name = user.get('name');
             var _label = name;
-            if(!_.isEmpty(username)) _label += ' [' + username + ']';
-            _label += ': ' + user_id;
+            if(!_.isEmpty(username)){
+              _label += ' [' + username + ']';
+            }else if (!_.isEmpty(ecommons)){
+              _label += ' [' + ecommons + ']';
+            }
+            if (is_super){
+              _label += ': ' + user_id;
+            }
             options.unshift({ val: user_id, label: _label});
           });
           self.set(prop,options);
@@ -2841,7 +2849,7 @@ define([
   appState.API_MSG_LCPS_INSUFFICIENT_VOLUME = 'Insufficient volume';
   appState.VOCAB_USER_CLASSIFICATION_PI = 'principal_investigator';
   
-  appState.USER_OPTION_PATTERN = /([^\[]+)(\[(\w+)\])?\:\s+(\d+)/;
+  appState.USER_OPTION_PATTERN = /([A-Za-z\,\(\) ]+)(\[(\w+)\])?(\:\s+(\d+))?/;
   
   /**
    * URIStack search element SEARCH_DELIMITER

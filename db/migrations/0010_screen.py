@@ -2,7 +2,6 @@
 from __future__ import unicode_literals
 
 import datetime
-import json
 import logging
 
 from django.db import migrations, models, transaction
@@ -39,6 +38,7 @@ def make_log(status_item):
     log.uri = '/'.join([DB_API_URI, log.ref_resource_name, log.key])
     log.diffs = status_item.get('diffs')
     log.comment = status_item.get('comments')
+    log.json_field = status_item.get('json_field')
     try:
         # check for log key (date_time) collisions; this shouldn't 
         # happen with the "create_log_time()", but, in case it does
@@ -97,13 +97,12 @@ def migrate_screen_status(apps,schema_editor):
                 'status': default_converter(status.status),
                 'username': USERNAME_ADMIN, # NOTE: no logs available in SS1
                 'user_id': USER_ID_ADMIN,
-                'screen_facility_id': str(screen.facility_id)
+                'screen_facility_id': str(screen.facility_id),
+                'comment': 'Migration'
                 }
             status_items.append(status_item)
         
         if screen.pin_transfer_admin_activity is not None:
-#         for s in Screen.objects\
-#             .filter(pin_transfer_admin_activity_id__isnull=False):
         
             activity = screen.pin_transfer_admin_activity;
 
@@ -114,6 +113,10 @@ def migrate_screen_status(apps,schema_editor):
                 'user_id': activity.created_by.user_id,
                 'screen_facility_id': str(screen.facility_id),
                 'comment': activity.comments
+                }
+            status_item['json_field'] = { 
+                'migration': 'PinTransferAdminActivity',
+                'data': { 'activity_id': activity.activity_id }          
                 }
             status_items.append(status_item)
         

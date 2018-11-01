@@ -2197,7 +2197,7 @@ var LinkCell = Iccbl.LinkCell = Iccbl.BaseCell.extend({
 
   // TODO: redo the link cell like the UriListCell
 
-  className : "link-cell text-wrap-cell",
+  className : "link-cell",
 
   events : {
     'click A': 'linkCallback',
@@ -2272,7 +2272,7 @@ var DateLinkCell = Iccbl.DateLinkCell = Iccbl.LinkCell.extend({
 
 var UriListCell = Iccbl.UriListCell = Iccbl.BaseCell.extend({
 
-  className : "text-wrap-cell",
+  className : "",
 
   /**
    * @property {string} ["string with {model_key} values to interpolate"]
@@ -2771,7 +2771,7 @@ var SIUnitsCell = Iccbl.SIUnitsCell = NumberCell.extend({
 
 var SelectCell = Iccbl.SelectCell = Backgrid.SelectCell.extend({
 
-  className: 'text-wrap-cell',
+  className: '',
 
   initialize: function(){
 
@@ -5574,7 +5574,7 @@ var createBackgridColumn = Iccbl.createBackgridColumn =
     'decimal': Iccbl.DecimalCell,
     'image': Iccbl.ImageCell,
     'boolean': Iccbl.BooleanCell,
-    'list': Iccbl.TextWrapCell,
+    'list': Iccbl.StringCell,
     'full_string': Iccbl.TextWrapCell,
     'comment_array': Iccbl.CommentArrayCell
   }

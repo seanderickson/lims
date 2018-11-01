@@ -47,7 +47,7 @@ read,permission.type,1,,"permission to read the resource",Read
 write,permission.type,2,,"permission to write the resource",Write
 json,resource.content_type,0,,application/json,JSON
 csv,resource.content_type,1,,text/csv,CSV
-xls,resource.content_type,2,"The Excel 2007+ XLSX file format",application/xls,XLS
+xls,resource.content_type,2,"The Excel 2007+ XLSX file format",application/xls,XLSX
 sdf,resource.content_type,3,"see http://download.accelrys.com/freeware/ctfile-formats/ctfile-formats.zip",chemical/x-mdl-sdfile,SDF-molfile
 female,user.gender,1,,Female,Female
 male,user.gender,2,,Male,Male

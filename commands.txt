@@ -108,24 +108,24 @@ curl -v --dump-header - -H "Content-Type: chemical/x-mdl-sdfile" -H "Accept: app
 
 PYTHONPATH=. python reports/utils/db_init.py --input_dir=./reports/static/api_init/ \
   -f ./reports/static/api_init/api_init_actions.csv \
-  -u http://localhost:8000/reports/api/v1 -U sde
+  -u http://localhost:8000 -U sde
 PYTHONPATH=. python reports/utils/db_init.py --input_dir=./db/static/api_init/ \
   -f ./db/static/api_init/api_init_actions.csv \
-  -u http://localhost:8000/reports/api/v1 -U sde
+  -u http://localhost:8000 -U sde
 
 PYTHONPATH=. python reports/utils/db_init.py --input_dir=./reports/static/api_init/ \
   -f ./reports/static/api_init/api_init_actions.csv \
-  -u https://dev.screensaver2.med.harvard.edu/reports/api/v1 -U sde
+  -u https://dev.screensaver2.med.harvard.edu -U sde
 PYTHONPATH=. python reports/utils/db_init.py --input_dir=./db/static/api_init/ \
   -f ./db/static/api_init/api_init_actions.csv \
-  -u https://dev.screensaver2.med.harvard.edu/reports/api/v1 -U sde
+  -u https://dev.screensaver2.med.harvard.edu -U sde
 
 #####
 # Set default testing users (note, will delete existing users)
 # (To be run before User migration)
 PYTHONPATH=. python reports/utils/db_init.py \
   --input_dir=lims/static/production_data/ \
-  -u http://localhost:8000/reports/api/v1 \
+  -u http://localhost:8000 \
   -f lims/static/production_data/api_init_actions.csv -U sde
 
 #####
@@ -135,7 +135,7 @@ PYTHONPATH=. python reports/utils/db_init.py \
 # Local 
 PYTHONPATH=. python reports/utils/db_init.py \
   --input_dir=lims/static/production_data/ \
-  -u http://localhost:8000/reports/api/v1 \
+  -u http://localhost:8000 \
   -f lims/static/production_data/api_init_actions_patch.csv -U sde
 
 # Local - Just the usergroup assignments
@@ -148,7 +148,7 @@ PYTHONPATH=. python reports/utils/django_requests.py -u sde \
 # Server
 PYTHONPATH=. python reports/utils/db_init.py \
   --input_dir=lims/static/production_data/ \
-  -u https://dev.screensaver2.med.harvard.edu/reports/api/v1 \
+  -u https://dev.screensaver2.med.harvard.edu \
   -f lims/static/production_data/api_init_actions_patch.csv -U sde
 
 # Server - Just the usergroup assignments

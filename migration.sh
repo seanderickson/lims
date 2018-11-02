@@ -544,7 +544,7 @@ function setup_production_users {
   PYTHONPATH=. python reports/utils/db_init.py  \
     --input_dir=$BOOTSTRAP_PRODUCTION_DIR \
     -f ${BOOTSTRAP_PRODUCTION_DIR}/api_init_actions_patch.csv \
-    -u http://localhost:${BOOTSTRAP_PORT}/reports/api/v1 -c ${credential_file} >>"$LOGFILE" 2>&1
+    -u http://localhost:${BOOTSTRAP_PORT} -c ${credential_file} >>"$LOGFILE" 2>&1
   if [[ $? -ne 0 ]]; then
     kill $server_pid
     error "bootstrap production data failed: $?"

@@ -235,15 +235,19 @@ define([
         return finalValue;
       }
       function decimalGetter(value){
-        console.log('decimalGetter:', value);
-        var formatted;
-        var formatter = new Iccbl.DecimalFormatter(cell_options);
-        if(_.isString(value) || _.isNumber(value)){
-          formatted = formatter.fromRaw(value);
-          console.log('decimal getter: v:', value, ', formatted: ', 
-            formatted, ', options: ', cell_options);
-          return formatted;
-        }else{
+        if (cell_options){
+          console.log('decimalGetter:', value);
+          var formatted;
+          var formatter = new Iccbl.DecimalFormatter(cell_options);
+          if(_.isString(value) || _.isNumber(value)){
+            formatted = formatter.fromRaw(value);
+            console.log('decimal getter: v:', value, ', formatted: ', 
+              formatted, ', options: ', cell_options);
+            return formatted;
+          }else{
+            return value;
+          }
+        } else {
           return value;
         }
       }

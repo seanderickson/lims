@@ -2430,30 +2430,24 @@ _.extend(DecimalFormatter.prototype, {
   }),
 
   /**
-   * Modified to:
+   * Override Backgrid.NumberFormatter to:
    * - pass non-numbers through
    * - use rounding instead of fixed decimal truncation by default
    */
   fromRaw: function (number, model) {
-    var args = [].slice.call(arguments, 1);
-    if(_.isUndefined(number)){
-      return null;
-    }
-    if(_.isNull(number)){
-      return null;
-    }
-    if (_.isString(number) && _.isEmpty(number)){
-      return null;
-    }
-    if(!_.isNumber(number)){
-      try{
+    if (this.no_format) return number;
+    if (_.isNull(number) || _.isUndefined(number)) return null;
+    if (_.isString(number) && _.isEmpty(number)) return null;
+    if (!_.isNumber(number)){
+      try {
         number = parseFloat(number);
-      }catch(e){
+      } catch(e){
         console.log('not a number: ' + number + ', ex:' + e);
         return number;
       }
     }
-
+    
+    
     if (this.use_rounding == true){
       number = round(number, this.decimals);
     } else {
@@ -2720,8 +2714,8 @@ var DecimalCell = Iccbl.DecimalCell = NumberCell.extend({
    */
   initialize: function () {
     DecimalCell.__super__.initialize.apply(this, arguments);
-    var formatter = this.formatter;
-    formatter.decimals = this.decimals;
+    this.formatter.decimals = this.decimals;
+    this.formatter.no_format = this.no_format;
   }
 
  });
@@ -5618,6 +5612,9 @@ var createBackgridColumn = Iccbl.createBackgridColumn =
     }
     if(!_.isEmpty(cell_options)){
       backgridCellType = backgridCellType.extend(cell_options);
+    } else {
+      // Empty cell options for numbers means show raw
+      backgridCellType = backgridCellType.extend({ no_format: true });
     }
 
   }

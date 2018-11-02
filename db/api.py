@@ -1605,10 +1605,14 @@ class LibraryCopyPlateResource(DbApiResource):
         new_fields['copies_screened']['key'] = 'copies_screened'
         new_fields['copies_screened']['title'] = 'Copies Screened'
         new_fields['copies_screened']['data_type'] = 'list'
+        
         # Add a "copy_comments" field
-        new_fields['copy_comments'] = schema['fields']['copy_comments']
-        new_fields['copy_comments']['data_type'] = 'list'
-        new_fields['copy_comments']['visibility'] = ['l']
+        if 'copy_comments' in schema['fields']:
+            # copy_comments may be restricted by auth
+            new_fields['copy_comments'] = schema['fields']['copy_comments']
+            new_fields['copy_comments']['data_type'] = 'list'
+            new_fields['copy_comments']['visibility'] = ['l']
+
         schema['fields'] = new_fields
         
         (filter_expression, filter_hash, readable_filter_hash) = \
@@ -13762,6 +13766,7 @@ class ActivityResource(DbApiResource):
         # for join to screen query (TODO: only include if screen fields rqst'd)
         manual_field_includes.add('screen_id')
         manual_field_includes.add('classification')
+        manual_field_includes.add('serviced_user_id') # req'd for authorization
         # for join to cherrypickrequest (TODO: req'd to complete activity id link)
         manual_field_includes.add('cherry_pick_request_id')
         param_hash['includes'] = list(manual_field_includes)
@@ -13769,6 +13774,7 @@ class ActivityResource(DbApiResource):
         (filter_expression, filter_hash, readable_filter_hash) = \
             SqlAlchemyResource.build_sqlalchemy_filters(
                 schema, param_hash=param_hash)
+        
         filename = self._get_filename(readable_filter_hash, schema)
         
         filter_expression = \
@@ -13781,6 +13787,7 @@ class ActivityResource(DbApiResource):
             param_hash.get('visibilities'),
             exact_fields=set(param_hash.get('exact_fields', [])),
             order_params=order_params)
+
         order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
             order_params, field_hash)
 
@@ -15441,6 +15448,7 @@ class LibraryScreeningResource(ActivityResource):
             schema['key'], schema['fields'].keys())
 
         manual_field_includes = set(param_hash.get('includes', []))
+        manual_field_includes.add('serviced_user_id') # req'd for auth
         
         library_plates_screened_search = param_hash.pop(
             'library_plates_screened__contains', None)
@@ -15540,7 +15548,7 @@ class LibraryScreeningResource(ActivityResource):
                         .where(copy_plate_query.c.library_screening_id
                             ==_library_screening.c.activity_id) ))
         
-        if logger.isEnabledFor(logging.DEBUG):
+        if True or logger.isEnabledFor(logging.DEBUG):
             compiled_stmt = str(stmt.compile(
                 dialect=postgresql.dialect(),
                 compile_kwargs={"literal_binds": True}))
@@ -15572,127 +15580,122 @@ class LibraryScreeningResource(ActivityResource):
             use_titles = False
          
         is_for_detail = kwargs.pop('is_for_detail', False)
- 
-        try:
              
-            (field_hash, columns, stmt, count_stmt,filename) = \
-                self.get_query(schema, param_hash, request.user)
-             
-            rowproxy_generator = None
-            if use_vocab is True:
-                rowproxy_generator = \
-                    DbApiResource.create_vocabulary_rowproxy_generator(field_hash)
-                # use "use_vocab" as a proxy to also adjust siunits for viewing
-                rowproxy_generator = DbApiResource.create_siunit_rowproxy_generator(
-                    field_hash, rowproxy_generator)
+        (field_hash, columns, stmt, count_stmt,filename) = \
+            self.get_query(schema, param_hash, request.user)
+         
+        rowproxy_generator = None
+        if use_vocab is True:
+            rowproxy_generator = \
+                DbApiResource.create_vocabulary_rowproxy_generator(field_hash)
+            # use "use_vocab" as a proxy to also adjust siunits for viewing
+            rowproxy_generator = DbApiResource.create_siunit_rowproxy_generator(
+                field_hash, rowproxy_generator)
+        
+        # create a generator to wrap the cursor and expand the library_plates_screened
+        def create_lcp_gen(generator):
+            bridge = self.bridge
+            _library = self.bridge['library']
+            _lcp = self.bridge['plate']
+            _cp = self.bridge['copy']
+            _ap = self.bridge['assay_plate']
+            lcp_query = (
+                select([ 
+                    _library.c.short_name,
+                    _cp.c.name,
+                    _ap.c.plate_number,
+                 ])
+                .select_from(
+                    _ap.join(_lcp, _ap.c.plate_id == _lcp.c.plate_id)
+                        .join(_cp, _cp.c.copy_id == _lcp.c.copy_id)
+                        .join(
+                            _library,
+                            _library.c.library_id == _cp.c.library_id))
+                .where(_ap.c.library_screening_id == text(':activity_id'))
+                .group_by(
+                    _library.c.short_name, _cp.c.name, _ap.c.plate_number)
+                .order_by(
+                    _library.c.short_name, _cp.c.name, _ap.c.plate_number))
+            logger.debug('lcp_query: %r', str(lcp_query.compile()))
             
-            # create a generator to wrap the cursor and expand the library_plates_screened
-            def create_lcp_gen(generator):
-                bridge = self.bridge
-                _library = self.bridge['library']
-                _lcp = self.bridge['plate']
-                _cp = self.bridge['copy']
-                _ap = self.bridge['assay_plate']
-                lcp_query = (
-                    select([ 
-                        _library.c.short_name,
-                        _cp.c.name,
-                        _ap.c.plate_number,
-                     ])
-                    .select_from(
-                        _ap.join(_lcp, _ap.c.plate_id == _lcp.c.plate_id)
-                            .join(_cp, _cp.c.copy_id == _lcp.c.copy_id)
-                            .join(
-                                _library,
-                                _library.c.library_id == _cp.c.library_id))
-                    .where(_ap.c.library_screening_id == text(':activity_id'))
-                    .group_by(
-                        _library.c.short_name, _cp.c.name, _ap.c.plate_number)
-                    .order_by(
-                        _library.c.short_name, _cp.c.name, _ap.c.plate_number))
-                logger.debug('lcp_query: %r', str(lcp_query.compile()))
-                
-                def library_copy_plates_screened_generator(cursor):
-                    if generator:
-                        cursor = generator(cursor)
-                    class Row:
-                        def __init__(self, row):
-                            self.row = row
-                            self.entries = []
-                            activity_id = row['activity_id']
-                            query = conn.execute(
-                                lcp_query, activity_id=activity_id)
-                            copy = None
-                            start_plate = None
-                            end_plate = None
-                            for x in query:
-                                if not copy:
-                                    copy = x[1]
-                                    library = x[0]
-                                if not start_plate:
-                                    start_plate = end_plate = x[2]
-                                if (x[0] != library 
-                                    or x[1] != copy 
-                                    or x[2] > end_plate + 1):
-                                    # start a new range, save old range
-                                    self.entries.append('%s:%s:%s-%s'
-                                        % (library, copy, start_plate, end_plate))
-                                    start_plate = end_plate = x[2]
-                                    copy = x[1]
-                                    library = x[0]
-                                else:
-                                    end_plate = x[2]
-                            if copy: 
+            def library_copy_plates_screened_generator(cursor):
+                if generator:
+                    cursor = generator(cursor)
+                class Row:
+                    def __init__(self, row):
+                        self.row = row
+                        self.entries = []
+                        activity_id = row['activity_id']
+                        query = conn.execute(
+                            lcp_query, activity_id=activity_id)
+                        copy = None
+                        start_plate = None
+                        end_plate = None
+                        for x in query:
+                            if not copy:
+                                copy = x[1]
+                                library = x[0]
+                            if not start_plate:
+                                start_plate = end_plate = x[2]
+                            if (x[0] != library 
+                                or x[1] != copy 
+                                or x[2] > end_plate + 1):
+                                # start a new range, save old range
                                 self.entries.append('%s:%s:%s-%s'
                                     % (library, copy, start_plate, end_plate))
-                                    
-                        def has_key(self, key):
-                            if key == 'library_plates_screened': 
-                                return True
-                            return self.row.has_key(key)
-                        def keys(self):
-                            return self.row.keys()
-                        def __getitem__(self, key):
-                            if key == 'library_plates_screened':
-                                return self.entries
+                                start_plate = end_plate = x[2]
+                                copy = x[1]
+                                library = x[0]
                             else:
-                                return self.row[key]
-                    conn = get_engine().connect()
-                    try:
-                        for row in cursor:
-                            yield Row(row)
-                    finally:
-                        conn.close()
-                        
-                return library_copy_plates_screened_generator
-            
-            if 'library_plates_screened' in field_hash:
-                rowproxy_generator = create_lcp_gen(rowproxy_generator)
-
-            rowproxy_generator = \
-               self._meta.authorization.get_row_property_generator(
-                   request.user, field_hash, rowproxy_generator)
+                                end_plate = x[2]
+                        if copy: 
+                            self.entries.append('%s:%s:%s-%s'
+                                % (library, copy, start_plate, end_plate))
+                                
+                    def has_key(self, key):
+                        if key == 'library_plates_screened': 
+                            return True
+                        return self.row.has_key(key)
+                    def keys(self):
+                        return self.row.keys()
+                    def __getitem__(self, key):
+                        if key == 'library_plates_screened':
+                            return self.entries
+                        else:
+                            return self.row[key]
+                conn = get_engine().connect()
+                try:
+                    for row in cursor:
+                        yield Row(row)
+                finally:
+                    conn.close()
                     
-            title_function = None
-            if use_titles is True:
-                def title_function(key):
-                    return field_hash[key]['title']
-            if is_data_interchange:
-                title_function = DbApiResource.datainterchange_title_function(
-                    field_hash,schema['id_attribute'])
-             
-            return self.stream_response_from_statement(
-                request, stmt, count_stmt, filename,
-                field_hash=field_hash,
-                param_hash=param_hash,
-                is_for_detail=is_for_detail,
-                rowproxy_generator=rowproxy_generator,
-                title_function=title_function, meta=kwargs.get('meta', None),
-                use_caching=True)
+            return library_copy_plates_screened_generator
+        
+        if 'library_plates_screened' in field_hash:
+            rowproxy_generator = create_lcp_gen(rowproxy_generator)
+
+        rowproxy_generator = \
+           self._meta.authorization.get_row_property_generator(
+               request.user, field_hash, rowproxy_generator)
+                
+        title_function = None
+        if use_titles is True:
+            def title_function(key):
+                return field_hash[key]['title']
+        if is_data_interchange:
+            title_function = DbApiResource.datainterchange_title_function(
+                field_hash,schema['id_attribute'])
+         
+        return self.stream_response_from_statement(
+            request, stmt, count_stmt, filename,
+            field_hash=field_hash,
+            param_hash=param_hash,
+            is_for_detail=is_for_detail,
+            rowproxy_generator=rowproxy_generator,
+            title_function=title_function, meta=kwargs.get('meta', None),
+            use_caching=True)
               
-        except Exception, e:
-            logger.exception('on get list')
-            raise e  
 
     def put_detail(self, request, **kwargs):
         raise ApiNotImplemented(self._meta.resource_name, 'put_detail')

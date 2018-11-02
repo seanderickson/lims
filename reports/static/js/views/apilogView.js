@@ -144,9 +144,7 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
           'description' : 'Field Name',
           'order': 1,
           'sortable': true,
-          'cell': Iccbl.TextWrapCell.extend({
-            className: 'text-wrap-cell-extra-narrow'
-          })
+          'cell': Iccbl.StringCell
         }),
         _.extend({},colTemplate,{
           'name' : 'before',
@@ -154,9 +152,7 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
           'description' : 'Value before update',
           'order': 1,
           'sortable': true,
-          'cell': Iccbl.TextWrapCell.extend({
-            className: 'text-wrap-cell-extra-narrow'
-          })
+          'cell': Iccbl.StringCell
         }),
         _.extend({},colTemplate,{
           'name' : 'after',
@@ -164,9 +160,7 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
           'description' : 'Value after update',
           'order': 1,
           'sortable': true,
-          'cell': Iccbl.TextWrapCell.extend({
-            className: 'text-wrap-cell-extra-narrow'
-          })
+          'cell': Iccbl.StringCell
         })
       ];
       var colModel = new Backgrid.Columns(columns);

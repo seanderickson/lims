@@ -42,9 +42,6 @@ function($, _, Backgrid, Iccbl, appModel, EditView) {
         plate_collection, $target_el, editable, extra_cols, screen_facility_id){
       var self = this;
       $target_el.empty();
-      var NarrowTextWrapCell = Iccbl.TextWrapCell.extend({
-        className: 'text-wrap-cell-extra-narrow'
-      });
       var colTemplate = {
         'cell' : 'string',
         'order' : -1,
@@ -64,7 +61,6 @@ function($, _, Backgrid, Iccbl, appModel, EditView) {
           'sortable': true,
           'cell':
             Iccbl.CommentArrayLinkCell.extend({
-              className: 'text-wrap-cell-narrow',
               hrefTemplate: '#library/{library_short_name}',
               comment_attribute: 'library_comment_array',
               title_function: function(model){
@@ -83,7 +79,6 @@ function($, _, Backgrid, Iccbl, appModel, EditView) {
           'order': 1,
           'sortable': true,
           'cell': Iccbl.LinkCell.extend({
-            className: 'text-wrap-cell-narrow',
             hrefTemplate: '#library/{library_short_name}/copy/{copy_name}',
             render: function(){
               var self = this;
@@ -110,7 +105,6 @@ function($, _, Backgrid, Iccbl, appModel, EditView) {
           'order': 1,
           'sortable': true,
           'cell': Iccbl.LinkCell.extend({
-            className: 'text-wrap-cell-narrow',
             hrefTemplate: 
               '#library/{library_short_name}/copy/{copy_name}/plate' +
               '/search/plate_number__range={start_plate},{end_plate}',
@@ -167,7 +161,6 @@ function($, _, Backgrid, Iccbl, appModel, EditView) {
               }
             }),
             'cell': Iccbl.LinkCell.extend({
-              className: 'text-wrap-cell-narrow',
               hrefTemplate: '#screen/'+ screen_facility_id 
               +'/summmary/libraryscreening/{library_screening_id}'
             })
@@ -187,7 +180,7 @@ function($, _, Backgrid, Iccbl, appModel, EditView) {
             'description' : 'Plate Locations',
             'order': 1,
             'sortable': true,
-            'cell': NarrowTextWrapCell
+            'cell': Iccbl.StringCell
           })
         );
       } 
@@ -205,7 +198,7 @@ function($, _, Backgrid, Iccbl, appModel, EditView) {
             'description' : 'Average Plate Volume',
             'order': 1,
             'sortable': true,
-            'cell': NarrowTextWrapCell
+            'cell': Iccbl.StringCell
           })
         );
       } 
@@ -237,7 +230,7 @@ function($, _, Backgrid, Iccbl, appModel, EditView) {
           })
         );
       }
-      var tableClasses = 'backgrid table-striped table-condensed table-hover'
+      var tableClasses = 'backgrid table-striped table-condensed table-hover table';
       var rowClass = null;
       var StatusColorRow = Backgrid.Row.extend({
         _setStyle: function() {
@@ -259,7 +252,6 @@ function($, _, Backgrid, Iccbl, appModel, EditView) {
       if(_.contains(extra_cols,'warnings') ||
           (!plate_collection.isEmpty() && plate_collection.at(0).has('warnings'))){
         rowClass = StatusColorRow;
-        tableClasses = 'backgrid table-condensed table';
         columns.push(          
           _.extend({},colTemplate,{
             'name' : 'warnings',
@@ -275,7 +267,7 @@ function($, _, Backgrid, Iccbl, appModel, EditView) {
                 return '';
               }
             }),
-            'cell': NarrowTextWrapCell
+            'cell': Iccbl.StringCell
           })
         );
       }
@@ -283,7 +275,6 @@ function($, _, Backgrid, Iccbl, appModel, EditView) {
       if(_.contains(extra_cols,'errors') ||
           (!plate_collection.isEmpty() && plate_collection.at(0).has('errors'))){
         rowClass = StatusColorRow;
-        tableClasses = 'backgrid table-condensed table';
         columns.push(          
           _.extend({},colTemplate,{
             'name' : 'errors',
@@ -299,7 +290,7 @@ function($, _, Backgrid, Iccbl, appModel, EditView) {
                 return '';
               }
             }),
-            'cell': NarrowTextWrapCell
+            'cell': Iccbl.StringCell
           })
         );
       }

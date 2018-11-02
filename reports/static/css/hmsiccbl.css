@@ -420,7 +420,7 @@ td.text-wrap-cell-extra-narrow {
   text-overflow: inherit;
   white-space: inherit;
   vertical-align: top;
-  min-width: 100px;
+  min-width: 70px;
 }
 
 .backgrid.nested-table th {

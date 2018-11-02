@@ -127,10 +127,7 @@
     "detailView": "ScreenView",
     "api_resource": "screen",
     "url_root": "/db/api/v1",
-    "description": "Browse screens that you lead, head, or collaborate on",
-    "options": { 
-      "search": { "study_type__is_null": true }
-    }
+    "description": "Browse screens that you lead, head, or collaborate on"
   },
   "small_molecule_screens": {
     "header_message": "Small Molecule Screens",

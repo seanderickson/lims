@@ -771,7 +771,6 @@ define([
         'headerCell': Backgrid.HeaderCell,
         'cell': Iccbl.LinkCell.extend({
           hrefTemplate: '#publication/{publication_id}',
-          className: 'text-wrap-cell',
           render: function(){
             var model = this.model;
             this.$el.empty();
@@ -910,9 +909,7 @@ define([
       var CollectionClass = Iccbl.CollectionOnClient.extend({
         url: url
       });
-      resource.fields['filename']['backgridCellType'] = Iccbl.LinkCell.extend({
-        className: 'text-wrap-cell'
-      });
+      resource.fields['filename']['backgridCellType'] = Iccbl.LinkCell;
       
       var collection = new CollectionClass();
       var colModel = Iccbl.createBackgridColModel(resource.fields); 
@@ -1073,9 +1070,7 @@ define([
             'description' : 'Requested By',
             'order': 1,
             'sortable': true,
-            'cell': Iccbl.TextWrapCell.extend({
-              className: 'text-wrap-cell-extra-narrow'
-            })
+            'cell': Iccbl.StringCell
           })
         ];
         var colModel = new Backgrid.Columns(columns);
@@ -1161,9 +1156,7 @@ define([
               'description' : 'Screen status',
               'order': 1,
               'sortable': true,
-              'cell': Iccbl.TextWrapCell.extend({
-                className: 'text-wrap-cell-extra-narrow'
-              })
+              'cell': Iccbl.StringCell
             }),
             _.extend({},colTemplate,{
               'name' : 'date_time',

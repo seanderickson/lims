@@ -2073,9 +2073,6 @@ define([
         collection.each(function(model) {
           model.set('date', Iccbl.getDateString(model.get('date_time')));
         });
-        var TextWrapCell = Backgrid.Cell.extend({
-          className: 'text-wrap-cell'
-        });
         var colTemplate = {
           'cell' : 'string',
           'order' : -1,
@@ -2114,7 +2111,7 @@ define([
             'description' : 'Comment',
             'order': 1,
             'sortable': true,
-            'cell': TextWrapCell
+            'cell': Iccbl.StringCell
             })
         ];
         var colModel = new Backgrid.Columns(columns);

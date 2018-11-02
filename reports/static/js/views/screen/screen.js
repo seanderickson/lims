@@ -1386,7 +1386,9 @@ define([
           field['visibility'] = [];
         }
       });
-      activityResource.fields['funding_support']['visibility'] = [];
+      if (_.has(activityResource.fields, 'funding_support')){
+        activityResource.fields['funding_support']['visibility'] = [];
+      }
       
       if (!_.isEmpty(delegateStack) && delegateStack[0]=='+add') {
           self.addServiceActivity();

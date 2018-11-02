@@ -153,10 +153,10 @@ PYTHONPATH=. python reports/utils/db_init.py \
 
 # Server - Just the usergroup assignments
 PYTHONPATH=. python reports/utils/django_requests.py -u sde \
-  -f lims/static/production_data/screensaver_users-prod-patch.csv \
+  https://dev.screensaver2.med.harvard.edu/db/api/v1/screensaveruser \
+  --header "Content-Type: text/csv" --header "Accept: text/csv" \
   -a PATCH \
-  https://dev.screensaver2.med.harvard.edu/reports/api/v1/user \
-  --header "Content-Type: text/csv" --header "Accept: text/csv"
+  -f lims/static/production_data/screensaver_users-prod-patch.csv
 
 # PATCH-only (Local using curl)
 curl -v  --dump-header - -H "Content-Type: text/csv" --user sde \

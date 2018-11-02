@@ -15548,7 +15548,7 @@ class LibraryScreeningResource(ActivityResource):
                         .where(copy_plate_query.c.library_screening_id
                             ==_library_screening.c.activity_id) ))
         
-        if True or logger.isEnabledFor(logging.DEBUG):
+        if logger.isEnabledFor(logging.DEBUG):
             compiled_stmt = str(stmt.compile(
                 dialect=postgresql.dialect(),
                 compile_kwargs={"literal_binds": True}))

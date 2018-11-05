@@ -16,7 +16,6 @@ ordinal,key,scope,comment,filtering,description,title,ordering,json_field_type,v
 13,is_restricted,fields.resource,,,"Whether this resource requires explicit permissions to view, edit, or create","Is Restricted",,,,[l;d;e],[c;u],boolean,,,,
 14,api_name,fields.resource,"One of [db,reports]",,"The name of the API serving this resource","API Name",,fields.CharField,,[l;d;e],[c;u],string,,,,
 15,table,fields.resource,"Default database table for fields",,"Unless overriden in the field specification","Database Table",,fields.CharField,,[d;e],[c;u],string,,,,
-16,linked_table_module,fields.resource,"Use the full Python style path, i.e. <module.module.Class>",,"The table model used to hold the complex linked fields (only one allowed)","Linked Field Table Module",,fields.CharField,,[d;e],[c;u],string,,,,
 17,supertype,fields.resource,,,"The fields from the supertype resource are extended by this resource",Supertype,,fields.CharField,,[l;d;e],[c;u],string,,,,
 18,content_types,fields.resource,"Note that the resource will serve whatever types are implemented.  Also, JSON and CSV are served by default.  This settings is mostly useful for populating the user download dropdown.",,"Types of content this resource can serve: using abbreviated names (csv,xls,etc)","Content Types",,fields.ListField,resource.content_type,[d;e],[c;u],list,,,multiselect,
 19,require_comment_on_save,fields.resource,,,"Require save actions (create/update) to include a comment field","Require Save Comment",,fields.BooleanField,,[d;e],[c;u],boolean,,,,

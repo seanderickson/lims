@@ -163,22 +163,6 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
         this.removeView(this.tabViews[key]);
       }
       
-      var detailView = DetailView.extend({
-        afterRender: function(){
-          var self = this;
-          DetailView.prototype.afterRender.apply(this,arguments);
-          // TODO: support for generic images in detail view
-          if(this.model.has('structure_image')){
-            $('#generic-detail-stickit-container').append(
-                '<img style="position: absolute; top: 8em; right: 3em" src="' 
-                + self.model.get('structure_image') + '" alt="structure image" />');
-            $('#structure_image').closest('tr').remove();
-          }
-          
-
-        }
-      });
-      
       var DetailLayoutWell = DetailLayout.extend({
         history: function(event) {
           event.preventDefault();
@@ -211,8 +195,7 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
       view = new DetailLayoutWell({ 
         model: this.model,
         uriStack: delegateStack, 
-        buttons: ['download', 'history'],
-        DetailView: detailView
+        buttons: ['download', 'history']
       });
       this.tabViews[key] = view;
       this.listenTo(view , 'uriStack:change', this.reportUriStack);

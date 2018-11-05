@@ -40,8 +40,8 @@ define([
 
     tabbed_resources: {
       detail: { 
-        description: 'Details', 
-        title: 'Details', 
+        description: 'Screening summary overview', 
+        title: 'Overview', 
         invoke: 'setDetail'
       },
       libraryscreening: {

@@ -2846,7 +2846,8 @@ define([
   appState.API_MSG_LCPS_INSUFFICIENT_VOLUME = 'Insufficient volume';
   appState.VOCAB_USER_CLASSIFICATION_PI = 'principal_investigator';
   
-  appState.USER_OPTION_PATTERN = /([A-Za-z\,\(\) ]+)(\[(\w+)\])?(\:\s+(\d+))?/;
+  appState.USER_OPTION_PATTERN = /([^:\[]+)(\[(\w+)\])?(\:\s+(\d+))?/;
+  //appState.USER_OPTION_PATTERN = /([A-Za-z\,\-\(\) ]+)(\[(\w+)\])?(\:\s+(\d+))?/;
   
   /**
    * URIStack search element SEARCH_DELIMITER

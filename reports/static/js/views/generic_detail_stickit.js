@@ -104,6 +104,7 @@ define([
       function create_title(fi){
         if (Iccbl.appModel.getCurrentUser().is_superuser
             && fi.vocabulary_scope_ref){
+          // Show link to the vocab term for superuser
           return Iccbl.formatString(
             '<a href="#vocabulary/search/scope__exact={vocabulary_scope_ref}" '
             + ' class="" '
@@ -278,8 +279,16 @@ define([
         }else{
           return value;
         }
-      }
-            
+      };
+          
+      function imageGetter(value){
+        
+        if (!_.isEmpty(value) && value != '-' ){
+          console.log('image:', value);
+          return '<img src="' + value + '" alt="structure image" />';
+        }
+      };
+      
       data_type_formatters = {
         'date': dateGetter,
         'list': listGetter,
@@ -365,7 +374,8 @@ define([
       display_type_formatters = {
         'link': linkGetter,
         'linklist': linkListGetter,
-        'siunit': siUnitGetter
+        'siunit': siUnitGetter,
+        'image': imageGetter
       };
       
       // compose getter hierarchy; default<-data_type<-display_type<-vocabulary

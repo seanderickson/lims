@@ -90,7 +90,7 @@ define([
       },
       summary : {
         description : 'Summary of Library Screening transfer activities',
-        title : 'Transfer Summary',
+        title : 'Screening Summary',
         invoke : 'setSummary',
         permission: 'screensummary'
       },
@@ -359,7 +359,6 @@ define([
         afterRender: function() {
           var dview = DetailView.prototype.afterRender.apply(this,arguments);
 
-          
           $('#comments').empty();
           $('#comments').append(Iccbl.collapsibleText(self.model.get('comments'), 240));
           

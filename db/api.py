@@ -18241,7 +18241,8 @@ class ScreenResource(DbApiResource):
                 _screen_collaborators,
                 _collaborator.c.screensaver_user_id 
                     == _screen_collaborators.c.screensaveruser_id))
-            .order_by(_collaborator.c.username))
+            .order_by(_screen_collaborators.c.screen_id, 
+                      _collaborator.c.last_first))
         if screen_id:
             collaborators = collaborators.where(
                 _screen_collaborators.c.screen_id==screen_id)

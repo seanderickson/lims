@@ -1,13 +1,13 @@
 key,scope,table,field,category,ordinal,comment,filtering,description,title,ordering,vocabulary_scope_ref,visibility,editability,data_type,display_type,display_options,edit_type,alias,is_restricted,regex,required,view_groups,data_access_level
-screensaver_user_id,fields.screensaveruser,,,,0,"Arbitrarily assigned internal user ID for the User",TRUE,"The internal user ID","Screensaver User ID",TRUE,,[l;d],,integer,link,"{ 'hrefTemplate': '#screensaveruser/{screensaver_user_id}' }",,,,,,,
+screensaver_user_id,fields.screensaveruser,,,,0,"Arbitrarily assigned internal user ID for the User",TRUE,"The internal user ID","Screensaver User ID",TRUE,,[l;d],,string,link,"{ 'hrefTemplate': '#screensaveruser/{screensaver_user_id}' }",,,,,,,
 name,fields.screensaveruser,custom,,,2,,TRUE,"The full name of the user (last, first)",Name,TRUE,,[l;d],,string,,,,,,,,,1
 first_name,fields.screensaveruser,,,,3,,TRUE,"First Name","First Name",TRUE,,[e],[c;u],string,,,,,,,TRUE,,1
 last_name,fields.screensaveruser,,,,4,,TRUE,"Last Name","Last Name",TRUE,,[e],[c;u],string,,,,,,,TRUE,,1
 classification,fields.screensaveruser,,,,5,,TRUE,"The user's classification",Classification,TRUE,user.classification,[l;d],[c;u],string,,,select,,,,FALSE,,3
 lab_name,fields.screensaveruser,,,Lab,6,,TRUE,"The name of the user's current lab","Lab Name",TRUE,,[d],,string,link,"{ 'hrefTemplate': '#screensaveruser/{lab_head_id}' }",,,,,,,1
-lab_head_id,fields.screensaveruser,,,Lab,7,,TRUE,"The Screensaver User ID of the Lab Head","Lab Head",TRUE,,[api],[c;u],integer,,"{ 'widthClass': 'col-sm-8' }",select,,,,,,1
+lab_head_id,fields.screensaveruser,,,Lab,7,,TRUE,"The Screensaver User ID of the Lab Head","Lab Head",TRUE,,[api],[c;u],string,,"{ 'widthClass': 'col-sm-8' }",select,,,,,,1
 lab_head_username,fields.screensaveruser,,,Lab,7,,TRUE,"Lab Head Username","Lab Head Username",TRUE,,[api],[c;u],string,link,"{ 'hrefTemplate': '#screensaveruser/{lab_head_id}' }",,,,,,,3
-lab_affiliation_id,fields.screensaveruser,,,Lab,8,,TRUE,"Principal Investigator Lab Affiliation ID","Lab Affiliation ID",TRUE,,[api],[c;u],integer,link,"{ 'hrefTemplate': '#labaffiliation/{lab_affiliation_id}', 'widthClass': 'col-sm-8' }",select,,,,,,1
+lab_affiliation_id,fields.screensaveruser,,,Lab,8,,TRUE,"Principal Investigator Lab Affiliation ID","Lab Affiliation ID",TRUE,,[api],[c;u],string,link,"{ 'hrefTemplate': '#labaffiliation/{lab_affiliation_id}', 'widthClass': 'col-sm-8' }",select,,,,,,1
 lab_affiliation_name,fields.screensaveruser,,,Lab,9,,TRUE,"Principal Investigator Lab Affiliation Name","Lab Affiliation Name",TRUE,,,[c;u],string,full_string,,,,,,,,1
 lab_affiliation_category,fields.screensaveruser,,,Lab,10,,TRUE,"Lab Affiliation Category","Lab Affiliation Category",TRUE,labaffiliation.category,,,string,,,select,,,,,,1
 lab_head_appointment_category,fields.screensaveruser,,,Lab,13,,TRUE,"Lab Head Appointment Category","App't Category",TRUE,lab_head.appointment_category,,[c;u],string,,,select,,,,,,

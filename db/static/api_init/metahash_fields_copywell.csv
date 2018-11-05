@@ -1,7 +1,7 @@
 key,scope,table,field,ref,ordinal,category,comment,filtering,description,title,ordering,json_field_type,vocabulary_scope_ref,visibility,editability,data_type,display_type,display_options,edit_type,is_restricted,nested_resource,default,required,min,max,regex,validation_message
 library_short_name,fields.copywell,library,short_name,fields.library/short_name,0,,,,,,,,,[l;d],[c],string,link,"{ 'hrefTemplate': '#library/{library_short_name}' }",,,,,,,,,
 copy_name,fields.copywell,copy,name,,1,,,TRUE,"Copy Name","Copy Name",TRUE,,,[l;d],,string,link,"{ 'hrefTemplate': '#library/{library_short_name}/copy/{copy_name}' }",,,,,,,,,
-plate_number,fields.copywell,well,plate_number,,2,,,TRUE,"Plate number",Plate,TRUE,,,[l;d],,integer,link,"{ 'hrefTemplate': '#library/{library_short_name}/copy/{copy_name}/plate/{plate_number}' }",,,,,,,,,
+plate_number,fields.copywell,well,plate_number,,2,,,TRUE,"Plate number",Plate,TRUE,,,[l;d],,integer,link,"{ 'hrefTemplate': '#library/{library_short_name}/copy/{copy_name}/plate/{plate_number}',  'orderSeparator': ''  }",,,,,,,,,
 well_id,fields.copywell,well,well_id,,3,,,TRUE,"Well ID [plate number]:[well_name]","Well ID",TRUE,,,[d],[c],string,link,"{ 'hrefTemplate': '#library/{library_short_name}/well/{well_id}' }",,,,,,,,,
 well_name,fields.copywell,well,well_name,,4,,,TRUE,"Well name [row-letter][column number]","Well Name",TRUE,,,[l;d],,string,link,"{ 'hrefTemplate': '#library/{library_short_name}/copy/{copy_name}/copywell/{well_id}' }",,,,,,,,,
 library_well_type,fields.copywell,well,,,5,,,TRUE,"Library well type","Library Well Type",TRUE,,library.well_type,[l;d],,string,,,select,,,,,,,,

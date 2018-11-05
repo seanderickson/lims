@@ -1,6 +1,6 @@
 key,scope,table,field,category,ref,ordinal,comment,data_type,display_type,display_options,edit_type,filtering,description,title,ordering,json_field_type,vocabulary_scope_ref,visibility,alias,required,alphanumeric_sort,view_groups
-attached_file_id,fields.attachedfile,,,,,0,,integer,link,"{ 'hrefTemplate': '#attachedfile/{attached_file_id}' }",,TRUE,"Internal attached file ID","Attached File ID",TRUE,,,[d],,,,
-screensaver_user_id,fields.attachedfile,screensaver_user,,User,,1,,integer,link,"{ 'hrefTemplate': '#screensaveruser/{screensaver_user_id}', 'hideIfEmpty': true }",,TRUE,"Screensaver User ID attached to","Screensaver User ID",TRUE,,,[d],,,,
+attached_file_id,fields.attachedfile,,,,,0,,string,link,"{ 'hrefTemplate': '#attachedfile/{attached_file_id}' }",,TRUE,"Internal attached file ID","Attached File ID",TRUE,,,[d],,,,
+screensaver_user_id,fields.attachedfile,screensaver_user,,User,,1,,string,link,"{ 'hrefTemplate': '#screensaveruser/{screensaver_user_id}', 'hideIfEmpty': true }",,TRUE,"Screensaver User ID attached to","Screensaver User ID",TRUE,,,[d],,,,
 username,fields.attachedfile,screensaver_user,,User,,1,,string,link,"{ 'hrefTemplate': '#screensaveruser/{username}', 'hideIfEmpty': true }",,TRUE,Username,Username,TRUE,,,,,,,
 user_fullname,fields.attachedfile,custom,,User,,2,,string,link,"{ 'hrefTemplate': '#screensaveruser/{screensaver_user_id}', 'hideIfEmpty': true }",,TRUE,"The full name of the user (last, first)",User,TRUE,,,[l;d],,,,
 filename,fields.attachedfile,,,,,3,,string,link,"{ 'hrefTemplate': '/db/attachedfile/{attached_file_id}/content' }",,TRUE,"File Name","File Name",TRUE,,,[l;d],,TRUE,,
@@ -14,7 +14,7 @@ screen_facility_id,fields.attachedfile,screen,facility_id,,,10,,string,link,"{ '
 publication_id,fields.attachedfile,publication,publication_id,,,11,,string,link,"{ 'hrefTemplate': '#publication/{publication_id}',  'hideIfEmpty': true }",,TRUE,Publication,Publication,TRUE,,,[l;d],,,,
 reagent_id,fields.attachedfile,reagent,reagent_id,,,12,,string,link,"{ 'hrefTemplate': '#reagent/{reagent_id}', 'hideIfEmpty': true }",,TRUE,Reagent,Reagent,TRUE,,,[d],,,,
 comment_array,fields.attachedfile,custom,,,,13,,list,comment_array,,,TRUE,Comments,Comments,FALSE,,,[l;d],,,,[readEverythingAdmin]
-lab_head_id,fields.attachedfile,custom,,,fields.screensaveruser/lab_head_id,14,,integer,,,,TRUE,,,TRUE,,,[api],,,,
+lab_head_id,fields.attachedfile,custom,,,fields.screensaveruser/lab_head_id,14,,string,,,,TRUE,,,TRUE,,,[api],,,,
 lab_head_username,fields.attachedfile,custom,,,fields.screensaveruser/lab_head_username,15,,string,,,,TRUE,,,TRUE,,,[],,,,
 lab_name,fields.attachedfile,custom,,,fields.screensaveruser/lab_name,16,,string,,,,TRUE,,,TRUE,,,[],,,,
 lab_affiliation_id,fields.attachedfile,custom,,,fields.screensaveruser/lab_affiliation_id,17,,string,,,,TRUE,,,TRUE,,,[api],,,,

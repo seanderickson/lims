@@ -10,8 +10,8 @@ solvent,fields.library,,,8,,,TRUE,"Solvent used in the library wells",Solvent,TR
 library_type,fields.library,,,9,,,TRUE,"The type of library, e.g., 'Commercial', 'Known Bioactives', 'siRNA', etc.","Library Type",TRUE,,library.type,[l;d;e],[c;u],string,,,select,,,,TRUE,,,,,
 is_pool,fields.library,,,10,,,TRUE,"Whether wells contains pools of reagents or single reagents","Is Pool",TRUE,,,[l;d;e],[c;u],boolean,,,,,,,,,,,,
 screening_status,fields.library,,,11,,,TRUE,"Screening Status","Screening Status",TRUE,,library.screening_status,[l;d;e],[c;u],string,,,select,,,,TRUE,,,,,
-start_plate,fields.library,,,12,,,TRUE,"The plate number for the first plate in the library","Start Plate",TRUE,,,[l;d;e],[c],integer,,,,,,,TRUE,1,10000000,,,
-end_plate,fields.library,,,13,,,TRUE,"The plate number for the last plate in the library","End Plate",TRUE,,,[l;d;e],[c],integer,,,,,,,TRUE,1,10000000,,,
+start_plate,fields.library,,,12,,,TRUE,"The plate number for the first plate in the library","Start Plate",TRUE,,,[l;d;e],[c],integer,,"{ 'orderSeparator': '' }",,,,,TRUE,1,10000000,,,
+end_plate,fields.library,,,13,,,TRUE,"The plate number for the last plate in the library","End Plate",TRUE,,,[l;d;e],[c],integer,,"{ 'orderSeparator': '' }",,,,,TRUE,1,10000000,,,
 plate_count,fields.library,custom,,14,,,TRUE,"The number of plates in the library","Plate Count",TRUE,,,[l;d],,integer,link,"{ 'hrefTemplate': '#library/{short_name}/plate' }",,,,,,,,,,
 description,fields.library,,,15,,,TRUE,"A description of the library",Description,TRUE,,,[d;e],[c;u],string,,,textarea,,,,,,,,,
 owner,fields.library,custom,,16,Internal,,TRUE,"The user that owns the library, if applicable.",Owner,TRUE,,,[d;e],,string,,,,TRUE,,,,,,,,[readEverythingAdmin]
@@ -25,7 +25,7 @@ comment_array,fields.library,,,20,Internal,,TRUE,Comments,Comments,FALSE,,,[none
 concentration_types,fields.library,,,999,Internal,,TRUE,"Concentration types used for the wells (mg/ml or molar)","Concentration Types",TRUE,,,[none],,list,,,,,,,,,,,,
 molar_concentrations,fields.library,custom,,999,internal,,TRUE,"Molar Concentration values of wells for this library","Molar Concentrations",TRUE,,,[none],,list,,,,,,,,,,,,
 mg_ml_concentrations,fields.library,custom,,999,internal,,TRUE,"mg/ml Concentration values of wells for this library","mg/ml Concentrations",TRUE,,,[none],,list,,,,,,,,,,,,
-library_id,fields.library,,,999,internal,,TRUE,"Internal Library ID","Internal Library ID",TRUE,,,[none],,integer,link,"{ 'hrefTemplate': '#library/{short_name}' }",,,,,,,,,,
+library_id,fields.library,,,999,internal,,TRUE,"Internal Library ID","Internal Library ID",TRUE,,,[none],,string,link,"{ 'hrefTemplate': '#library/{short_name}', 'orderSeparator': '' }",,,,,,,,,,
 is_released,fields.library,,,999,internal,"If a library is not released, it will not be visible to screeners, if it is released, it is viewable to all and any well content updates will be commited as a ""preview"" which must be applied before it is visible.",TRUE,"True if the library is released (may be viewed by screeners)","Is Released",TRUE,,,[d],[c;u],boolean,,,,TRUE,,,,,,,,[readEverythingAdmin]
-preview_log_id,fields.library,custom,,999,internal,,TRUE,"Preview log, if exists, for a pending load","Preview Log ID",TRUE,,,,,integer,link,"{ 'hrefTemplate': '#apilog/{preview_log_key}' }",,TRUE,,,,,,,,[readEverythingAdmin]
+preview_log_id,fields.library,custom,,999,internal,,TRUE,"Preview log, if exists, for a pending load","Preview Log ID",TRUE,,,,,string,link,"{ 'hrefTemplate': '#apilog/{preview_log_key}' }",,TRUE,,,,,,,,[readEverythingAdmin]
 preview_log_key,fields.library,custom,,999,internal,,TRUE,"Preview log, if exists, for a pending library content load operation","Preview Log",TRUE,,,,,string,link,"{ 'hrefTemplate': '#apilog/{preview_log_key}' }",,TRUE,,,,,,,,[readEverythingAdmin]

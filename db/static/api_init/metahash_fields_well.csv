@@ -1,6 +1,6 @@
 key,scope,table,field,ordinal,category,comment,filtering,description,title,ordering,json_field_type,vocabulary_scope_ref,visibility,editability,data_type,display_type,display_options,edit_type,is_restricted,nested_resource,default,required,min,max,regex,validation_message
 well_id,fields.well,,,0,,,TRUE,"Well ID [plate number]:[well_name]","Well ID",TRUE,,,,,string,link,"{ 'hrefTemplate': '#library/{library_short_name}/well/{well_id}' }",,,,,,,,,
-plate_number,fields.well,,,1,,,TRUE,"Plate number",Plate,TRUE,,,[l;d;report],,integer,link,"{ 'hrefTemplate': '#library/{library_short_name}/plate/search/plate_number__eq={plate_number}' }",,,,,,,,,
+plate_number,fields.well,,,1,,,TRUE,"Plate number",Plate,TRUE,,,[l;d;report],,integer,link,"{ 'hrefTemplate': '#library/{library_short_name}/plate/search/plate_number__eq={plate_number}',  'orderSeparator': ''  }",,,,,,,,,
 well_name,fields.well,,,2,,,TRUE,"Well name [row-letter][column number]",Well,TRUE,,,[l;d;report],,string,link,"{ 'hrefTemplate': '#library/{library_short_name}/well/{well_id}' }",,,,,,,,,
 library_short_name,fields.well,library,short_name,10,,,TRUE,"Library short name",Library,TRUE,,,[l;d;report],,string,link,"{ 'hrefTemplate': '#library/{library_short_name}' }",,,,,,,,,
 library_name,fields.well,library,library_name,11,,,TRUE,"Library name","Library Full Name",TRUE,,,[d;report],,string,link,"{ 'hrefTemplate': '#library/{library_short_name}' }",,,,,,,,,

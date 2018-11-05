@@ -1,6 +1,6 @@
 key,scope,table,field,ordinal,comment,filtering,description,title,ordering,json_field_type,vocabulary_scope_ref,visibility,editability,alias,data_type,display_type,display_options,edit_type,is_restricted,display_format,value_template
 username,fields.job,reports_userprofile,username,1,,TRUE,"The username of the user committing this change",Username,TRUE,,,[l;d],[c],,string,link,"{ 'hrefTemplate': '#user/{username}' }",,,,
-id,fields.job,,,2,,TRUE,"The Job ID","JOB ID",TRUE,,,[l;d],,,integer,link,"{ 'hrefTemplate': '#job/{id}' }",,,,
+id,fields.job,,,2,,TRUE,"The Job ID","JOB ID",TRUE,,,[l;d],,,string,link,"{ 'hrefTemplate': '#job/{id}' }",,,,
 process_id,fields.job,,,3,,TRUE,"The process ID of the job in the system","Process ID",TRUE,,,[l;d],[c;u],,string,,,,,,
 uri,fields.job,,,4,,TRUE,"The URI for the job resource",URI,TRUE,,,[l;d],[c],,string,,,,,,
 params,fields.job,,,5,,TRUE,"JSON representation of request parameters","Request Params",TRUE,,,[d],[c],,string,,,,,,
@@ -16,6 +16,6 @@ date_time_submitted,fields.job,,,14,,TRUE,"Date Time Submitted","Date Time Submi
 date_time_processing,fields.job,,,15,,TRUE,"Date Time Processing","Date Time Processing",TRUE,,,[l;d],[u],,datetime,,,,,,
 date_time_completed,fields.job,,,16,,TRUE,"Date Time Completed","Date Time Completed",TRUE,,,[l;d],[u],,datetime,,,,,,
 response_content,fields.job,,,17,,TRUE,"Response message(s) reported from the system (JSON encoded)","Response Content",TRUE,,,[d],[u],,string,,,,,,
-response_status_code,fields.job,,,18,,TRUE,"Http Response Status Code for the internal job","Response Status Code",TRUE,,,[l;d],[u],,integer,,,,,,
+response_status_code,fields.job,,,18,,TRUE,"Http Response Status Code for the internal job","Response Status Code",TRUE,,,[l;d],[u],,string,,,,,,
 process_env,fields.job,,,19,,TRUE,"Information about the runtime process env (login id, hostname, pid); JSON encoded","Process Environment",TRUE,,,[d],[u],,string,,,,,,
 process_messages,fields.job,,,20,,TRUE,"Process Messages","Process Messages",TRUE,,,[d],[u],,string,,,,,,

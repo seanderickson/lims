@@ -257,20 +257,17 @@ define([
         if(!_.isUndefined(value) && !_.isNull(value) && vocabulary){
           value = getTitle(vocabulary,value);
         }
-        return value;
-        // TODO: use the NumberFormatter to show numbers with thousands separator:
-        // --- on hold --- rework using options so only values (not IDs) are formatted
-        //var formatter = new Iccbl.NumberFormatter({ decimals: 0 });
-        //if(_.isString(value) || _.isNumber(value)){
-        //  formatted = formatter.fromRaw(value);
-        //  if (appModel.DEBUG){
-        //    console.log('integer getter: v:', value, ', formatted: ', 
-        //      formatted, ', options: ', cell_options);
-        //  }
-        //  return formatted;
-        //}else{
-        //  return value;
-        //}
+        else if(_.isNumber(value)){
+          var formatter = new Iccbl.IntegerFormatter(cell_options);
+          formatted = formatter.fromRaw(value);
+          if (appModel.DEBUG){
+            console.log('integer getter: v:', value, ', formatted: ', 
+              formatted, ', options: ', cell_options);
+          }
+          return formatted;
+        }else{
+          return value;
+        }
       }
       function booleanGetter(value){
         if(_.isBoolean(value)){

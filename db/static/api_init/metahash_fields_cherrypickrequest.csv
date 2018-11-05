@@ -1,5 +1,5 @@
 key,scope,table,field,ordinal,ref,category,comment,filtering,description,title,ordering,json_field_type,vocabulary_scope_ref,visibility,editability,data_type,display_type,display_options,edit_type,is_restricted,nested_resource,default,required,min,max,regex,validation_message
-cherry_pick_request_id,fields.cherrypickrequest,,,0,,,,TRUE,"Cherry Pick Request ID","Cherry Pick Request ID",TRUE,,,[l;d],,integer,link,"{ 'hrefTemplate': '#screen/{screen_facility_id}/cherrypickrequest/{cherry_pick_request_id}' }",,,,,,,,,
+cherry_pick_request_id,fields.cherrypickrequest,,,0,,,,TRUE,"Cherry Pick Request ID","Cherry Pick Request ID",TRUE,,,[l;d],,string,link,"{ 'hrefTemplate': '#screen/{screen_facility_id}/cherrypickrequest/{cherry_pick_request_id}' }",,,,,,,,,
 screen_facility_id,fields.cherrypickrequest,screen,facility_id,1,,screen,,TRUE,"The facility-assigned ID of the cherry pick request's screen","Screen ID",TRUE,,,[l;d;e],,string,link,"{ 'hrefTemplate': '#screen/{screen_facility_id}', 'group': 'Screen' }",,,,,,,,,
 screen_type,fields.cherrypickrequest,screen,,2,,screen,,TRUE,"RNAi' or 'Small Molecule'","Screen Type",TRUE,,screen.type,[l;d;e],,string,,"{ 'group': 'Screen' }",select,,,,,,,,
 lab_head_id,fields.cherrypickrequest,custom,,5,,screen,,TRUE,"Lab Head ID","Lab Head ID",TRUE,,,,,string,,"{ 'group': 'Screen' }",,,,,,,,,

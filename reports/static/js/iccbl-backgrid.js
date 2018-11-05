@@ -1832,7 +1832,8 @@ var collapsibleText = Iccbl.collapsibleText = function collapsibleText(text, len
     var collapsedDiv = $('<div/>');
     var expandedDiv = $('<div/>');
     /* ascii code for the ellipsis character */
-    var link = $('<a>&nbsp;<strong>\u2026</strong></a>'); 
+    var link = $('<a>&nbsp;<strong><u>\u2026</u></strong></a>'); 
+//    var link = $('<a>&nbsp;<strong>\u2026</strong></a>'); 
   
     // split text on lines
     var totalLen = 0;
@@ -2395,6 +2396,24 @@ var EditCell = Iccbl.EditCell = Iccbl.BaseCell.extend({
 
 var NumberFormatter = Iccbl.NumberFormatter = Backgrid.NumberFormatter;
 
+var IntegerFormatter = Iccbl.IntegerFormatter = function () {
+  Backgrid.NumberFormatter.apply(this, arguments);
+};
+
+IntegerFormatter.prototype = new Backgrid.NumberFormatter();
+
+_.extend(IntegerFormatter.prototype, {
+
+  defaults: _.extend({}, NumberFormatter.prototype.defaults, {
+    decimals: 0
+  })
+});
+
+var IntegerCell = Iccbl.IntegerCell = Backgrid.NumberCell.extend({
+  formatter: IntegerFormatter,
+  decimals: 0
+});
+
 var NumberCell = Iccbl.NumberCell = Backgrid.NumberCell.extend({
 
   initialize: function (options) {
@@ -2446,8 +2465,6 @@ _.extend(DecimalFormatter.prototype, {
         return number;
       }
     }
-    
-    
     if (this.use_rounding == true){
       number = round(number, this.decimals);
     } else {
@@ -5566,6 +5583,7 @@ var createBackgridColumn = Iccbl.createBackgridColumn =
     'link': Iccbl.LinkCell,
     'siunit': Iccbl.SIUnitsCell,
     'float': Iccbl.NumberCell, //'Number',
+    'integer': Iccbl.IntegerCell,
     'decimal': Iccbl.DecimalCell,
     'image': Iccbl.ImageCell,
     'boolean': Iccbl.BooleanCell,
@@ -5601,11 +5619,16 @@ var createBackgridColumn = Iccbl.createBackgridColumn =
         console.log('field', key, display_type, 'typemap',typeMap[display_type])
       var backgridCellType = typeMap[display_type];
 
-      if (display_type=='link' && data_type=='list'){
-        backgridCellType = Iccbl.UriListCell;
-      }
-      if (display_type=='link' && data_type=='date'){
-        backgridCellType = Iccbl.DateLinkCell;
+      if (display_type=='link'){
+        if (data_type == 'list'){
+          backgridCellType = Iccbl.UriListCell;
+        }else if (data_type == 'date'){
+          backgridCellType = Iccbl.DateLinkCell;
+        }else if (data_type == 'integer'){
+          backgridCellType = Iccbl.LinkCell.extend({
+            formatter: Iccbl.IntegerFormatter
+          });
+        }
       }
     }else{
       if (Iccbl.appModel.DEBUG)

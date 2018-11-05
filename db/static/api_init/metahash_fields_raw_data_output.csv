@@ -1,7 +1,7 @@
 key,scope,table,field,ordinal,comment,filtering,description,title,ordering,json_field_type,vocabulary_scope_ref,visibility,editability,data_type,display_type,display_options,edit_type,is_restricted,nested_resource,default,required,min,max,regex,validation_message
 screen_facility_id,fields.rawdataoutput,,,0,,TRUE,"Screen Facility ID",Screen,TRUE,,,[d],,string,link,"{ 'hrefTemplate': '#screen/{screen_facility_id}', 'group': 'Screen' }",,,,,,,,,
 cherry_pick_request_id,fields.rawdataoutput,,,1,,TRUE,"Cherry Pick Request ID","Cherry Pick Request ID",TRUE,,,[d],,string,link,"{ 'hrefTemplate': '#screen/{screen_facility_id}/cherrypickrequest/{cherry_pick_request_id}' }",,,,,,,,,
-plate_number,fields.rawdataoutput,,,2,,TRUE,"Plate number",Plate,TRUE,,,[l;d],,integer,link,"{ 'hrefTemplate': '#library/{library_short_name}/plate/search/plate_number_eq={plate_number}/' }",,,,,,,,,
+plate_number,fields.rawdataoutput,,,2,,TRUE,"Plate number",Plate,TRUE,,,[l;d],,integer,link,"{ 'hrefTemplate': '#library/{library_short_name}/plate/search/plate_number_eq={plate_number}/',  'orderSeparator': ''  }",,,,,,,,,
 well_name,fields.rawdataoutput,,,3,,TRUE,"Well name [row-letter][column number]",Well,TRUE,,,[l;d],,string,link,"{ 'hrefTemplate': '#library/{library_short_name}/well/{well_id}' }",,,,,,,,,
 type,fields.rawdataoutput,,,4,,TRUE,"Assay Well Type","Well Type",TRUE,,rawdataoutput.well_type,[l;d],,string,,,,,,,,,,,
 is_excluded,fields.rawdataoutput,,,5,,TRUE,"Is Well Excluded from results","Is Excluded",TRUE,,,[l;d],,boolean,,,,,,,,,,,

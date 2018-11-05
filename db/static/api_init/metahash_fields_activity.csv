@@ -1,10 +1,10 @@
 key,scope,table,field,ordinal,ref,category,comment,filtering,description,title,ordering,json_field_type,vocabulary_scope_ref,visibility,editability,data_type,display_type,display_options,edit_type,is_restricted,nested_resource,required,alphanumeric_sort,view_groups
-activity_id,fields.activity,,,0,,,,TRUE,"Activity ID","Activity ID",TRUE,,,[l;d],,integer,link,"{ 'hrefTemplate': '#activity/{activity_id}' }",,,,FALSE,,
+activity_id,fields.activity,,,0,,,,TRUE,"Activity ID","Activity ID",TRUE,,,[l;d],,string,link,"{ 'hrefTemplate': '#activity/{activity_id}' }",,,,FALSE,,
 date_of_activity,fields.activity,,,1,,,,TRUE,"The date the activity was performed","Date Performed",TRUE,,,[l;d],[c;u],date,link,"{ 'hrefTemplate': '#activity/{activity_id}' }",,,,TRUE,,
 classification,fields.activity,,,2,,,,TRUE,"The class of the activity","Activity Class",TRUE,,activity.class,[l;d],[c],string,,,select,,,TRUE,,
 type,fields.activity,,,3,,,,TRUE,"The type of the activity",Type,TRUE,,activity.type.*,[l;d],[c;u],string,link,,select,,,TRUE,,
 serviced_user,fields.activity,custom,,4,,User,,TRUE,"User the service activity was performed for","Serviced User",TRUE,,,[l;d],,string,link,"{ 'hrefTemplate': '#screensaveruser/{serviced_user_id}' }",,,,FALSE,,
-serviced_user_id,fields.activity,custom,,5,,User,,TRUE,"screensaver_user_id of the user the service activity was performed for","Serviced User ID",TRUE,,,,[c;u],integer,link,"{ 'hrefTemplate': '#screensaveruser/{serviced_user_id}' }",,,,FALSE,,
+serviced_user_id,fields.activity,custom,,5,,User,,TRUE,"screensaver_user_id of the user the service activity was performed for","Serviced User ID",TRUE,,,,[c;u],string,link,"{ 'hrefTemplate': '#screensaveruser/{serviced_user_id}' }",,,,FALSE,,
 serviced_username,fields.activity,custom,,6,,User,,TRUE,"Username of the user the service activity was performed for","Serviced Username",TRUE,,,,[c;u],string,link,"{ 'hrefTemplate': '#screensaveruser/{serviced_username}' }",,,,FALSE,,
 screen_facility_id,fields.activity,screen,facility_id,7,,Screen,,TRUE,"Screen Facility ID",Screen,TRUE,,,[l;d],[c;u],string,link,"{ 'hrefTemplate': '#screen/{screen_facility_id}' }",,,,FALSE,TRUE,
 performed_by_user_id,fields.activity,custom,,8,,,,TRUE,"The person that performed the activity","Performed by User ID",TRUE,,,,[c;u],string,link,"{ 'hrefTemplate': '#screensaveruser/{performed_by_user_id}' }",select,,screensaveruser,TRUE,,
@@ -28,4 +28,4 @@ screen_status_date,fields.activity,screen,status_date,110,fields.screen/status_d
 screen_date_of_last_activity,fields.activity,custom,,111,,Screen,,TRUE,"Screen Date of Last Activity","Screen Date of Last Activity",TRUE,,,,,date,,"{ 'optgroup':'screen' }",,,,FALSE,,
 screen_comments,fields.activity,screen,comments,112,,Screen,,TRUE,"Screen Comments","Screen Comments",TRUE,,,,,string,,"{ 'optgroup':'screen' }",,,,FALSE,,[readEverythingAdmin]
 apilog_uri,fields.activity,,,113,,Internal,,TRUE,"ApiLog URI","ApiLog URI",TRUE,,,,,string,link,"{ 'hrefTemplate': '#apilog/{apilog_uri}' }",,,,FALSE,,[readEverythingAdmin]
-cherry_pick_request_id,fields.activity,custom,,114,,Internal,,TRUE,"The Cherry Pick Request ID for the associated activity if relevant","Cherry Pick Request ID",TRUE,,,,,integer,link,"{ 'hrefTemplate': '#screen/{screen_facility_id}/cherrypickrequest/{cherry_pick_request_id}' }",,,,FALSE,,
+cherry_pick_request_id,fields.activity,custom,,114,,Internal,,TRUE,"The Cherry Pick Request ID for the associated activity if relevant","Cherry Pick Request ID",TRUE,,,,,string,link,"{ 'hrefTemplate': '#screen/{screen_facility_id}/cherrypickrequest/{cherry_pick_request_id}' }",,,,FALSE,,

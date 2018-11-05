@@ -31,7 +31,7 @@ visibility,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/visibility/
 display_options,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/display_options/,custom,,25,"meta field",FALSE,"Display Options","Display Options",FALSE,,,[],,,string,,,,,,0,
 edit_type,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/edit_type/,custom,,26,"meta field",FALSE,"Edit Type","Edit Type",FALSE,,,[],,,string,,,,,,0,
 vocabulary_scope_ref,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/vocabulary_scope_ref/,custom,,27,"meta field",FALSE,"Vocabulary reference","Vocabulary reference",FALSE,,,[d],,,string,,,,,,0,
-data_column_id,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/data_column_id/,,,28,,TRUE,"Internal Data Column ID","Data Column ID",TRUE,,,[],,,integer,,,,,,0,
+data_column_id,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/data_column_id/,,,28,,TRUE,"Internal Data Column ID","Data Column ID",TRUE,,,[],,,string,,,,,,0,
 screen_data_sharing_level,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/screen_data_sharing_level/,screen,data_sharing_level,401,,TRUE,"Screen Data Sharing Level","Screen Data Sharing Level",TRUE,,,[api],,,integer,,,,,,0,
 user_access_level_granted,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/user_access_level_granted/,custom,,402,"Dynamically calculated for each Screen the current User is viewing; null if the User is an admin",FALSE,"Access level granted for viewing this Screen Data Column","User Screen Access Level",FALSE,,field.data_access_level,[api],,,integer,,,,,,0,
 screen_type,fields.datacolumn,/reports/api/v1/field/fields.datacolumn/screen_type/,screen,,29,,TRUE,"Screen Type","Screen Type",TRUE,,screen.type,[],,,string,,,,,,0,

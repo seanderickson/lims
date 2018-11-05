@@ -4100,7 +4100,8 @@ var BackgridFormFilter = Backbone.Form.extend({
         lt: '<',
         gte: '>=',
         lte: '<=',
-        eq: '='
+        eq: '=',
+        in: ''
       };
       return _.result(lookup, operator, operator);
     }
@@ -4284,8 +4285,8 @@ var TextFormFilter = CriteriumFormFilter.extend({
         editorClass: 'form-control'
     };
     formSchema['invert_field'] = {
-        title: 'invert',
-        help: 'select this to invert the criteria',
+        title: 'Exclude',
+        help: 'Select this to exclude the criteria',
         type: 'Checkbox',
         template: self.checkboxTemplate,
         editorClass: ''
@@ -4516,8 +4517,8 @@ var DateFormFilter = CriteriumFormFilter.extend({
         monthNames: self.monthNames
     };
     formSchema['invert_field'] = {
-        title: 'invert',
-        help: 'select this to invert the criteria',
+        title: 'Exclude',
+        help: 'Select this to exclude the criteria',
         type: 'Checkbox',
         template: self.checkboxTemplate,
         editorClass: ''
@@ -4911,8 +4912,8 @@ var SelectorFormFilter = CriteriumFormFilter.extend({
     };
 
     formSchema['invert_field'] = {
-        title: 'invert',
-        help: 'select this to invert the criteria',
+        title: 'Exclude',
+        help: 'Select this to exclude the criteria',
         type: 'Checkbox',
         template: self.checkboxTemplate,
         editorClass: ''
@@ -5137,8 +5138,8 @@ var NumberFormFilter = CriteriumFormFilter.extend({
         editorClass: 'form-control '
     };
     formSchema['invert_field'] = {
-        title: 'invert',
-        help: 'select this to invert the criteria',
+        title: 'Exclude',
+        help: 'Select this to exclude the criteria',
         type: 'Checkbox',
         template: self.checkboxTemplate,
         editorClass: ''

@@ -405,21 +405,21 @@ todo: these selectors should be redone
 td.text-wrap-cell {
   text-overflow: inherit;
   white-space: inherit;
-  vertical-align: top;
+  vertical-align: middle;
   min-width: 250px;
 }
 
 td.text-wrap-cell-narrow {
   text-overflow: inherit;
   white-space: inherit;
-  vertical-align: top;
+  vertical-align: middle;
   min-width: 200px;
 }
 
 td.text-wrap-cell-extra-narrow {
   text-overflow: inherit;
   white-space: inherit;
-  vertical-align: top;
+  vertical-align: middle;
   min-width: 70px;
 }
 

@@ -181,6 +181,8 @@ API_PARAM_SHOW_INSUFFICIENT = 'show_insufficient'
 API_PARAM_SHOW_MANUAL = 'show_manual'
 API_PARAM_VOLUME_OVERRIDE = 'volume_override'
 API_PARAM_SET_DESELECTED_TO_ZERO = 'set_deselected_to_zero'
+API_PARAM_DC_IDS = 'dc_ids'
+
 logger = logging.getLogger(__name__)
 
 DEBUG_SCREEN_ACCESS = False or logger.isEnabledFor(logging.DEBUG)
@@ -4551,7 +4553,7 @@ class ScreenResultResource(DbApiResource):
             screen__facility_id=screen_facility_id)              
             
         show_mutual_positives = bool(param_hash.get('show_mutual_positives', False))
-        extra_dc_ids = param_hash.get('dc_ids', None)
+        extra_dc_ids = param_hash.get(API_PARAM_DC_IDS, None)
             
         logger.info('build screen_result schema...')
         schema = self.build_schema(
@@ -4833,7 +4835,7 @@ class ScreenResultResource(DbApiResource):
         param_hash.update(kwargs)
         show_all_other_screens = param_hash.get('show_all_other_screens', False)
         show_mutual_positives = bool(param_hash.get('show_mutual_positives', False))
-        extra_dc_ids = param_hash.get('dc_ids', None)
+        extra_dc_ids = param_hash.get(API_PARAM_DC_IDS, None)
         try:
             screenresult = ScreenResult.objects.get(
                 screen__facility_id=facility_id)
@@ -18722,7 +18724,7 @@ class ScreenResource(DbApiResource):
         if screens_for_userid:
             custom_columns['screensaver_user_role'] = \
                 screener_role_cte.c.screensaver_user_role
-            
+        
         columns = self.build_sqlalchemy_columns(
             field_hash.values(), base_query_tables=base_query_tables,
             custom_columns=custom_columns)
@@ -22027,7 +22029,7 @@ class ReagentResource(DbApiResource):
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
         
-        extra_dc_ids = param_hash.get('dc_ids', None)
+        extra_dc_ids = param_hash.get(API_PARAM_DC_IDS, None)
 
         if not 'library_short_name' in kwargs:
             return self.build_response(
@@ -23119,7 +23121,7 @@ class ReagentResource(DbApiResource):
         #         library = Reagent.objects.get(
         #             substance_id=substance_id).well.library
 
-        extra_dc_ids = param_hash.get('dc_ids', None)
+        extra_dc_ids = param_hash.get(API_PARAM_DC_IDS, None)
         logger.info('build list response: dc_ids: %r', extra_dc_ids)
         # Note: build schema for each request to use the subtype
         schema = self.build_schema(request.user, extra_dc_ids=extra_dc_ids)

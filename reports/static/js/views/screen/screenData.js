@@ -109,10 +109,10 @@ define([
 
       var $loadScreenResultsButton = $(
         '<button class="btn btn-default btn-sm" role="button" \
-        id="loadScreenResults" >Load Data</button>');
+        id="loadScreenResults" >Load data</button>');
       var $deleteScreenResultsButton = $(
         '<button class="btn btn-default btn-sm" role="button" \
-        id="deleteScreenResults" >Delete Data</button>');
+        id="deleteScreenResults" >Delete data</button>');
       
       
       var screenResultResource = appModel.getResource('screenresult');
@@ -130,33 +130,39 @@ define([
       
       var createResults = function(schemaResult) {
         var extraControls = [];
+        var extraListControls = [];
         var show_positives_control = $([
-          '<label class="checkbox-inline">',
-          '  <input type="checkbox">Show Positive Rows Only',
+          '<label class="checkbox-inline" ',
+          '       title="Show rows where the positive indicator is true" >',
+          '  <input type="checkbox">Show positive rows only',
           '</label>'
           ].join(''));
         var show_mutual_positives_control = $([
           '<label class="checkbox-inline" ',
           '       title="Show columns from other screens that have overlapping (mutual) positives." >',
-           '  <input type="checkbox">Mutual Positives',
+           '  <input type="checkbox">Mutual positives',
            '</label>'
            ].join(''));
-        //var show_mutual_positives_control = $([
-        //  '<button class="btn btn-default btn-sm" role="button" ',
-        //  'id="showMutualPositives" title="Show mutual positive columns" >',
-        //  'Show mutual positive columns',
-        //  '</button>'
-        //   ].join(''));
         var show_other_screen_columns_button = $([
           '<button class="btn btn-default btn-sm pull-right" role="button" ',
-          'id="showOtherScreenColumns" title="Show other screen and study columns" >',
-          'Other Screen and Study Columns',
+          'id="showOtherScreenColumns" title="Show other screen columns" >',
+          'Add screen columns',
+          '</button>'
+          ].join(''));
+        extraListControls.push(show_other_screen_columns_button);
+        var show_study_columns_button = $([
+          '<button class="btn btn-default btn-sm pull-right" role="button" ',
+          'id="showStudyColumns" title="Show study columns" >',
+          'Add study columns',
           '</button>'
           ].join(''))
+        extraListControls.push(show_study_columns_button);
         if (_.isEmpty(self.model.get('study_type'))) {
           extraControls = extraControls.concat(
             show_positives_control, show_mutual_positives_control);
-          extraControls.push($('<span>&nbsp;</span>'));
+          show_other_screen_columns_button.html('Add other screen columns');
+        }else{
+          show_study_columns_button.html('Add other study columns');
         }
         if (appModel.hasPermission('screenresult','write')) {
           extraControls = extraControls.concat(
@@ -178,10 +184,13 @@ define([
         }
         var initialSearchHash;
         var SRListView = ListView.extend({
-          afterRender: function(){
-            ListView.prototype.afterRender.apply(this,arguments);
-            this.$('#list_controls').append(show_other_screen_columns_button);
-            return this;
+          reportState: function(){
+            var viewInstance = this;
+            ListView.prototype.reportState.apply(this,arguments);
+            var currentSearch = _.omit(
+              viewInstance.listModel.get(appModel.URI_PATH_SEARCH),
+              appModel.API_PARAM_DC_IDS);
+            $('#clear_searches').toggle(!_.isEmpty(currentSearch));
           }
         });
         
@@ -190,6 +199,7 @@ define([
           resource: schemaResult,
           url: url,
           extraControls: extraControls,
+          extraListControls: extraListControls,
           screen: self.model
         });
         Backbone.Layout.setupView(view);
@@ -211,6 +221,9 @@ define([
           self.showMutualPositiveColumns(view, true);
         }
 
+        show_study_columns_button.click(function(e){
+          self.showOtherScreenColumnsDialog(view, true);
+        });
         show_other_screen_columns_button.click(function(e){
           self.showOtherScreenColumnsDialog(view);
         });
@@ -260,7 +273,7 @@ define([
         console.log('parsed listOptions', listOptions);
         var dc_ids = [];
         if (_.has(listOptions, appModel.URI_PATH_SEARCH)){
-          if (_.has(listOptions.search,'dc_ids')){
+          if (_.has(listOptions.search,appModel.API_PARAM_DC_IDS)){
             dc_ids = listOptions.search.dc_ids;
             if (dc_ids.length > 0 && _.isString(dc_ids)){
               dc_ids = dc_ids.split(',');
@@ -268,10 +281,10 @@ define([
           }
         }
         dc_ids = _.map(dc_ids, function(dc_id){ return parseInt(dc_id); });
-        console.log('dc_ids', dc_ids);
+        console.log(appModel.API_PARAM_DC_IDS, dc_ids);
         var options = {};
         if (!_.isEmpty(dc_ids)){
-          options['dc_ids'] = dc_ids;
+          options[appModel.API_PARAM_DC_IDS] = dc_ids;
         }
         appModel.getResourceFromUrl(schemaUrl, createResults, options);
       } else {
@@ -399,11 +412,11 @@ define([
       });        
     },
 
-    showOtherScreenColumnsDialog: function(listView){
+    showOtherScreenColumnsDialog: function(listView, study_mode){
       var self = this;
       
       var searchHash = listView.collection.listModel.get(appModel.URI_PATH_SEARCH);
-      var dc_ids = _.result(searchHash,'dc_ids', '');
+      var dc_ids = _.result(searchHash,appModel.API_PARAM_DC_IDS, '');
       if (!_.isArray(dc_ids)){
         dc_ids = dc_ids.split(',')
       }
@@ -420,6 +433,12 @@ define([
         order_by: ['screen_facility_id', 'ordinal'],
         use_vocabularies: false
       };
+      if (study_mode){
+        data_for_get['study_type__is_null'] = false;
+      } else {
+        data_for_get['study_type__is_null'] = true;
+      }
+      
       var CollectionClass = Iccbl.CollectionOnClient.extend({
         url: url,
         modelId: function(attrs) {
@@ -497,7 +516,7 @@ define([
         
         var searchHash = _.clone(
           listView.collection.listModel.get(appModel.URI_PATH_SEARCH));
-        searchHash['dc_ids'] = dc_ids_selected;
+        searchHash[appModel.API_PARAM_DC_IDS] = dc_ids_selected;
         listView.collection.listModel.set(appModel.URI_PATH_SEARCH, searchHash);
         
       }; // showColumns
@@ -528,25 +547,16 @@ define([
           '</label>'
           ].join(''));
         
-        var show_studies_control = $([
-          '<label class="checkbox-inline pull-left" ',
-          '   title="Show study annotation columns only" >',
-          '  <input type="checkbox">study columns</input>',
-          '</label>'
-          ].join(''));
-        
         var OtherColumnsTreeSelector = TreeSelector.extend({
           search: function(){
             var show_pos_only = 
               show_positives_control.find('input[type="checkbox"]').prop('checked');
             var show_mutual_only = 
               show_mutual_screens_control.find('input[type="checkbox"]').prop('checked');
-            var show_studies = 
-              show_studies_control.find('input[type="checkbox"]').prop('checked');
             var searchedModels;
             if (!_.isEmpty(this.getSearchVal())){
               searchedModels = OtherColumnsTreeSelector.__super__.search.apply(this,arguments);
-            } else if (show_pos_only || show_mutual_only || show_studies ) {
+            } else if (show_pos_only || show_mutual_only ) {
               searchedModels = this.collection.models;
             } else{
               this.clearSearch();
@@ -562,21 +572,25 @@ define([
                   self.model.get('overlapping_positive_screens'),
                   model.get('screen_facility_id'));
               }
-              if (shown && show_studies){
-                shown = !_.isEmpty(model.get('study_type'));
-              }
               return shown;
             });
             return searchedModels;
           }
         });
         
+        var extraControls = [show_positives_control, show_mutual_screens_control];
+        var title = 'Select other screen columns to display';
+        if (study_mode){
+          extraControls = [];
+          title = 'Select study columns to display';
+        }
+        
         var dcView = new OtherColumnsTreeSelector({
           collection: collection,
           treeAttributes: ['screen_info', 'title'],
           treeAttributesForTypeAhead: ['screen_info'],
-          extraControls: [show_positives_control, show_mutual_screens_control, 
-                          show_studies_control]
+          extraControls: extraControls,
+          startExpanded: study_mode
         });
 
         show_positives_control.find('input[type="checkbox"]').change(function(e) {
@@ -586,12 +600,6 @@ define([
           }
         });
         show_mutual_screens_control.find('input[type="checkbox"]').change(function(e){
-          var searchedModels = dcView.search();
-          if (e.target.checked || !_.isEmpty(searchedModels)) {
-            collection.trigger('searchChange', searchedModels);
-          }
-        });
-        show_studies_control.find('input[type="checkbox"]').change(function(e){
           var searchedModels = dcView.search();
           if (e.target.checked || !_.isEmpty(searchedModels)) {
             collection.trigger('searchChange', searchedModels);
@@ -615,7 +623,7 @@ define([
               showColumns(dcView.getSelected());
             },
             view: el,
-            title: 'Select Other Screen Columns to display'
+            title: title
         });
       }; // showTreeSelector
       

@@ -353,7 +353,7 @@ define([
       
       var self = this;
       var key = 'detail';
-      var buttons = ['download_contents'];
+      var buttons = []; //['download_contents'];
       if (appModel.hasPermission('library', 'write')){
         buttons = buttons.concat(['download','upload','history','edit']);
       }
@@ -475,19 +475,19 @@ define([
         var url = [self.model.resource.apiUri, 
                    self.model.key,
                    'reagent'].join('/');
-        var download_contents_button = $([
-           '<a class="btn btn-default btn-sm" ',
-             'title="Download the full library reagent table (with images, if Excel)" ',
-             'role="button" id="download_contents_button" >',
-             'Full Download</a>'
-           ].join(''));
-        download_contents_button.click(self.download_contents)
+        //var download_contents_button = $([
+        //   '<a class="btn btn-default btn-sm" ',
+        //     'title="Download the full library reagent table (with images, if Excel)" ',
+        //     'role="button" id="download_contents_button" >',
+        //     'Full download</a>'
+        //   ].join(''));
+        //download_contents_button.click(self.download_contents)
         view = new LibraryWellsView({ 
           uriStack: _.clone(delegateStack),
           resource: resource,
           url: url,
           library: self.model,
-          extraControls: [download_contents_button]
+          extraControls: [] // [download_contents_button]
         });
         Backbone.Layout.setupView(view);
         self.listenTo(view , 'uriStack:change', self.reportUriStack);

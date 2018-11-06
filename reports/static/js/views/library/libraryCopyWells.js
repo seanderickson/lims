@@ -290,7 +290,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
           '<a class="btn btn-default btn-sm pull-down" ',
             'style="display: none; " ',
             'role="button" id="save_button_wells" href="#">',
-            'save</a>'
+            'Save</a>'
           ].join(''));
         extraControls.push(showSaveButton);
         var showUploadButton = $([

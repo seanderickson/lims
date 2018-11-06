@@ -1534,7 +1534,7 @@ define([
       var showSaveButton = $([
         '<a class="btn btn-default btn-sm pull-down" ',
           'role="button" id="save_button" style="display: none; href="#">',
-          'save</a>'
+          'Save</a>'
         ].join(''));
       var showHistoryButton = $([
       '<a class="btn btn-default btn-sm pull-down pull-right" ',

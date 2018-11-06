@@ -130,7 +130,7 @@ class MetaManager(models.Manager):
                 
             # NOTE: choices for the "vocabulary_scope_ref" are being stored 
             # here for convenience
-            
+            # TODO: restrict choices to retired != True
             if parsed_object.get(u'vocabulary_scope_ref'):
                 vocab_ref = parsed_object['vocabulary_scope_ref']
                 parsed_object['choices'] = [
@@ -446,8 +446,8 @@ class Vocabulary(models.Model):
     description             = models.TextField(null=True)
     
     # checklist item fields (consider moving to userchecklistitem)
-    expire_interval_days    = models.IntegerField(null=True)
-    expire_notifiy_days     = models.IntegerField(null=True)
+#     expire_interval_days    = models.IntegerField(null=True)
+#     expire_notifiy_days     = models.IntegerField(null=True)
     
     # All other fields are "virtual" JSON stored fields, (unless we decide to 
     # migrate them out to real fields for rel db use cases)

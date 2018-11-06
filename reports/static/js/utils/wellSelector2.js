@@ -5,9 +5,10 @@ define([
   'iccbl_backgrid',
   'models/app_state',
   'templates/genericResource.html',
-  'google_palette'
+  'google_palette',
+  'invert-color'
 ], 
-function($, _, Backgrid, Iccbl, appModel, genericLayout, palette) {
+function($, _, Backgrid, Iccbl, appModel, genericLayout, palette, invert) {
   /**
    * WellSelector is a UI Grid Viewer that uses plate mapping row and column
    * assignment.
@@ -19,8 +20,6 @@ function($, _, Backgrid, Iccbl, appModel, genericLayout, palette) {
    * 
    * TODO: wellSelector.js should be replaced by this version.
    */
-  
-  
   
   /** Clicking this cell toggles the entire grid **/
   var ToggleColumnHeader = Backgrid.HeaderCell.extend({
@@ -223,25 +222,6 @@ function($, _, Backgrid, Iccbl, appModel, genericLayout, palette) {
       this.checkbox().blur();
     },
   
-//    /**
-//       Process keyboard navigation.
-//       ** FIXME: copied code from parent class - remove.
-//    */
-//    onKeydown: function (e) {
-//      var command = new Backgrid.Command(e);
-//      if (command.passThru()) return true; // skip ahead to `change`
-//      if (command.cancel()) {
-//        e.stopPropagation();
-//        this.checkbox().blur();
-//      }
-//      else if (command.save() || command.moveLeft() || command.moveRight() ||
-//               command.moveUp() || command.moveDown()) {
-//        e.preventDefault();
-//        e.stopPropagation();
-//        this.model.trigger("backgrid:edited", this.model, this.column, command);
-//      }
-//    },
-  
     cellClicked: function(e) {
       if (this.model.collection.editable === false) return;
       var checked = this.checkbox().prop("checked");
@@ -397,10 +377,16 @@ function($, _, Backgrid, Iccbl, appModel, genericLayout, palette) {
     render: function() {
       this.$el.html(Iccbl.formatString(this._template, this.model));
       this.$el.addClass('input-group  col-sm-12');
-      var color = this.getColor();
-      this.$el.css('background-color', color);
-      this.$el.find('input').css('background-color', color);
-      this.$el.children().css('background-color', color);
+      var backgroundColor = this.getColor();
+      var color = invert(backgroundColor,true);
+      console.log('background-color', backgroundColor, 'color', color);
+      this.$el.css('color', color);
+      this.$el.find('input').css('color', color);
+      this.$el.children().css('color', color);
+      this.$el.css('background-color', backgroundColor);
+      this.$el.find('input').css('background-color', backgroundColor);
+      this.$el.children().css('background-color', backgroundColor);
+
       return this;
     }    
     
@@ -768,6 +754,7 @@ function($, _, Backgrid, Iccbl, appModel, genericLayout, palette) {
       var WellSelectorCellFinal = WellSelectorCell;
       
       if(self.useNamedRanges){
+        
         function colorCalculator(wellName){
           var selectedRange = self.namedWellRanges.findWhere({'selected': true});
           if (selectedRange){
@@ -789,9 +776,11 @@ function($, _, Backgrid, Iccbl, appModel, genericLayout, palette) {
               var columnIndex = parseInt(this.column.get("name"))-1;
               var wellName = Iccbl.getWellName(row,columnIndex);
               this.$el.css('background-color', colorCalculator(wellName));
+              this.$el.css('color', invert(colorCalculator(wellName),true));
             }else{
               this.$el.removeClass('selected');
               this.$el.css('background-color', '');
+              this.$el.css('color', '');
             }
           },
         });

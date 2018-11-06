@@ -2226,6 +2226,7 @@ var LinkCell = Iccbl.LinkCell = Iccbl.BaseCell.extend({
 
   initialize : function(options) {
     LinkCell.__super__.initialize.apply(this, arguments);
+    // console.log('Initialize link cell', this.column.get("name"), this);
   },
 
   linkCallback: function(e){
@@ -2409,23 +2410,17 @@ _.extend(IntegerFormatter.prototype, {
   })
 });
 
-var IntegerCell = Iccbl.IntegerCell = Backgrid.NumberCell.extend({
-  formatter: IntegerFormatter,
-  decimals: 0
-});
-
 var NumberCell = Iccbl.NumberCell = Backgrid.NumberCell.extend({
 
   initialize: function (options) {
 
     NumberCell.__super__.initialize.apply(this, arguments);
-
+    
     var self = this;
     var model = this.model;
     var column = this.column;
-    var currVal = model.get(column.get("name"));
-    this.model.on('change:'+this.column.get("name") , function(){
-      if (!_.isUndefined(self.model.previous(self.column.get("name")))){
+    model.on('change:'+column.get("name") , function(){
+      if (!_.isUndefined(model.previous(column.get("name")))){
         if (parseFloat(currVal) !== parseFloat(model.get(column.get("name")))) {
           self.$el.addClass('edited');
         }
@@ -2433,6 +2428,12 @@ var NumberCell = Iccbl.NumberCell = Backgrid.NumberCell.extend({
     });
   }
 });
+
+var IntegerCell = Iccbl.IntegerCell = Iccbl.NumberCell.extend({
+  formatter: IntegerFormatter,
+  decimals: 0
+});
+
 
 var DecimalFormatter = Iccbl.DecimalFormatter = function () {
   Backgrid.NumberFormatter.apply(this, arguments);
@@ -5626,8 +5627,8 @@ var createBackgridColumn = Iccbl.createBackgridColumn =
           backgridCellType = Iccbl.DateLinkCell;
         }else if (data_type == 'integer'){
           backgridCellType = Iccbl.LinkCell.extend({
-            formatter: Iccbl.IntegerFormatter
-          });
+              formatter: new Iccbl.IntegerFormatter(cell_options)
+            });
         }
       }
     }else{

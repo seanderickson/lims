@@ -1159,6 +1159,7 @@ class ApiResource(SqlAlchemyResource):
         kwargs_for_log['includes'] = list(includes)
             
         (id_query_params,rows_to_ids) = self._parse_list_ids(deserialized, schema)
+        original_data = []
         if not id_query_params:
             logger.info('No ids found for PATCH (may be ok if id is generated)')
             raise ValidationError(key='id_kwargs', msg='No IDs found in patch data')
@@ -1171,7 +1172,6 @@ class ApiResource(SqlAlchemyResource):
                 logger.info('original state retrieved: %d', len(original_data))
             except Exception as e:
                 logger.exception('original state not obtained')
-                original_data = []
 
         if 'parent_log' not in kwargs:
             parent_log = self.make_log(request, schema=schema)
@@ -1278,7 +1278,7 @@ class ApiResource(SqlAlchemyResource):
         kwargs_for_log['includes'] = list(includes)
 
         (id_query_params,rows_to_ids) = self._parse_list_ids(deserialized, schema)
-
+        original_data = []
         if not id_query_params:
             logger.info('No ids found for PATCH (may be ok if id is generated)')
         else:
@@ -1290,7 +1290,6 @@ class ApiResource(SqlAlchemyResource):
                 original_data = self._get_list_response_internal(**kwargs_for_log)
             except Exception as e:
                 logger.exception('original state not obtained')
-                original_data = []
 
         logger.debug('put list kwargs_for_log: %r', 
             {k:v for k,v in kwargs_for_log.items() if k != 'schema' })
@@ -1345,7 +1344,6 @@ class ApiResource(SqlAlchemyResource):
             new_data = []
         
         logger.debug('put list done, new data: %d', len(new_data))
-        #self.log_patches(request, original_data,new_data,schema=schema,**kwargs)
         logs = self.log_patches(request, original_data,new_data,schema=schema,**kwargs)
         logger.info('put logs created: %d', len(logs) if logs else 0 )
         put_count = len(deserialized)
@@ -1451,6 +1449,7 @@ class ApiResource(SqlAlchemyResource):
             
         
         (id_query_params,rows_to_ids) = self._parse_list_ids(deserialized, schema)
+        original_data = []
         if not id_query_params:
             logger.info('No ids found for PATCH (may be ok if id is generated)')
         else:
@@ -1462,7 +1461,6 @@ class ApiResource(SqlAlchemyResource):
                 original_data = self._get_list_response_internal(**kwargs_for_log)
             except Exception as e:
                 logger.exception('original state not obtained')
-                original_data = []
 
         if 'parent_log' not in kwargs:
             parent_log = self.make_log(request, schema=schema)

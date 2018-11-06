@@ -430,11 +430,12 @@ define([
         includes: [
           'screen_facility_id','screen_title','name','description',
           'assay_data_type','ordinal','study_type','vocabulary_scope_ref'],
-        order_by: ['screen_facility_id', 'ordinal'],
+        order_by: ['-screen_facility_id', 'ordinal'],
         use_vocabularies: false
       };
       if (study_mode){
         data_for_get['study_type__is_null'] = false;
+        data_for_get['order_by'] = ['screen_facility_id', 'ordinal'];
       } else {
         data_for_get['study_type__is_null'] = true;
       }

@@ -204,7 +204,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel,
         .prop('checked', urlStackData.show_existing);
 
       var downloadButton = this.downloadButton = $([
-        '<button type="button" class="btn btn-default btn-xs pull-right" ',
+        '<button type="button" class="btn btn-default btn-xs controls-right" ',
         'id="download_button" >download</button>',
       ].join(''));
       var showPlatesLink = this.showPlatesLink = $('<a>', {
@@ -213,7 +213,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel,
         target : '_blank',
         title: 'Display plates for the current page'
       }).text('show plates');
-      showPlatesLink.addClass('btn btn-default btn-xs pull-right');
+      showPlatesLink.addClass('btn btn-default btn-xs controls-right');
 
       // Set up the collection
       

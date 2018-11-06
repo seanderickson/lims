@@ -299,7 +299,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         
         var extraListControls = [];
         var show_study_columns_button = $([
-          '<button class="btn btn-default btn-sm pull-right" role="button" ',
+          '<button class="btn btn-default btn-sm controls-right" role="button" ',
           'id="showStudyColumns" title="Show study columns" >',
           'Add study columns',
           '</button>'

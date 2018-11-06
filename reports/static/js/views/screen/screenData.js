@@ -144,14 +144,14 @@ define([
            '</label>'
            ].join(''));
         var show_other_screen_columns_button = $([
-          '<button class="btn btn-default btn-sm pull-right" role="button" ',
+          '<button class="btn btn-default btn-sm controls-left" role="button" ',
           'id="showOtherScreenColumns" title="Show other screen columns" >',
           'Add screen columns',
           '</button>'
           ].join(''));
         extraListControls.push(show_other_screen_columns_button);
         var show_study_columns_button = $([
-          '<button class="btn btn-default btn-sm pull-right" role="button" ',
+          '<button class="btn btn-default btn-sm controls-left" role="button" ',
           'id="showStudyColumns" title="Show study columns" >',
           'Add study columns',
           '</button>'
@@ -435,7 +435,7 @@ define([
       };
       if (study_mode){
         data_for_get['study_type__is_null'] = false;
-        data_for_get['order_by'] = ['screen_facility_id', 'ordinal'];
+        data_for_get['order_by'] = ['screen_facility_id', 'ordinal']
       } else {
         data_for_get['study_type__is_null'] = true;
       }

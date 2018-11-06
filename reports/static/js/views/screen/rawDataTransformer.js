@@ -88,7 +88,7 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
       ].join(''));
       self.uploadButton.click(self.submitUpload);
       self.addInputFileButton = $([
-        '<button type="button" class="btn btn-default btn-xs pull-right" ',
+        '<button type="button" class="btn btn-default btn-xs controls-right" ',
         'id="add_input_file" >add input file</button>',
       ].join(''));
       
@@ -998,7 +998,7 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
          "<div class='form-horizontal panel panel-info' >",
          " <div class='panel-heading'>",
          "  <h4 class='panel-title' >File: {display_ordinal}",
-         '  <button type="button" class="btn btn-default btn-xs pull-right" ',
+         '  <button type="button" class="btn btn-default btn-xs controls-right" ',
          '    id="remove_{ordinal}" >remove</button></h4>',
          " </div>",
          " <div class='panel-body'>",

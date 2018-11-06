@@ -16,9 +16,25 @@ body {
     width: inherit;
   }
 }
-@media (min-width: 1200px) {
-  .container {
-    width: ;
+@media (min-width: 768px) {
+  .controls-right {
+    float: right !important; 
+  }
+  .controls-left {
+    float: left !important; 
+  }
+ 
+}
+@media (max-width: 767px) {
+  .app_container {
+    padding-left: 0px;
+  }
+  
+  .controls-right {
+    float: none;
+  }
+  .controls-left {
+    float: none;
   }
 }  
 

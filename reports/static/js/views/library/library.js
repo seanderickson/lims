@@ -550,7 +550,7 @@ define([
         
         if (appModel.hasPermission(copyResource.key, 'write')){
           var showAddButton = $([
-             '<a class="btn btn-default btn-sm pull-down pull-right" ',
+             '<a class="btn btn-default btn-sm pull-down controls-right" ',
                'role="button" id="add_resource" href="#">',
                'Add</a>'
              ].join(''));   

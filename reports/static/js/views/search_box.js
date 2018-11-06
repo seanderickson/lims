@@ -481,15 +481,18 @@ define([
       self.$el.find('.library-select').select2({
         placeholder : { id:'-1', text:'Find a Library...'},
         matcher: matchLibrary,
+        width: '100%'
       });
 
       self.$el.find('.screen-select').select2({
-        placeholder : { id:'-1', text:'Find a Screen...'}
+        placeholder : { id:'-1', text:'Find a Screen...'},
+        width: '100%'
       });
 
       self.$el.find('.user-select').select2({
         placeholder : { id:'-1', text:'Find a User...'},
         matcher: matchUser,
+        width: '100%'
       });
 
       
@@ -773,6 +776,9 @@ define([
     uriStackChange: function(model, val, options) {
       var self=this;
       self.cleanup();
+      // Hide the navbar for small screens after actions
+      $('.navbar-collapse').removeClass('show');
+      
       var uriStack = appModel.get('uriStack');
       if (!uriStack) return;
       var uriStack = _.clone(uriStack);

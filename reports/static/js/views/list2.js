@@ -857,9 +857,14 @@ define([
       });
 
       if(self.collection instanceof Backbone.PageableCollection){
+        var windowSize = 10;
+        if ($(window).width()<768 ) {
+          windowSize = 4;
+        }
         var paginator = self.paginator = new Backgrid.Extension.Paginator({
       	  goBackFirstOnSort: false, // Default is true
-      	  collection: self.collection      	  
+      	  collection: self.collection,
+      	  windowSize: windowSize
       	});            
         this.objects_to_destroy.push(paginator);
       }
@@ -1041,7 +1046,7 @@ define([
 
       if(_.has(self._options,'extraControls')){
         self.$('#extra_controls').append(
-          '<div id="extra_controls_div" class="pull-right"></div>');
+          '<div id="extra_controls_div" class="controls-right"></div>');
         _.each(self._options.extraControls, function(control){
           // Adjust the checkbox types, so that the first also has a margin
           // otherwise, wrapped checkboxes are offset

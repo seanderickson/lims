@@ -380,7 +380,7 @@ define([
             // reconfirmation up screen itself.
             
             var addReconfirmationScreenControl = $([
-              '<a class="btn btn-default btn-sm pull-right" ',
+              '<a class="btn btn-default btn-sm controls-right" ',
                 'role="button" id="ScreenButton" href="#">',
                 'Add a Reconfirmation Screen</a>'
               ].join(''));

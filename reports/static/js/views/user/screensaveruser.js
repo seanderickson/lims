@@ -1247,7 +1247,7 @@ define([
     setScreens: function(delegateStack) {
       var self = this;
       var addSMScreenButton = $([
-        '<a class="btn btn-default btn-sm pull-down pull-right" ',
+        '<a class="btn btn-default btn-sm pull-down controls-right" ',
           'role="button" id="add_smscreen" href="#">',
           'Add Small Molecule Screen</a>'
         ].join(''));
@@ -1256,7 +1256,7 @@ define([
         self.addScreen({ screen_type: 'small_molecule' });
       });
       var addRnaiScreenButton = $([
-        '<a class="btn btn-default btn-sm pull-down pull-right" ',
+        '<a class="btn btn-default btn-sm pull-down controls-right" ',
           'role="button" id="add_rnaiscreen" href="#">',
           'Add RNAi Screen</a>'
         ].join(''));
@@ -1537,7 +1537,7 @@ define([
           'Save</a>'
         ].join(''));
       var showHistoryButton = $([
-      '<a class="btn btn-default btn-sm pull-down pull-right" ',
+      '<a class="btn btn-default btn-sm pull-down controls-right" ',
         'role="button" id="showHistoryButton" href="#">',
         'History</a>'
       ].join(''));

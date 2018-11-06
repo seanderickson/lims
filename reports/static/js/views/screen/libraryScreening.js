@@ -600,11 +600,11 @@ define([
             self.$el.find('[key="library_plates_screened"]').append($form);
             $form.append([
                 '<button type="submit" ',
-                'class="btn btn-default btn-sm pull-right" " >Add plate ranges</input>',
+                'class="btn btn-default btn-sm controls-right" " >Add plate ranges</input>',
                 ].join(''));
 
             var showScreeningInquiryButton = $([
-              '<a class="btn btn-default btn-sm pull-down pull-right" ',
+              '<a class="btn btn-default btn-sm pull-down controls-right" ',
                 'role="button" target="_blank" ', 
                 'id="show_screening_inquiry_link" ',
                 'title="Use the Screening Inquiry form to search for available plate copies" ',

@@ -18158,7 +18158,7 @@ class ScreenResource(DbApiResource):
         manual_field_includes.add('data_sharing_level')
 
         # Excluded fields for performance        
-        default_excludes = ['activity_count','date_of_first_activity',
+        default_excludes = ['activity_count','date_of_first_screening_activity',
             'date_of_last_activity','date_of_last_library_screening',
             'library_plates_data_loaded']
         if not facility_id:
@@ -18508,7 +18508,7 @@ class ScreenResource(DbApiResource):
                     .select_from(_screen_cell_lines)
                     .where(_screen_cell_lines.c.screen_id 
                         == literal_column('screen.screen_id'))),
-                'date_of_first_activity': (
+                'date_of_first_screening_activity': (
                     select([func.min(_activity1.c.date_of_activity)])
                     .select_from(_activity1)
                     .where(_activity1.c.screen_id
@@ -18527,6 +18527,7 @@ class ScreenResource(DbApiResource):
                     .where(_activity1.c.screen_id
                         ==literal_column('screen.screen_id'))
                     .where(_activity1.c.classification=='screening')
+                    .where(_activity1.c.type=='library_screening')
                     ),        
                 'activity_count': (
                     select([func.count(_activity.c.activity_id)])

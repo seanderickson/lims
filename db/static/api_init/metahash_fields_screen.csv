@@ -45,7 +45,7 @@ attached_files,fields.screen,custom,,38,Admin,,TRUE,"Attached Files","Attached F
 pubchem_deposited_date,fields.screen,,,39,Protocol,,TRUE,"The date the screen result was deposited in PubChem BioAssay","PubChem BioAssay Date Deposited",TRUE,,,[protocol],[c;u],list,,"{ 'group': 'PubChem BioAssay' }",,,,,,,1,
 pubchem_assay_id,fields.screen,,,40,Protocol,,TRUE,"The PubChem Assay identifier (AID)","PubChem Assay ID",TRUE,,,[protocol],[c;u],string,,"{ 'group': 'PubChem BioAssay', 'orderSeparator': '' }",,,,,,,1,
 activity_count,fields.screen,custom,,45,Activity,,TRUE,"Count of activities","Activity Count",TRUE,,,[d],,integer,,,,,,,,,3,
-date_of_first_activity,fields.screen,,,46,Activity,,TRUE,"The date of the first lab activity performed for this screen","Date of First Activity",TRUE,,,,,date,,,,,,,,,3,
+date_of_first_screening_activity,fields.screen,,,46,Activity,,TRUE,"The date of the first lab activity performed for this screen","Date of First Screening Activity",TRUE,,,,,date,,,,,,,,,3,
 date_of_last_activity,fields.screen,,,47,Activity,,TRUE,"The date of the last lab activity performed for this screen","Date of Last Activity",TRUE,,,,,date,,,,,,,,,3,
 date_of_last_library_screening,fields.screen,,,48,Activity,,TRUE,"The date of the last library screening (excluding external plates)","Date of Last Library Screening",TRUE,,,,,date,,,,,,,,,3,
 assay_readout_types,fields.screen,,,49,Summary,,TRUE,"The assay readout types used","Assay Readout Types",TRUE,,datacolumn.assay_readout_type,[d],,list,,,multiselect,,,,,,2,

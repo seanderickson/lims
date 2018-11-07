@@ -163,7 +163,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
 
           copyWellsForm.$el.append([
             '<button type="submit" class="btn btn-default btn-xs" ',
-            'style="width: 3em;">ok</input>',
+            'style="width: 3em;">Ok</input>',
           ].join(''));
           
     

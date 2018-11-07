@@ -37,16 +37,16 @@
       extra_title_class = _.contains(adminKeys,key) ? 'admin-field': '';
 %>
      <tr>
-        <td class='col-xs-2 dl-title small  <%=extra_title_class %>' id="title-<%=key %>" title='' />
-        <td class='col-xs-10 dl-data small' id="<%=key %>">&nbsp;</td>
+        <td class='col-xs-2 dl-title <%=extra_title_class %>' id="title-<%=key %>" title='' />
+        <td class='col-xs-10 dl-data ' id="<%=key %>">&nbsp;</td>
      </tr>
 <% 
     }else{
       var group = key;
 %>
       <tr>
-        <td class='col-xs-2 dl-title small' title='' ><%=group.title %></td>
-        <td class='col-xs-10 dl-data small' >
+        <td class='col-xs-2 dl-title ' title='' ><%=group.title %></td>
+        <td class='col-xs-10 dl-data ' >
         <div class='row'>
           <div class='col-xs-12'>
 <% 

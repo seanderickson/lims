@@ -382,7 +382,7 @@ define([
             var addReconfirmationScreenControl = $([
               '<a class="btn btn-default btn-sm controls-right" ',
                 'role="button" id="ScreenButton" href="#">',
-                'Add a Reconfirmation Screen</a>'
+                'Add a reconfirmation screen</a>'
               ].join(''));
             if (appModel.hasPermission('screen','write')) {
               $('#generic-detail-buttonpanel-right').append(addReconfirmationScreenControl);
@@ -1423,7 +1423,7 @@ define([
         var addServiceActivityButton = $([
           '<a class="btn btn-default btn-sm pull-down" ',
             'role="button" id="add_button" href="#">',
-            'Add Service Activity</a>'
+            'Add service activity</a>'
           ].join(''));
         addServiceActivityButton.click(self.addServiceActivity);
         if(appModel.hasPermission(activityResource.key, 'edit')){
@@ -1432,7 +1432,7 @@ define([
         var addLibraryScreeningButton = $([
           '<a class="btn btn-default btn-sm pull-down" ',
             'role="button" id="add_library_screening_button" href="#">',
-            'Add Library Screening Visit</a>'
+            'Add library screening Visit</a>'
           ].join(''));
         addLibraryScreeningButton.click(self.addLibraryScreening);
         if (appModel.hasPermission('libraryscreening','write')) {

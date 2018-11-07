@@ -66,7 +66,7 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
       self.downloadButton = $([
         '<button type="button" class="btn btn-default btn-xs" ',
         ' title="Download the file with the transformed data, if upload has been completed" ',
-        'id="download_button" >download</button>',
+        'id="download_button" >Download</button>',
       ].join(''));
           
       self.downloadButton.click(function(e){
@@ -84,12 +84,12 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
       self.uploadButton = $([
         '<button type="button" class="btn btn-default btn-xs" ',
         ' title="Upload and transform the set of input files that have been specified below" ',
-        'id="upload_button" >upload</button>',
+        'id="upload_button" >Upload</button>',
       ].join(''));
       self.uploadButton.click(self.submitUpload);
       self.addInputFileButton = $([
         '<button type="button" class="btn btn-default btn-xs controls-right" ',
-        'id="add_input_file" >add input file</button>',
+        'id="add_input_file" >Add input file</button>',
       ].join(''));
       
     },
@@ -508,22 +508,22 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
       var select_assay_positives_button = $([
         '<a class="btn btn-default btn-sm" ',
           'role="button" id="assay_positive_controls_button" >',
-          'select</a>'
+          'Select</a>'
         ].join(''));
       var select_assay_negatives_button = $([
         '<a class="btn btn-default btn-sm" ',
           'role="button" id="assay_negative_controls_button" >',
-          'select</a>'
+          'Select</a>'
         ].join(''));
       var select_assay_other_button = $([
         '<a class="btn btn-default btn-sm" ',
           'role="button" id="assay_other_controls_button" >',
-          'select</a>'
+          'Select</a>'
         ].join(''));
       var select_library_controls_button = $([
         '<a class="btn btn-default btn-sm" ',
           'role="button" id="library_controls_button" >',
-          'select</a>'
+          'Select</a>'
         ].join(''));
       
       function getCurrentAssayPlateSize(){
@@ -629,7 +629,7 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
         '<a class="btn btn-default btn-sm" ',
           ' title="Show a combined view of assay positive, negative, and other controls" ',
           'role="button" id="show_all_assay_controls_button" >',
-          'Show All Assay Controls</a>'
+          'Show all assay controls</a>'
         ].join(''));
       
       show_all_assay_controls_button.click(function(e){
@@ -654,14 +654,14 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
         '<a class="btn btn-default btn-sm" ',
           ' title="Show a combined view of assay and library controls in the specified library plate size" ',
           'role="button" id="show_all_assay_and_library_controls_button" >',
-          'Show All Assay and Library Controls</a>'
+          'Show all assay and library controls</a>'
         ].join(''));
       if (self.show_library_controls === false){
         show_all_assay_and_library_controls_button = $([
           '<a class="btn btn-default btn-sm" ',
           ' title="SHow a all of the assay controls in the specified library plate size" ',
             'role="button" id="show_all_assay_and_library_controls_button" >',
-            'Show All Controls in Library Plate Format</a>'
+            'Show all controls in library plate format</a>'
           ].join(''));
       }      
       show_all_assay_and_library_controls_button.click(function(e){
@@ -878,7 +878,7 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
         
         var $nextGridButton = $([
           '<button type="button" class="btn btn-default btn-xs" ',
-          'id="next_quadrant_button" >>> show next quadrant</button>',
+          'id="next_quadrant_button" >>> Show next quadrant</button>',
         ].join(''));
         $template.find('#button_area').append($nextGridButton);
         
@@ -999,7 +999,7 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
          " <div class='panel-heading'>",
          "  <h4 class='panel-title' >File: {display_ordinal}",
          '  <button type="button" class="btn btn-default btn-xs controls-right" ',
-         '    id="remove_{ordinal}" >remove</button></h4>',
+         '    id="remove_{ordinal}" >Remove</button></h4>',
          " </div>",
          " <div class='panel-body'>",
          "  <div class='row'>",

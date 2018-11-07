@@ -279,7 +279,7 @@ define([
                 '<a class="btn btn-default btn-sm" ',
                   'title="Create a new user as a member of this lab" ',
                   'role="button" id="add_lab_member_button" href="#">',
-                  'Add Lab Member</a>'
+                  'Add lab member</a>'
                 ].join(''));
               var browseLabMemberButton = $([
                 '<a class="btn btn-default btn-sm" ',
@@ -1249,7 +1249,7 @@ define([
       var addSMScreenButton = $([
         '<a class="btn btn-default btn-sm pull-down controls-right" ',
           'role="button" id="add_smscreen" href="#">',
-          'Add Small Molecule Screen</a>'
+          'Add small molecule screen</a>'
         ].join(''));
       addSMScreenButton.click(function(e){
         e.preventDefault();
@@ -1258,7 +1258,7 @@ define([
       var addRnaiScreenButton = $([
         '<a class="btn btn-default btn-sm pull-down controls-right" ',
           'role="button" id="add_rnaiscreen" href="#">',
-          'Add RNAi Screen</a>'
+          'Add RNAi screen</a>'
         ].join(''));
       addRnaiScreenButton.click(function(e){
         e.preventDefault();
@@ -1356,7 +1356,7 @@ define([
           '<a class="btn btn-default btn-sm pull-down" ',
             'role="button" id="add_button" href="#" ',
             'title="Add a service activity for the user" > ',
-            'Add Service Activity</a>'
+            'Add service activity</a>'
           ].join(''));
         var showDeleteButton = $([
           '<a class="btn btn-default btn-sm pull-down" ',

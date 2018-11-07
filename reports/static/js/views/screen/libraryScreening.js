@@ -291,7 +291,7 @@ define([
             var add_another_button = $([
               '<button class="btn btn-default btn-sm " role="button" ',
               'id="add_another_ls_button" title="Add another library screening visit" >',
-              'Add another Library Screening Visit',
+              'Add another library screening visit',
               '</button>'
               ].join(''));
             $('#generic-detail-buttonpanel-left').append(add_another_button);
@@ -609,7 +609,7 @@ define([
                 'id="show_screening_inquiry_link" ',
                 'title="Use the Screening Inquiry form to search for available plate copies" ',
                 'href="#">',
-                'Show Screening Inquiry form...</a>'
+                'Show the screening inquiry form...</a>'
               ].join(''));
             $form.append(showScreeningInquiryButton);
             showScreeningInquiryButton.click(function(e){
@@ -764,7 +764,7 @@ define([
             //var calcVolButton = $([
             //  '<button class="btn btn-default btn-sm" ',
             //    'role="button" id="calc_volume_transferred_per_well_from_library_plates" href="#">',
-            //    'calculate</button>'
+            //    'Calculate</button>'
             //  ].join(''));
             //self_editform.$el.find(
             //  '[key=form-group-volume_transferred_per_well_from_library_plates]'

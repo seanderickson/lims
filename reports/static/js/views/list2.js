@@ -577,6 +577,7 @@ define([
       if (!previousStack || !_.isEqual(previousStack,newStack)){
         if (appModel.DEBUG) console.log('trigger list stack change...');
         self.trigger('uriStack:change', newStack );
+        self.getCollectionUrl(0)
       }else{
         
       }

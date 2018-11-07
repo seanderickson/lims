@@ -205,7 +205,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel,
 
       var downloadButton = this.downloadButton = $([
         '<button type="button" class="btn btn-default btn-xs controls-right" ',
-        'id="download_button" >download</button>',
+        'id="download_button" >Download</button>',
       ].join(''));
       var showPlatesLink = this.showPlatesLink = $('<a>', {
         tabIndex : -1,
@@ -701,7 +701,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel,
       $form_div.append(form.render().el);
       form.$el.append([
         '<button type="button" class="btn btn-default btn-xs" ',
-        'id="submit_button" >search</button>',
+        'id="submit_button" >Search</button>',
       ].join(''));
       $('#resource_content').append('<div id="plate_range_table"></div>');
 

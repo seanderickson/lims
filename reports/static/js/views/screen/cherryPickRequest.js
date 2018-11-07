@@ -768,7 +768,7 @@ define([
               '<a class="btn btn-default btn-sm disabled" ',
               'role="button" id="set_plated_button" ',
               'href="#">',
-              'Set Plated</a>'
+              'Set plated</a>'
             ].join(''));
             setPlatedDiv.append(setPlatedButton);
             extraControls.push(setPlatedDiv);
@@ -779,7 +779,7 @@ define([
               '<a class="btn btn-default btn-sm disabled" ',
               'role="button" id="set_screened_button" ',
               'title="set the screening activity date for the selected plates" href="#">',
-              'Set Screened</a>'
+              'Set screened</a>'
             ].join(''));
             extraControls.push(setScreenedButton);
             
@@ -861,14 +861,14 @@ define([
         var downloadPlateMappingButton = $([
           '<a class="btn btn-default btn-sm" ',
             'role="button" id="plate_mapping_file" href="#">',
-            'Download Plate Mapping files</a>'
+            'Download plate mapping files</a>'
           ].join(''));
         extraControls.push(downloadPlateMappingButton);
         var showPlateMappingButton = $([
           '<a class="btn btn-default btn-sm" ',
              'title="Show the plate mapping in a grid (available if plates are assigned)"',
             'role="button" id="plate_mapping_grid" href="#">',
-            'Show Plate Mapping</a>'
+            'Show plate mapping</a>'
           ].join(''));
         extraControls.push(showPlateMappingButton);
 
@@ -1228,14 +1228,14 @@ define([
           '<a class="btn btn-default btn-sm" ',
              'title="Download plate mapping file (available if plates are assigned)"',
             'role="button" id="plate_mapping_file" href="#">',
-            'Download Plate Mapping files</a>'
+            'Download plate mapping files</a>'
           ].join(''));
         plate_mapping_controls.push(downloadPlateMappingButton);
         var showPlateMappingButton = $([
           '<a class="btn btn-default btn-sm" ',
              'title="Show the plate mapping in a grid (available if plates are assigned)"',
             'role="button" id="plate_mapping_grid" href="#">',
-            'Show Plate Mapping</a>'
+            'Show plate mapping</a>'
           ].join(''));
         plate_mapping_controls.push(showPlateMappingButton);
         downloadPlateMappingButton.click(function(e){
@@ -1325,28 +1325,28 @@ define([
         '<a class="btn btn-default btn-sm" ',
           'style="display: none; " ',
           'role="button" id="save_button_lcp_selected" href="#">',
-          'Save Selections</a>'
+          'Save selections</a>'
         ].join(''));
       extraControls.push(setSelectedLcpButton);
       var updateSelectedLcpButton = $([
         '<a class="btn btn-default btn-sm" ',
           'style="display: none; " ',
           'role="button" id="update_selected_button" href="#">',
-          'Update Selections</a>'
+          'Update selections</a>'
         ].join(''));
       extraControls.push(updateSelectedLcpButton);
       var cancelSelectedButton = $([
         '<a class="btn btn-default btn-sm" ',
           'style="display: none; " ',
           'role="button" id="cancel_selected_button" href="#">',
-          'Cancel Selections</a>'
+          'Cancel selections</a>'
         ].join(''));
       extraControls.push(cancelSelectedButton);
       var reserveAndMapSelectedButton = $([
         '<a class="btn btn-default btn-sm" ',
           'style="display: none; " ',
           'role="button" id="reserve_map_selected_button" href="#">',
-          'Reserve Selections and Map to Plates</a>'
+          'Reserve selections and map to plates</a>'
         ].join(''));
       if(appModel.hasPermission('labcherrypick','write')){
         extraControls.push(reserveAndMapSelectedButton);
@@ -1355,7 +1355,7 @@ define([
           '<a class="btn btn-default btn-sm" ',
           'style="display: none; " ',
           'role="button" id="deleteLcpsButton" href="#">',
-          'Delete Lab Cherry Picks</a>'
+          'Delete lab cherry picks</a>'
         ].join(''));
       if(appModel.hasPermission('labcherrypick','write')){
         extraControls.push(deleteLcpsButton);
@@ -1364,7 +1364,7 @@ define([
           '<a class="btn btn-default btn-sm" ',
           'style="display: none; " ',
           'role="button" id="cancel_reservation" href="#">',
-          'Cancel Reservation and Delete Plating assignments</a>'
+          'Cancel reservation and delete plating assignments</a>'
         ].join(''));
       if(appModel.hasPermission('labcherrypick','write')){
         extraControls.push(cancelReservation);
@@ -2222,7 +2222,7 @@ define([
           $('#resource_content').html(form.render().el);
           form.$el.append([
             '<button type="submit" class="btn btn-default btn-xs" ',
-            'style="width: 3em;">ok</input>',
+            'style="width: 3em;">Ok</input>',
           ].join(''));
           
           var helpLink = $('<a >&nbsp;?</a>');
@@ -2383,13 +2383,13 @@ define([
           '<a class="btn btn-default btn-sm" ',
           'style="display: none; " ',
           'role="button" id="deleteScpsButton" href="#">',
-          'Delete Screener Cherry Picks</a>'
+          'Delete screener cherry picks</a>'
         ].join(''));
       extraControls.push(deleteScpsButton);
 
-      var setLcpsButtonTitle = 'Set Lab Cherry Picks';
+      var setLcpsButtonTitle = 'Set lab cherry picks';
       if(self.model.get('has_pool_screener_cherry_picks') === true){
-        setLcpsButtonTitle = 'Set Pool Lab Cherry Picks';
+        setLcpsButtonTitle = 'Set pool lab cherry picks';
       }
       var setLcpsButton = $([
         '<a class="btn btn-default btn-sm" ',
@@ -2402,7 +2402,7 @@ define([
         '<a class="btn btn-default btn-sm" ',
           'style="display: none; " ',
           'role="button" id="setDuplexLcpsButton" href="#">',
-          'Set Duplex Lab Cherry Picks</a>'
+          'Set duplex lab cherry picks</a>'
         ].join(''));
       extraControls.push(setDuplexLcpsButton);
       // Set up the grid to record edits of the "selected" column
@@ -2410,14 +2410,14 @@ define([
         '<a class="btn btn-default btn-sm" ',
           'style="display: none; " ',
           'role="button" id="save_button_selected" href="#">',
-          'Save Selections</a>'
+          'Save selections</a>'
         ].join(''));
       extraControls.push(setSelectedButton);
       var cancelSelectedButton = $([
         '<a class="btn btn-default btn-sm" ',
           'style="display: none; " ',
           'role="button" id="cancel_selected_button" href="#">',
-          'Cancel Selections</a>'
+          'Cancel selections</a>'
         ].join(''));
       extraControls.push(cancelSelectedButton);
       

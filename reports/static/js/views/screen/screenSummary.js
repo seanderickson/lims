@@ -463,7 +463,7 @@ define([
         if (appModel.hasPermission('libraryscreening','write')) {
           var $addLibraryScreeningButton = $(
             '<a class="btn btn-default btn-sm" role="button" \
-            id="addLibraryScreening" href="#">Add Library Screening Visit</a>');
+            id="addLibraryScreening" href="#">Add library screening visit</a>');
           $addLibraryScreeningButton.click(self.addLibraryScreening);
           extraControls.push($addLibraryScreeningButton);
         }

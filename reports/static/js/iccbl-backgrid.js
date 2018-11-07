@@ -4176,7 +4176,7 @@ var BackgridFormFilter = Backbone.Form.extend({
     this.$el.append([
       '<div id="form-last-row" class="iccbl-headerfield-form-last-row" >',
       '<div class="col-xs-6">',
-      '<button type="submit" class="btn btn-default btn-block" > ok </input>',
+      '<button type="submit" class="btn btn-default btn-block" > Ok </input>',
       '</div>',
       '<div class="col-xs-6">',
       '<a class="backgrid-filter clear close" data-backgrid-action="clear"',

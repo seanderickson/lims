@@ -435,7 +435,8 @@ define([
       var buttonModel = new Backbone.Model();
       _.each(this.buttons, function(button){
         btnbindings['[name="' + button + '"]'] = button;
-        buttonModel.set(button,button);
+        var buttonName = button.charAt(0).toUpperCase() + button.slice(1);
+        buttonModel.set(button,buttonName);
       });
       this.stickit(buttonModel, btnbindings);
       

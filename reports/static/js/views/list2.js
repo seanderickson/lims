@@ -1088,10 +1088,11 @@ define([
           msg += self._options.header_message;
         }
         if (msg) msg += ', ';
+        var listing_title = _.result(self.resource, 'listing_title', self.resource.title);
         msg += 'Page ' + self.collection.state.currentPage + 
                ' of ' + ( self.collection.state.lastPage ? self.collection.state.lastPage:1 ) + 
                ' pages, ' + self.collection.state.totalRecords + 
-               ' ' + self._options.resource.title  + ' records';
+               ' ' + listing_title ;
         self.$('#pagination_message').html(msg);
       });
       

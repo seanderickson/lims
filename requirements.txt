@@ -21,7 +21,10 @@ ldap3 ~=2.5.1
 # Max retries exceeded with url: 
 # /wsAuthenticate.asp (Caused by SSLError(SSLError(8, '_ssl.c:507: EOF occurred in violation of protocol')
 # 20180801 - FIXME remove peg now that ldap server is being used
-requests==2.8.1
+# requests==2.8.1
+requests ~=2.20.0
+
+
 
 # NOTE: psycopg2 package is now a source package; compile requires
 # libpq-dev and python-dev for header files

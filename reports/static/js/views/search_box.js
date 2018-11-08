@@ -830,22 +830,6 @@ define([
           // plateCopyForm may not be rendered yet, store the value
           this.wells_form_data = parsedData;
         
-        // 20181029 - show the copywell form only from the reports menu
-        //}else if (uiResourceId == 'copywell') {
-        //  var errors = [];
-        //  var search_data = complex_search[appModel.API_PARAM_SEARCH];
-        //  var parsedData = Iccbl.parseRawCopyWellSearch(search_data,errors);
-        //  if (!_.isEmpty(errors)){
-        //    console.log('Search data not parsed properly', errors);
-        //    return;
-        //  }
-        //  parsedData = _.map(parsedData, function(parsedLine){
-        //    return parsedLine.combined.join(' ');
-        //  }).join('\n');
-        //  this.copyWellsForm.setValue('searchVal', parsedData);
-        //  // form may not be rendered yet, store the value
-        //  this.copy_wells_form_data = parsedData;
-        
         }else if (uiResourceId == 'compound_search') {
           var search_data = complex_search[appModel.API_PARAM_SEARCH];
           var parsedData = Iccbl.parseCompoundVendorIDSearch(search_data,errors);
@@ -1036,10 +1020,14 @@ define([
     cleanup: function(){
       this.plateCopyForm.setValue('searchVal', null);
       this.wellsForm.setValue('searchVal', null);
-      // this.copyWellsForm.setValue('searchVal', null);
       this.compoundNameForm.setValue('searchVal', null);
       this.cprForm.setValue('searchVal', null);
-      this.screeningInquiryForm.setValue('searchVal', null)
+      this.screeningInquiryForm.setValue('searchVal', null);
+      if (this.form1){
+        this.form1.setValue('user_id',null);
+        this.form1.setValue('screen_facility_id',null);
+        this.form1.setValue('library_short_name',null);
+      }
     },
     
   });

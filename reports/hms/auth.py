@@ -12,6 +12,7 @@ from urllib import unquote_plus
 import getpass
 
 import ldap3
+from ldap3.core.exceptions import LDAPBindError
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +33,7 @@ def ldap_authenticate(ecommons_id, ecommons_password):
         logger.info('connection success: who_am_i: %r', 
                     conn.extend.standard.who_am_i())
         return True
-    except ldap3.LDAPBindError, e:
+    except LDAPBindError, e:
         logger.info('ldap3.LDAPBindError: %r', e)
         raise
     except Exception, e:

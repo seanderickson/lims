@@ -65,7 +65,7 @@ class CustomAuthenticationBackend():
                                     '"login as" may not be used to access a superuser account')
                         return user
                     except User.DoesNotExist, e:
-                        msg = 'no such user with the id: %r' % username
+                        msg = 'no such user with the id: %r' % logged_in_as
                         logger.warn(msg)
                         raise LoginFailedException(msg)
                 else:

@@ -32,15 +32,15 @@ class CustomAuthenticationBackend():
         then log in using the <superuser-username> and superuser password,
         but return the user for the subordinate <username> given.
         '''
-        
+        username = username.lower()
         logger.info('find and authenticate the user: %s', username)
 
         # Proxy Login 
         matchObject = USER_PROXY_LOGIN_PATTERN.match(username)
         if(matchObject):
-            superuser = matchObject.group(1)
+            staff_user = matchObject.group(1)
             logged_in_as = matchObject.group(2)
-            s_user = self._inner_authenticate(superuser, password)
+            s_user = self._inner_authenticate(staff_user, password)
             if s_user:
                 is_allowed = s_user.is_staff
                 if not is_allowed:
@@ -50,15 +50,15 @@ class CustomAuthenticationBackend():
                                 .filter(name=USER_PROXY_ADMIN_GROUP).exists())
                         if is_allowed:
                             logger.info('user: %r is in the group: %r',
-                                superuser,USER_PROXY_ADMIN_GROUP)
+                                staff_user,USER_PROXY_ADMIN_GROUP)
                     except Exception, e:
                         logger.exception(
                             'Unexpected error querying user groups: %r', e)
                 if is_allowed:
                     try:
                         user = User.objects.get(username=logged_in_as)
-                        logger.info('logged in super user %r as %r',
-                            superuser, logged_in_as)
+                        logger.info('logged in staff user %r as %r',
+                            staff_user, logged_in_as)
                         if user.is_superuser:
                             if not s_user.is_superuser:
                                 raise PermissionDenied(
@@ -71,7 +71,7 @@ class CustomAuthenticationBackend():
                 else:
                     msg = 'Log in as user: %r fails for user %r: '\
                         'Must be a superuser, or member of group: %r'
-                    msg = msg % (logged_in_as, superuser, USER_PROXY_ADMIN_GROUP)
+                    msg = msg % (logged_in_as, staff_user, USER_PROXY_ADMIN_GROUP)
                     logger.warn(msg)
                     raise LoginFailedException(msg)
             return None

@@ -53,6 +53,7 @@ from db.models import Reagent, Library, ScreensaverUser, \
 import db.models
 from db.schema import VOCAB
 import db.schema as SCHEMA
+
 from db.support import lims_utils, screen_result_importer, bin_packer
 from db.support.plate_matrix_transformer import Collation, Counter
 import db.support.plate_matrix_transformer
@@ -98,6 +99,8 @@ ACCESS_LEVEL = VOCAB.screen.user_access_level_granted
 DSL = VOCAB.screen.data_sharing_level
 LCP_STATUS = VOCAB.lab_cherry_pick.status
 SCREEN_AVAILABILITY = VOCAB.screen.screen_result_availability
+DATE_FORMAT = SCHEMA.DATE_FORMAT
+
 
 logger = logging.getLogger(__name__)
 
@@ -283,7 +286,7 @@ class DBResourceTestCase(IResourceTestCase):
         
         _data = {
             'screen_facility_id': screen_facility_id,
-            'date_of_activity': _now().strftime("%Y-%m-%d"),
+            'date_of_activity': _now().strftime(DATE_FORMAT),
             'is_for_external_library_plates': False,
             'library_plates_screened': library_plates_screened,
             'number_of_replicates': 1,
@@ -2438,7 +2441,7 @@ class LibraryResource(DBResourceTestCase):
                     'plate data: expected: %r, rcvd: %r'
                     % (plate_info[field],plate_data_output[field]))
             self.assertEqual(
-                _now().date().strftime("%Y-%m-%d"), 
+                _now().date().strftime(DATE_FORMAT), 
                 plate_data_output['date_plated'],
                 'expected date_plated: %r, %r' 
                     %(_now().date(), plate_data_output['date_plated']))
@@ -2501,7 +2504,7 @@ class LibraryResource(DBResourceTestCase):
         for plate_data_output in plates_data_output:
             self.assertEqual('retired', plate_data_output['status'])
             self.assertEqual(
-                _now().date().strftime("%Y-%m-%d"), 
+                _now().date().strftime(DATE_FORMAT), 
                 plate_data_output['date_retired'],
                 'expected date_plated: %r, %r' 
                     %(_now().date(), plate_data_output['date_plated']))
@@ -2725,7 +2728,7 @@ class LibraryResource(DBResourceTestCase):
                     'plate data: expected: %r, rcvd: %r'
                     % (new_plate_data[field],plate_data[field]))
                 self.assertEqual(
-                    _now().date().strftime("%Y-%m-%d"), 
+                    _now().date().strftime(DATE_FORMAT), 
                     plate_data['date_plated'],
                     'expected date_plated: %r, %r' 
                         %(_now().date(), plate_data['date_plated']))
@@ -6672,7 +6675,7 @@ class ScreenResource(DBResourceTestCase):
 #         # FIXME: admin approved pin tranfer user only
 #         pin_transfer_data_expected = {
 #             'pin_transfer_approved_by_username': self.pin_transfer_user['username'],
-#             'pin_transfer_date_approved': _now().date().strftime("%Y-%m-%d"),
+#             'pin_transfer_date_approved': _now().date().strftime(DATE_FORMAT),
 #             'pin_transfer_comments': 'test pin_transfer_comments' }
 #         
 #         screen_update_data = {
@@ -6768,12 +6771,12 @@ class ScreenResource(DBResourceTestCase):
         self.assertTrue(
             resp.status_code in [200], 
             (resp.status_code, self.get_content(resp)))
-        new_obj = self.deserialize(resp)
+        new_service_activity = self.deserialize(resp)[API_RESULT_DATA][0]
         result,msgs = assert_obj1_to_obj2(
-            service_activity_post, new_obj[API_RESULT_DATA][0])
+            service_activity_post, new_service_activity)
         self.assertTrue(result,msgs)
 
-        # Test apilog
+        logger.info('Test apilog...')
         resource_uri = BASE_REPORTS_URI + '/apilog'
         data_for_get={ 
             'limit': 0, 
@@ -6786,6 +6789,26 @@ class ScreenResource(DBResourceTestCase):
         apilog = apilogs[0]
         logger.debug('activity log: %r', apilog)
         self.assertTrue(apilog['api_action'] == 'CREATE')
+        
+        logger.info('test6_service_activity: test PATCH date...')
+        
+        patch_data = {
+            'date_of_activity': '2018-11-08'
+        }
+        resource_uri = '/'.join(map(str,
+            [BASE_URI_DB, 'activity', new_service_activity['activity_id']]))
+        resp = self.api_client.patch(
+            resource_uri, 
+            format='json', 
+            data=patch_data, 
+            authentication=self.get_credentials(), 
+            **{ 'limit': 0, 'includes': '*'} )
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code, self.get_content(resp)))
+        patched_activity = self.deserialize(resp)[API_RESULT_DATA][0]
+        logger.info('patched_activity: %r', patched_activity)
+        self.assertEqual(patch_data['date_of_activity'],patched_activity['date_of_activity'])
         
                 
     def test_7_create_confirmed_positive_study(self):
@@ -8192,7 +8215,7 @@ class CherryPickRequestResource(DBResourceTestCase):
             BASE_URI_DB, 'cherrypickrequest', 
             str(cpr_data['cherry_pick_request_id'])])
         new_cpr_data = self.get_single_resource(resource_uri)
-        expected_date = _now().date().strftime("%Y-%m-%d")
+        expected_date = _now().date().strftime(DATE_FORMAT)
         self.assertEqual(new_cpr_data['date_volume_reserved'],expected_date)
 
         # TODO: Test logs:
@@ -9940,6 +9963,7 @@ class ScreensaverUserResource(DBResourceTestCase):
         }
         
         # 1.A Verify that user must be a lab head or have a lab_head
+        logger.info('1.A Verify that user must be a lab head or have a lab_head...')
         resp = self.api_client.post(
             resource_uri, format='json', data=simple_user_input, 
             authentication=self.get_credentials(), **_data_for_get)
@@ -9947,7 +9971,6 @@ class ScreensaverUserResource(DBResourceTestCase):
             resp.status_code == 400, 
             (resp.status_code, self.get_content(resp)))
         new_obj = self.deserialize(resp)
-        logger.info('resp: %r', new_obj)
         self.assertTrue(API_RESULT_ERROR in new_obj)
         self.assertTrue('lab_head_id' in new_obj[API_RESULT_ERROR])
         self.assertTrue('classification' in new_obj[API_RESULT_ERROR])
@@ -9955,11 +9978,13 @@ class ScreensaverUserResource(DBResourceTestCase):
         # 1.B Create the user as a lab_head
 
         # 1.B.1 Create lab affiliation
+        
         lab_affiliation = self.create_lab_affiliation()
         simple_user_input['lab_affiliation_id'] = lab_affiliation['lab_affiliation_id']
         simple_user_input['classification'] = VOCAB.screen.user_role.PRINCIPAL_INVESTIGATOR
 
         # 1.B.2 Create user with only ecommons
+        logger.info('1.B Create the user as a lab_head...')
         resp = self.api_client.post(
             resource_uri, format='json', data=simple_user_input, 
             authentication=self.get_credentials(), **_data_for_get)
@@ -9967,6 +9992,7 @@ class ScreensaverUserResource(DBResourceTestCase):
             resp.status_code in [200,201], 
             (resp.status_code, self.get_content(resp)))
         new_obj = self.deserialize(resp)
+        logger.info('1.B done... %r', new_obj)
         self.assertTrue(API_RESULT_DATA in new_obj)
         self.assertEqual(len(new_obj[API_RESULT_DATA]),1,
             'more than one object returned for: %r, returns: %r'
@@ -9981,7 +10007,8 @@ class ScreensaverUserResource(DBResourceTestCase):
         
         user_update = {'ecommons_id': 'testerxxxx'}
         resource_uri = '/'.join([
-            BASE_URI_DB,'screensaveruser',simple_user_input['ecommons_id']])
+            BASE_URI_DB,'screensaveruser',created_user['username']])
+        logger.info('1.C Verify that the ecommons cannot be changed...')
         resp = self.api_client.patch(
             resource_uri, 
             format='json', data=user_update, 
@@ -9991,7 +10018,22 @@ class ScreensaverUserResource(DBResourceTestCase):
             (resp.status_code, self.get_content(resp)))
         resp_data = self.deserialize(resp)
         logger.info('(expected) error response: %r', resp_data)
+        self.assertTrue(API_RESULT_ERROR in resp_data)
+        self.assertTrue('ecommons_id' in resp_data[API_RESULT_ERROR])
         
+        user_update = {'username': 'testerxxxx'}
+        resource_uri = '/'.join(map(str,[
+            BASE_URI_DB,'screensaveruser',created_user['screensaver_user_id']]))
+        logger.info('1.C Verify that the username cannot be changed...')
+        resp = self.api_client.patch(
+            resource_uri, 
+            format='json', data=user_update, 
+            authentication=self.get_credentials())
+        self.assertTrue(
+            resp.status_code in [400], 
+            (resp.status_code, self.get_content(resp)))
+        resp_data = self.deserialize(resp)
+        logger.info('(expected) error response: %r', resp_data)
         self.assertTrue(API_RESULT_ERROR in resp_data)
         self.assertTrue('username' in resp_data[API_RESULT_ERROR])
         
@@ -10975,7 +11017,7 @@ class ScreensaverUserResource(DBResourceTestCase):
         self.assertEqual('expired', user_agreement_output3a['status'])
         
         self.assertEqual(
-            _now().date().strftime("%Y-%m-%d"),
+            _now().date().strftime(DATE_FORMAT),
             user_agreement_output3a['date_expired'])
         logger.info('after patch expired: %r', user_agreement_output3a)
         

@@ -13909,7 +13909,7 @@ class ActivityResource(DbApiResource):
                 raise ValidationError(
                     key='performed_by_user_id',
                     msg='Must be a staff user')
-
+            initializer_dict['performed_by_id'] = performed_by['screensaver_user_id']
         activity = None
         if patch:
             try:
@@ -13929,8 +13929,6 @@ class ActivityResource(DbApiResource):
             
             activity = Activity()
             activity.created_by = adminuser
-        
-        activity.performed_by_id = performed_by_user_id
         
         for key, val in initializer_dict.items():
             setattr(activity, key, val)
@@ -21353,7 +21351,7 @@ class ScreensaverUserResource(DbApiResource):
                     'Neither screensaver_user_id, username nor ecommons_id'
                     ' were specified')
             
-        logger.info('screensaver_user get_id: %r', id_kwargs)
+        logger.debug('screensaver_user get_id: %r', id_kwargs)
         return id_kwargs
 
     @write_authorization
@@ -21381,7 +21379,8 @@ class ScreensaverUserResource(DbApiResource):
         param_hash.update(kwargs)
         logger.debug('param_hash: %r', param_hash)
 
-        id_kwargs = self.get_id(deserialized, validate=False, schema=schema, **kwargs)
+        id_kwargs = self.get_id(
+            deserialized, validate=False, schema=schema, **kwargs)
         
         if not id_kwargs:
            
@@ -21406,7 +21405,9 @@ class ScreensaverUserResource(DbApiResource):
                     raise ValidationError({
                         'first_name': msg, 'last_name': msg })
             except ObjectDoesNotExist:
-                logger.info('ok to create new user: %r', deserialized)
+                logger.info(
+                    'POST OK: create new user (no username/ecommons specified): %r', 
+                    deserialized)
         else:
             try:
                 extant_user = ScreensaverUser.objects.get(**id_kwargs)
@@ -21417,7 +21418,7 @@ class ScreensaverUserResource(DbApiResource):
                 })
                 
             except ObjectDoesNotExist:
-                logger.info('POST: Create new user %r', id_kwargs)
+                logger.info('POST OK: Create new user %r', id_kwargs)
                 
         return super(ScreensaverUserResource,self).post_detail(
             request, data=deserialized, **kwargs)
@@ -21439,29 +21440,31 @@ class ScreensaverUserResource(DbApiResource):
         id_kwargs = self.get_id(deserialized, schema=schema, **kwargs)
         logger.info('id_kwargs: %r', id_kwargs)
         screensaver_user = None
-        is_patch = False
-        if 'screensaver_user_id' in id_kwargs:
-            screensaver_user = ScreensaverUser.objects.get(
-                screensaver_user_id=id_kwargs['screensaver_user_id'])
+        is_patch = bool(id_kwargs)
+        if id_kwargs:
+            if 'screensaver_user_id' in id_kwargs:
+                screensaver_user = ScreensaverUser.objects.get(
+                    screensaver_user_id=id_kwargs['screensaver_user_id'])
+            else:
+                try:
+                    if 'username' in id_kwargs:
+                        screensaver_user = ScreensaverUser.objects.get(
+                            username=id_kwargs['username'])
+                    elif 'ecommons_id' in id_kwargs:
+                        screensaver_user = ScreensaverUser.objects.get(
+                            ecommons_id=id_kwargs['ecommons_id'])
+                except ObjectDoesNotExist:
+                    logger.info('User for %r not found, creating', id_kwargs)
+                    is_patch=False
         else:
-            try:
-                if 'username' in id_kwargs:
-                    screensaver_user = ScreensaverUser.objects.get(
-                        username=id_kwargs['username'])
-                elif 'ecommons_id' in id_kwargs:
-                    screensaver_user = ScreensaverUser.objects.get(
-                        ecommons_id=id_kwargs['ecommons_id'])
-                else:
-                    logger.info('creating non-login user: %r', deserialized)
-            except ObjectDoesNotExist:
-                logger.info('User for %r not found, creating', id_kwargs)
-                is_patch=False
+            logger.info('creating non-login user: %r', deserialized)
+
         if screensaver_user:
             is_patch = True
             logger.info('patching screensaveruser: %r', screensaver_user)
         else:
             logger.info('creating Screensaver User: %r', deserialized)
-            
+
         errors = self.validate(deserialized, schema=schema,patch=is_patch)
         if errors:
             raise ValidationError(errors)
@@ -21493,48 +21496,49 @@ class ScreensaverUserResource(DbApiResource):
         if initializer_dict:
             # Validation rules for username, ecommons_id
             new_username = initializer_dict.pop('username',None)
+            new_ecommons = initializer_dict.pop('ecommons_id',None)
+
             if new_username is not None:
                 new_username = new_username.strip()
                 if len(new_username)==0:
                     new_username = None
-            new_ecommons = initializer_dict.pop('ecommons_id',None)
             if new_ecommons is not None:
                 new_ecommons = new_ecommons.strip()
                 if len(new_ecommons)==0:
                     new_ecommons = None
-                logger.info('new_ecommons: %r', new_ecommons)
+
             if new_username is not None and new_ecommons is not None:
                 if new_username != new_ecommons:
                     raise ValidationError({
                         'username': 'does not match ecommons_id',
                         'ecommons_id': 'does not match username' })
+            
             if new_username is not None:
-                if screensaver_user.username is not None:
-                    if screensaver_user.username != new_username:
-                        raise ValidationError(key='username', msg='immutable')
-                else:
+                if screensaver_user.username is None:
                     screensaver_user.username = new_username
+                elif screensaver_user.username != new_username:
+                    raise ValidationError(
+                        key='username', 
+                        msg='immutable (current val: %r)' % screensaver_user.username)
+            
             if new_ecommons is not None:
-                if screensaver_user.ecommons_id is not None:
-                    if screensaver_user.ecommons_id != new_ecommons:
-                        raise ValidationError(key='ecommons_id', msg='immutable')
-                    if screensaver_user.username is not None:
-                        if screensaver_user.username != new_ecommons:
-                            raise ValidationError(
-                                key='username', 
-                                msg='immutable (via ecommons_id)')
-                    else:
-                        screensaver_user.username = new_ecommons
-                else:
+                if screensaver_user.ecommons_id is None:
                     logger.info('screensaver_user: %r, setting ecommons: %r', 
                         screensaver_user.screensaver_user_id, new_ecommons)
                     screensaver_user.ecommons_id = new_ecommons
-                    if screensaver_user.username is None:
-                        screensaver_user.username=screensaver_user.ecommons_id
-                    elif screensaver_user.username != new_ecommons:
-                        raise ValidationError(
-                            key='username', 
-                            msg='immutable (via ecommons_id)')
+                elif screensaver_user.ecommons_id != new_ecommons:
+                    raise ValidationError(
+                        key='ecommons_id', 
+                        msg='immutable (current val: %r)' % screensaver_user.ecommons_id)
+                    
+                if screensaver_user.username is None:
+                    logger.info('screensaver_user: %r, setting username to new ecommons id: %r', 
+                        screensaver_user.screensaver_user_id, new_ecommons)
+                    screensaver_user.username = new_ecommons
+                elif screensaver_user.username != new_ecommons:
+                    raise ValidationError(
+                        key='username', 
+                        msg='immutable (via ecommons_id)')
             
             # Validation rules for first_name, last_name
             first_name = initializer_dict.pop('first_name', None)
@@ -21572,6 +21576,7 @@ class ScreensaverUserResource(DbApiResource):
                             key=_key,
                             msg = 'Chosen lab head "user.classification" '
                                 'must be %r ' % PI_ROLE)
+                    logger.info('initialize user with lab head: %r', lab_head)
                 except ObjectDoesNotExist, e:
                     raise ValidationError(
                         key=_key,
@@ -21579,8 +21584,8 @@ class ScreensaverUserResource(DbApiResource):
 
             _key = 'lab_head_username'
             lab_head_username = initializer_dict.get(_key)
-            logger.info('got lab_head_username: %r', lab_head_username)
             if lab_head_username:
+                logger.info('Init: lab_head_username: %r', lab_head_username)
                 if lab_head:
                     if lab_head.username and lab_head.username != lab_head_username:
                         raise ValidationError(
@@ -21595,6 +21600,7 @@ class ScreensaverUserResource(DbApiResource):
                                 key=_key,
                                 msg = 'Chosen lab head "user.classification" '
                                     'must be %r ' % PI_ROLE)
+                        logger.info('initialize user with lab head: %r', lab_head)
                         initializer_dict['lab_head_id'] = lab_head.screensaver_user_id
                     except ObjectDoesNotExist, e:
                         raise ValidationError(
@@ -21651,6 +21657,7 @@ class ScreensaverUserResource(DbApiResource):
             reports_kwargs['username'] = screensaver_user.username
         user = None
         if not reports_kwargs:
+            logger.info('non-login user: no username or ecommons, no report profile created.')
             messages.append(
                 'Non login user (no username or eCommons ID')
         else:
@@ -21662,13 +21669,13 @@ class ScreensaverUserResource(DbApiResource):
                     'last_name': screensaver_user.last_name})
             
             deserialized['username'] = screensaver_user.username
-            if DEBUG_USER_PATCH:
-                logger.info('patch the reports user: %r, %r',
-                    reports_kwargs, deserialized)
+            # if DEBUG_USER_PATCH:
+            logger.info('patch the reports user: %r, %r',
+                reports_kwargs, deserialized)
             patch_response = self.get_user_resource().patch_obj(
                 request, deserialized, **reports_kwargs)
-            if DEBUG_USER_PATCH:
-                logger.info('patched userprofile %s', patch_response)
+            #if DEBUG_USER_PATCH:
+            logger.info('patched userprofile %s', patch_response)
             user = patch_response[API_RESULT_OBJ]
 
         is_staff = False

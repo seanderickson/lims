@@ -141,9 +141,9 @@ define([
       // FIXME: should use schema['log_id_attribute'] to get the key
       search['key'] = encodeURIComponent(this.model.key);
       newUriStack.push(appModel.createSearchString(search));
-      var route = newUriStack.join('/');
       appModel.setUriStack(newUriStack);
       // Note: using the router this way creates double history entry
+      // var route = newUriStack.join('/');
       // appModel.router.navigate(route, {trigger: true});
     },
 

@@ -1373,10 +1373,14 @@ define([
     _get_screen_member_choices: function(screenModel) {
       
       var userOptions = this.getUserOptions();
-      var screenMembers = _.union(
-        screenModel.get('collaborator_ids'),
+      var screenMembers = [
         screenModel.get('lead_screener_id'),
-        screenModel.get('lab_head_id'));
+        screenModel.get('lab_head_id')
+      ];
+      var collaborator_ids = screenModel.get('collaborator_ids');
+      if (!_.isEmpty(collaborator_ids)){
+        screenMembers = _.union(screenMembers, collaborator_ids);
+      }
       screenMembers = _.map(screenMembers, function(id){
         return '' + id;
       });

@@ -894,13 +894,16 @@ define([
          };
       
       function create_title(fi){
+        var title = _.result(fi.display_options, 'editorTitle', fi.title);
+        
         if (Iccbl.appModel.getCurrentUser().is_superuser
             && fi.vocabulary_scope_ref){
-          return Iccbl.formatString(
-            '<a href="#vocabulary/search/scope__exact={vocabulary_scope_ref}" '
-            + ' target=_blank >{title}</a>',fi);
+          return '<a href="#vocabulary/search/scope__exact='
+            + fi.vocabulary_scope_ref + '" target=_blank >'
+            + title
+            + '</a>';
         } else {
-          return fi.title;
+          return title
         }
       };
       

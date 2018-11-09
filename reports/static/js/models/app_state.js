@@ -1371,18 +1371,25 @@ define([
     },
     
     _get_screen_member_choices: function(screenModel) {
-      // FIXME: should extend the Model for Screen
-      var members = _.object(
+      
+      var userOptions = this.getUserOptions();
+      var screenMembers = _.union(
         screenModel.get('collaborator_ids'),
-        screenModel.get('collaborator_names'));
-      members[screenModel.get('lead_screener_id')] = 
-        screenModel.get('lead_screener_name');
-      members[screenModel.get('lab_head_id')] = 
-        screenModel.get('lab_head_name');
-      members = _.map(_.pairs(members), function(pair){
-        return { 'val': pair[0], 'label': pair[1] + ' (' + pair[0] + ')'};
+        screenModel.get('lead_screener_id'),
+        screenModel.get('lab_head_id'));
+      screenMembers = _.map(screenMembers, function(id){
+        return '' + id;
       });
-      return members;
+      var options = _.filter(userOptions, function(option){
+        return _.contains(screenMembers, '' + option['val']);
+      });
+      // reverse, default sorting
+      options.reverse();
+      if (DEBUG) {
+        console.log('found user screens: ' + 
+          userModel.get('screensaver_user_id'), options);
+      }
+      return options;
     },
     
     /**

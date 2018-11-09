@@ -603,45 +603,48 @@ define([
                 'class="btn btn-default btn-sm controls-right" " >Add plate ranges</input>',
                 ].join(''));
 
-            var showScreeningInquiryButton = $([
-              '<a class="btn btn-default btn-sm pull-down controls-right" ',
-                'role="button" target="_blank" ', 
-                'id="show_screening_inquiry_link" ',
-                'title="Use the Screening Inquiry form to search for available plate copies" ',
-                'href="#">',
-                'Show the screening inquiry form...</a>'
-              ].join(''));
-            $form.append(showScreeningInquiryButton);
-            showScreeningInquiryButton.click(function(e){
-              // see search_box.js
-              var searchData = {
-                screen_facility_id: self.model.get('screen_facility_id')
-              };
-              var num_replicates = self_editform.getValue('number_of_replicates');
-              var vol_to_assayplates  = self_editform.getValue(
-                'volume_transferred_per_well_to_assay_plates');
-              var plate_search = form.getValue('plate_search');
-              if (vol_to_assayplates){
-                
-                searchData['volume_required'] = vol_to_assayplates;
-                searchData['replicate_count'] = num_replicates;
-              }
-              if(plate_search){
-                var errors = [];
-                var plate_ranges = Iccbl.parseRawPlateSearch(plate_search, errors);
-                if (!_.isEmpty(errors)){
-                  console.log('plate search has errors', errors);
-                } else if (!_.isEmpty(plate_ranges)){
-                  searchData['plate_ranges'] = plate_ranges;
+            // Begin, optional screening inquiry form
+            if (appModel.DEBUG && appModel.getCurrentUser().is_superuser) {
+              var showScreeningInquiryButton = $([
+                '<a class="btn btn-default btn-sm pull-down controls-right" ',
+                  'role="button" target="_blank" ', 
+                  'id="show_screening_inquiry_link" ',
+                  'title="Use the Screening Inquiry form to search for available plate copies" ',
+                  'href="#">',
+                  'Show the screening inquiry form...</a>'
+                ].join(''));
+              $form.append(showScreeningInquiryButton);
+              showScreeningInquiryButton.click(function(e){
+                // see search_box.js
+                var searchData = {
+                  screen_facility_id: self.model.get('screen_facility_id')
+                };
+                var num_replicates = self_editform.getValue('number_of_replicates');
+                var vol_to_assayplates  = self_editform.getValue(
+                  'volume_transferred_per_well_to_assay_plates');
+                var plate_search = form.getValue('plate_search');
+                if (vol_to_assayplates){
+                  
+                  searchData['volume_required'] = vol_to_assayplates;
+                  searchData['replicate_count'] = num_replicates;
                 }
-                var urlSearchParts = 
-                  PlateRangeSearchView.prototype.encodeFormData.call(this,searchData);
-                var uriStack = ['#screen', self.model.get('screen_facility_id'),
-                                'summary','plateranges',appModel.URI_PATH_SEARCH,
-                                urlSearchParts.join(appModel.SEARCH_DELIMITER)];
-                e.target.href = uriStack.join('/')
-              }
-            });
+                if(plate_search){
+                  var errors = [];
+                  var plate_ranges = Iccbl.parseRawPlateSearch(plate_search, errors);
+                  if (!_.isEmpty(errors)){
+                    console.log('plate search has errors', errors);
+                  } else if (!_.isEmpty(plate_ranges)){
+                    searchData['plate_ranges'] = plate_ranges;
+                  }
+                  var urlSearchParts = 
+                    PlateRangeSearchView.prototype.encodeFormData.call(this,searchData);
+                  var uriStack = ['#screen', self.model.get('screen_facility_id'),
+                                  'summary','plateranges',appModel.URI_PATH_SEARCH,
+                                  urlSearchParts.join(appModel.SEARCH_DELIMITER)];
+                  e.target.href = uriStack.join('/')
+                }
+              });
+            } // End, optional screening inquiry form
             
             form.$el.find('[ type="submit" ]').click(function(e){
               e.preventDefault();

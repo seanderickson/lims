@@ -2406,7 +2406,11 @@ IntegerFormatter.prototype = new Backgrid.NumberFormatter();
 _.extend(IntegerFormatter.prototype, {
 
   defaults: _.extend({}, NumberFormatter.prototype.defaults, {
-    decimals: 0
+    decimals: 0,
+    // orderSeparator: defines the "thousands" separator to use when displaying:
+    // NOTE: specify blank string using display_options.orderSeparator to eliminate
+    // the thousands separator. (display_options == cell_options)
+    orderSeparator: ',', 
   })
 });
 

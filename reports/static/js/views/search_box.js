@@ -776,22 +776,21 @@ define([
     uriStackChange: function(model, val, options) {
       var self=this;
       self.cleanup();
-      // Hide the navbar for small screens after actions
+      
+      // For small viewports, the collapsed navbar has been shown by user action:
+      // re-hide and allow the css to add the "show" class for larger viewports
       $('.navbar-collapse').removeClass('show');
       
       var uriStack = appModel.get('uriStack');
       if (!uriStack) return;
       var uriStack = _.clone(uriStack);
-      
-      console.log('search_box: uriStackChange', arguments, uriStack);
       var uiResourceId = uriStack.shift();
-
       var complex_search = appModel.findComplexSearch(uriStack);
-      console.log('complex search', complex_search);
+
+      // Set the appropriate search box if there is a complex search in effect
       if (!_.isEmpty(complex_search)){
         if (_.has(complex_search,'search_id') 
             && complex_search['search_id']== this.searchId){
-          console.log('self generated uristack change');
           return;
         }
         if (_.has(complex_search,'errors')){
@@ -799,7 +798,6 @@ define([
           return;
         }
         
-        console.log('complex search found:', complex_search);
         if (uiResourceId=='librarycopyplate'){
           var errors = [];
           var search_data = complex_search[appModel.API_PARAM_SEARCH];
@@ -829,7 +827,6 @@ define([
           this.wellsForm.setValue('searchVal', parsedData);
           // plateCopyForm may not be rendered yet, store the value
           this.wells_form_data = parsedData;
-        
         }else if (uiResourceId == 'compound_search') {
           var search_data = complex_search[appModel.API_PARAM_SEARCH];
           var parsedData = Iccbl.parseCompoundVendorIDSearch(search_data,errors);

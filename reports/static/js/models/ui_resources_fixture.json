@@ -189,8 +189,7 @@
     "options": {
       "rpp": 500,
       "search": {
-        "screening_status__in": ["allowed", "requires_permission"],
-        "-library_type__in": ["dos"]
+        "screening_status__in": ["allowed", "requires_permission"]
       }
     }
   },
@@ -222,8 +221,7 @@
       "order": [], 
       "search": { 
         "screen_type__in": "small_molecule",
-        "screening_status__in": ["allowed", "requires_permission"],
-        "-library_type__in": ["dos"]
+        "screening_status__in": ["allowed", "requires_permission"]
        } 
     }
   },

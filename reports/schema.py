@@ -34,6 +34,7 @@ API_MSG_UNCHANGED = 'Unchanged'
 API_MSG_COMMENTS = 'Comments'
 API_MSG_ACTION = 'Action'
 API_MSG_SUCCESS = 'Success'
+API_MSG_RESTRICTED_DATA = '(restricted data)'
 
 
 API_PARAM_SEARCH = 'search'

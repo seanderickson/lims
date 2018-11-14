@@ -1833,7 +1833,6 @@ var collapsibleText = Iccbl.collapsibleText = function collapsibleText(text, len
     var expandedDiv = $('<div/>');
     /* ascii code for the ellipsis character */
     var link = $('<a>&nbsp;<strong><u>\u2026</u></strong></a>'); 
-//    var link = $('<a>&nbsp;<strong>\u2026</strong></a>'); 
   
     // split text on lines
     var totalLen = 0;
@@ -2113,6 +2112,12 @@ var BooleanCell = Iccbl.BooleanCell = Backgrid.BooleanCell.extend({
       }));
       //      this.delegateEvents();
     } else {
+      val = (''+val).toLowerCase();
+      if (val == 'true' ){
+        val = 'True';
+      }else if (val == 'false') {
+        val = 'False';
+      }
       this.$el.text(val);
     }
     return this;
@@ -4116,6 +4121,7 @@ var BackgridFormFilter = Backbone.Form.extend({
   },
 
   _printSearchHash: function(searchHash){
+    var self = this;
     function lookupOperator(operator){
       var lookup = {
         gt: '>',
@@ -4127,12 +4133,19 @@ var BackgridFormFilter = Backbone.Form.extend({
       };
       return _.result(lookup, operator, operator);
     }
-
+    function lookupVal(val){
+      // If there is a criterium, use the readable val
+      val = _.result(self.criterium, val, val);
+      // If there is a choiceHash, use the readable val
+      val = _.result(self.choiceHash, val, val);
+      return val;
+    }
     return '&nbsp;' + _.map(
       _.pairs(searchHash),
       function(pair){
         var key_operator = pair[0].split('__');
-        var val = '' + pair[1]
+        var val = '' + pair[1];
+        val = lookupVal(val);
         var operator = '='
         if (key_operator.length == 2){
           operator = key_operator[1];
@@ -4141,7 +4154,7 @@ var BackgridFormFilter = Backbone.Form.extend({
         if (operator == 'range'){
           val = val.split(",").join('-');
         } else {
-          val = val.split(",").join(', ');
+          val = _.map(val.split(","),lookupVal).join(', ');
         }
         if (key_operator[0].charAt(0)=='-'){
           operator = 'not ' + operator;
@@ -4732,7 +4745,7 @@ var DateFormFilter = CriteriumFormFilter.extend({
 });
 
 var BooleanFormFilter = CriteriumFormFilter.extend({
-  criterium: {'': 'unset', 'true': 'true', 'false': 'false',
+  criterium: {'': '', 'true': 'True', 'false': 'False',
     'blank':'is_null','not blank':'not_blank'},
 
   template: _.template([
@@ -4748,11 +4761,17 @@ var BooleanFormFilter = CriteriumFormFilter.extend({
     var self = this;
     var options = this.options = options || {};
     var formSchema = this.schema = {};
+    
+    var _options = [];
+    _.each(_.keys(self.criterium), function(key){
+      _options.push({ val: key, label: self.criterium[key] });
+    })
+    
     formSchema['lower_criteria'] = {
         title: '',
         key:  'lower_criteria', // TODO: "key" not needed>?
         type: 'Select',
-        options: _.keys(self.criterium),
+        options: _options,
         template: _.template(self.criteriaTemplate),
         editorClass: 'form-control'
     };
@@ -4786,10 +4805,10 @@ var BooleanFormFilter = CriteriumFormFilter.extend({
     }else if(criteria == 'is_null'){
       searchKey = name + '__' + 'is_null';
       searchHash[searchKey]='true';
-    }else if(criteria == 'false'){
+    }else if(criteria == 'False'){
       searchKey = name + '__eq';
       searchHash[searchKey]='false';
-    }else if(criteria == 'true'){
+    }else if(criteria == 'True'){
       searchKey = name + '__eq';
       searchHash[searchKey]='true';
     }
@@ -4882,7 +4901,7 @@ var SelectorFormFilter = CriteriumFormFilter.extend({
     // 2.b fetch and add vocabulary from server
 
     this.retiredFields = [];
-    var choiceHash = {}
+    var choiceHash = this.choiceHash = {};
     var vocabulary;
     if(!_.isEmpty(this.fieldinformation.vocabulary)){
       // TODO: vocabulary is using the titles as the key,

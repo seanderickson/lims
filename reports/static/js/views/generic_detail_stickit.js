@@ -102,7 +102,7 @@ define([
       }
       
       function create_title(fi){
-        if (Iccbl.appModel.getCurrentUser().is_superuser
+        if (appModel.getCurrentUser().is_superuser
             && fi.vocabulary_scope_ref){
           // Show link to the vocab term for superuser
           return Iccbl.formatString(

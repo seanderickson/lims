@@ -2848,6 +2848,7 @@ define([
 
   appState.API_PARAM_DC_IDS = 'dc_ids';
   
+  appState.API_PARAM_SHOW_RESTRICTED = 'show_restricted'
   appState.API_PARAM_VOLUME_OVERRIDE = 'volume_override';
   appState.API_PARAM_SET_DESELECTED_TO_ZERO = 'set_deselected_to_zero';
   appState.API_PARAM_OVERRIDE = 'override';

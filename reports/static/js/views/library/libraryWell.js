@@ -25,9 +25,10 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
     
     initialize: function(args) {
       var self = this;
-      this.tabViews = {}; // view cache
-      this.uriStack = args.uriStack;
-      this.consumedStack = [];
+      this.__klazz = 'libraryWell';
+//      this.tabViews = {}; // view cache
+//      this.uriStack = args.uriStack;
+//      this.consumedStack = [];
       
       this.tabbed_resources = _.extend({}, 
         _.mapObject(this.tabbed_resources_template, function(val,key){
@@ -109,6 +110,9 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
         if (viewId == 'edit'){
           this.uriStack.unshift(viewId); 
           viewId = 'detail';
+        } else if (viewId == appModel.API_PARAM_SHOW_RESTRICTED){
+          this.uriStack.unshift(viewId); 
+          viewId = 'detail';
         }
         if (!_.has(this.tabbed_resources, viewId)){
           var msg = 'could not find the tabbed resource: ' + viewId;
@@ -118,6 +122,12 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
       }
 
       // re-fetch the model with all necessary fields
+      var data_for_get = {
+        // Include "none" fields
+        includes: ['duplex_wells','pool_well', 
+          'screening_mg_ml_concentration', 'screening_molar_concentration', 
+          '*']
+      };
       var resource = self.model.resource;
       if (self.model.get('screen_type') == 'small_molecule'){
         resource = appModel.getResource('smallmoleculereagent');
@@ -126,7 +136,10 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
       } else {
         resource = appModel.getResource('naturalproductreagent');
       }
-      
+      if (_.contains(self.uriStack, appModel.API_PARAM_SHOW_RESTRICTED)){
+        data_for_get[appModel.API_PARAM_SHOW_RESTRICTED] = true;
+      }
+
       appModel.getModel(resource.key, self.model.get('well_id'), 
         function(model){
           self.model = model;
@@ -140,15 +153,10 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
             delete self.tabbed_resources['other_wells'];
             $('#other_wells').remove();
           }
-          self.change_to_tab(viewId);
+          self.change_to_tab(viewId, self.uriStack );
         },
         {
-          data_for_get: {
-            // Include "none" fields
-            includes: ['duplex_wells','pool_well', 
-              'screening_mg_ml_concentration', 'screening_molar_concentration', 
-              '*']
-          }
+          data_for_get: data_for_get
         }
       );
       console.log('afterRender, done.');
@@ -162,12 +170,14 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
       if (view) {
         this.removeView(this.tabViews[key]);
       }
+      if (_.contains(delegateStack, appModel.API_PARAM_SHOW_RESTRICTED)){
+        self.consumedStack.unshift(appModel.API_PARAM_SHOW_RESTRICTED);
+        delegateStack = _.without(delegateStack, appModel.API_PARAM_SHOW_RESTRICTED);
+      }
       
       var DetailLayoutWell = DetailLayout.extend({
         history: function(event) {
           event.preventDefault();
-          var self = this;
-          
           var newUriStack = ['apilog','order','-date_time', appModel.URI_PATH_SEARCH];
           var search = {};
           search['ref_resource_name'] = 'well';
@@ -180,26 +190,83 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
         download: function(e){
           e.preventDefault();
           e.stopPropagation();
-          
-          var self = this;
           var url = [self.model.resource.apiUri,self.model.get('well_id'),
                      'report'].join('/');
-          
-          appModel.download(url, this.model.resource);
+          appModel.download(url, self.model.resource);
           //url += '?format=xls&use_vocabularies=true&use_titles=true&raw_lists=true';
           //appModel.downloadUrl(url);
-        },
+        }
       
+      });
+      
+      var WellView = DetailView.extend({
+        afterRender: function(){
+          var detail_instance = this;
+          DetailView.prototype.afterRender.apply(this,arguments);
+          var is_restricted = ( self.model.get('is_restricted_structure')
+              || self.model.get('is_restricted_sequence') );
+          if (appModel.hasPermission(self.model.resource.key, 'read')
+              && is_restricted ){
+            
+            var show_restricted_control = $([
+              '<label class="checkbox-inline pull-left" ',
+              '   title="Show restricted structure or sequence information, if applicable" >',
+              '  <input type="checkbox">Show restricted structure information</input>&nbsp;',
+              '</label>'
+              ].join(''));
+            if (self.model.get('screen_type') == 'rnai'){
+              show_restricted_control = $([
+                '<label class="checkbox-inline pull-left" ',
+                '   title="Show restricted structure or sequence information, if applicable" >',
+                '  <input type="checkbox">Show restricted sequences</input>',
+                '</label>'
+                ].join(''));
+            }
+            $('#generic-detail-buttonpanel-left').append(show_restricted_control);
+            
+            var initialVal = _.contains(self.consumedStack, appModel.API_PARAM_SHOW_RESTRICTED);
+            show_restricted_control.find('input[type="checkbox"]').prop('checked',initialVal);
+            
+            show_restricted_control.find('input[type="checkbox"]').change(function(e) {
+              var data_for_get = {
+                includes: ['duplex_wells','pool_well', 
+                  'screening_mg_ml_concentration', 'screening_molar_concentration', 
+                  '*']
+              }
+
+              if (e.target.checked) {
+                data_for_get[appModel.API_PARAM_SHOW_RESTRICTED] = true;
+                self.consumedStack = [appModel.API_PARAM_SHOW_RESTRICTED];
+                // FIXME: DetailView needs a reportUriStack method; so just use
+                // the containing reportUriStack instead.
+                self.reportUriStack([]);
+              } else {
+                data_for_get[appModel.API_PARAM_SHOW_RESTRICTED] = false;
+                self.consumedStack = [];
+                self.reportUriStack([]);
+              }
+              self.model.fetch({
+                data: data_for_get
+              });
+              
+            });
+          
+          
+          }
+        }
       });
       
       view = new DetailLayoutWell({ 
         model: this.model,
-        uriStack: delegateStack, 
+        uriStack: delegateStack,
+        DetailView: WellView,
         buttons: ['download', 'history']
       });
+      
       this.tabViews[key] = view;
       this.listenTo(view , 'uriStack:change', this.reportUriStack);
       this.setView("#tab_container", view ).render();
+
     },
 
     setOtherWells: function(delegateStack){
@@ -215,6 +282,7 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
       Backbone.Layout.setupView(view);
       self.listenTo(view , 'uriStack:change', self.reportUriStack);
       this.setView("#tab_container", view ).render();
+
     },
     
     /** 
@@ -420,13 +488,13 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
               '<span class="col-xs-9"><ul class="list-inline">',
               '<li><label><button style="background-color: red;" ',
                 'class="btn btn-default" type="button">',
-                '</button> pool result not confirmed</label></li>',
+                '</button> Pool result not confirmed</label></li>',
               '<li><label><button style="background-color: blue;" ',
                 'class="btn btn-defaul" type="button">',
-                '</button> pool result confirmed</label></li>',
+                '</button> Pool result confirmed</label></li>',
               '<li><label><button style="background-color: white;" ',
                 'class="btn btn-default" type="button">',
-                '</button> inconclusive or no data</label></li>',
+                '</button> Inconclusive or no data</label></li>',
               '</ul></span></div>'
               ].join(''));
             $content.find('#legend').html($legend);

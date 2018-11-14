@@ -172,7 +172,6 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         
       }; // showColumns
       
-      
       function showTreeSelector(collection){
         console.log('showTreeSelector', dc_ids);
         collection.each(function(model){
@@ -187,7 +186,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         var show_positives_control = $([
           '<label class="checkbox-inline pull-left" ',
           '   title="Show positive indicator columns only" >',
-          '  <input type="checkbox">positive indicator columns</input>',
+          '  <input type="checkbox">Positive indicator columns</input>',
           '</label>'
           ].join(''));
         
@@ -257,7 +256,6 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         });
       }; // showTreeSelector
       
-      
     },
 
     showList: function(delegateStack) {
@@ -297,9 +295,10 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
           newResource['options']['rpp'] = '24';
         }
         
+        var extraControls = self.args.extraControls || [];
         var extraListControls = [];
         var show_study_columns_button = $([
-          '<button class="btn btn-default btn-sm controls-right" role="button" ',
+          '<button class="btn btn-default btn-sm" role="button" ',
           'id="showStudyColumns" title="Show study columns" >',
           'Add study columns',
           '</button>'
@@ -319,6 +318,24 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         show_data_columns_control.click(function(e){
           self.showDataColumnsDialog(view);
         });
+        
+        var show_restricted_control = $([
+          '<label class="checkbox-inline pull-left" ',
+          '   title="Show restricted structure or sequence information, if applicable" >',
+          '  <input type="checkbox">Show restricted structures</input>&nbsp;',
+          '</label>'
+          ].join(''));
+        if (self.resource.key == 'silencingreagent'){
+          show_restricted_control = $([
+            '<label class="checkbox-inline pull-left" ',
+            '   title="Show restricted structure or sequence information, if applicable" >',
+            '  <input type="checkbox">Show restricted sequences</input>',
+            '</label>'
+            ].join(''));
+        }
+        if (appModel.hasPermission(newResource.key, 'read')){
+          extraControls.push(show_restricted_control);
+        }
 
         ///////////////////////////////////////////////////////////
         // Override the well link and provide next/previous buttons
@@ -521,7 +538,6 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
           }
         });
         
-        var extraControls = self.args.extraControls || [];
         var showPreviewControl = $([
           '<label class="checkbox-inline" ', 
           ' style="margin-left: 10px;" ',
@@ -559,6 +575,22 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         });
 
         var view = new WellListView(viewArgs);
+
+        var initialSearchHash = view.listModel.get(appModel.URI_PATH_SEARCH);
+        var initial_show_restricted = 
+          _.result(initialSearchHash, appModel.API_PARAM_SHOW_RESTRICTED, false);
+        if (initial_show_restricted && initial_show_restricted.toLowerCase()=='true'){
+          show_restricted_control.find('input[type="checkbox"]').prop('checked',true);
+        }
+        show_restricted_control.find('input[type="checkbox"]').change(function(e) {
+          var searchHash = _.clone(view.listModel.get(appModel.URI_PATH_SEARCH));
+          if (e.target.checked) {
+            searchHash[appModel.API_PARAM_SHOW_RESTRICTED] = 'true';
+          } else {
+            searchHash[appModel.API_PARAM_SHOW_RESTRICTED] = 'false';
+          }
+          view.listModel.set(appModel.URI_PATH_SEARCH,searchHash);
+        });
         
         showPreviewControl.click(function(e){
           var searchHash = _.clone(view.listModel.get(appModel.URI_PATH_SEARCH));

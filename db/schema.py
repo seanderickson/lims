@@ -394,7 +394,29 @@ class VOCAB(reports.schema.VOCAB):
             NOT_ALLOWED = 'not_allowed'
             RETIRED = 'retired'
             REQUIRES_PERMISSION = 'requires_permission'
-    
+        
+        class library_type(schema_obj):
+            FRAGMENT = 'fragment'
+            ANNOTATION = 'annotation'
+            NATURAL_PRODUCTS = 'natural_products'
+            ACADEMIC_COLLECTION = 'academic_collection'
+            KNOWN_BIOACTIVES = 'known_bioactives'
+            SIRNA = 'sirna'
+            DISCRETE = 'discrete'
+            MIRNA_MIMI = 'mirna_mimic'
+            MIRNA_INHIBITOR = 'mirna_inhibitor'
+            COMMERCIAL = 'commercial'
+            OTHER = 'other'
+
+            DOS = 'dos'
+            NCI = 'nci'
+            # NIH_MLP = 'nih_mlp' # TODO: not used in ICCB-L
+
+            # TODO: this setting is subject to ongoing discussion:
+            # - these data and associated data should be removed from the 
+            # database rather than hidden from views - sde
+            LIBRARY_TYPES_TO_HIDE = [DOS, NCI, ANNOTATION] # NIH_MLP
+            
     class screensaver_user(schema_obj):
         
         class classification(schema_obj):

@@ -182,6 +182,7 @@ API_PARAM_SHOW_MANUAL = 'show_manual'
 API_PARAM_VOLUME_OVERRIDE = 'volume_override'
 API_PARAM_SET_DESELECTED_TO_ZERO = 'set_deselected_to_zero'
 API_PARAM_DC_IDS = 'dc_ids'
+API_PARAM_SHOW_RESTRICTED = 'show_restricted'
 
 logger = logging.getLogger(__name__)
 
@@ -4487,8 +4488,9 @@ class ScreenResultResource(DbApiResource):
         sub_columns = reagent_resource.build_sqlalchemy_columns(
             field_hash.values(), base_query_tables=base_reagent_tables)
         for key,col in sub_columns.items():
-            if key not in columns:
-                columns[key] = col
+            # 20181013 update so that subclass definition overrides
+            # if key not in columns:
+            columns[key] = col
 
         # Force the query to use well_query_index.well_id
         columns['well_id'] = literal_column('wqx.well_id').label('well_id')
@@ -21881,8 +21883,8 @@ class LibraryResourceAuthorization(UserGroupAuthorization):
             self.resource_name, user, permission_type)
         return False
     
-    def is_restricted_view(self, user):
-        return not self._is_resource_authorized(user, 'read')
+    # def is_restricted_view(self, user):
+    #    return not self._is_resource_authorized(user, 'read')
         
     def filter(self, user, filter_expression):
         if self.is_restricted_view(user):
@@ -21922,16 +21924,17 @@ class ReagentResourceAuthorization(LibraryResourceAuthorization):
             ._is_resource_authorized(user, permission_type, **kwargs)
         return authorized
 
-    ## Note: Special filtering is not needed because restricted fields are being
-    # contitionally hidden by the field.view_groups parameter set in the schema.
-    ## (Duplex wells visible only to Admins).
-    ## @see ResourceResource._filter_resource() for details.
-
-    ## def filter(self, user, filter_expression):
-
-    
-    def is_restricted_view(self, user):
-        return not self._is_resource_authorized(user, 'read')
+    def filter(self, user, filter_expression):
+        if self.is_restricted_view(user):
+            if DEBUG_AUTHORIZATION:
+                logger.info('create library filter for %r', user)
+            auth_filter = column('is_released') == True
+            if filter_expression is not None:
+                filter_expression = and_(filter_expression, auth_filter)
+            else:
+                filter_expression = auth_filter
+ 
+        return filter_expression
         
 
 class ReagentResource(DbApiResource):
@@ -22774,7 +22777,7 @@ class ReagentResource(DbApiResource):
     
     def build_sqlalchemy_columns(
         self, fields, user=None, base_query_tables=None, custom_columns=None, 
-        show_preview=False):
+        show_preview=False, show_restricted=False):
 
         logger.info(
             'build_sqlalchemy_columns, reagent resource: show_preview: %r, auth: %r', 
@@ -23010,9 +23013,17 @@ class ReagentResource(DbApiResource):
         logger.debug('build_sqlalchemy_columns: %r', base_query_tables)
         logger.debug('build_sqlalchemy_columns: includes: %r, fields: %r', 
                     manual_field_includes, field_hash.keys())
+
+        show_restricted = parse_val(
+            param_hash.get(API_PARAM_SHOW_RESTRICTED, False),
+            API_PARAM_SHOW_RESTRICTED,'boolean')
         columns = self.build_sqlalchemy_columns(
             field_hash.values(), user=user, base_query_tables=base_query_tables,
-            custom_columns=custom_columns, show_preview=show_preview)
+            custom_columns=custom_columns, show_preview=show_preview,
+            show_restricted=show_restricted )
+
+        # is_released is required for the authorization filter
+        columns['is_released'] = _library.c.is_released
         
         stmt = select(columns.values()).select_from(j)
         if well_ids is not None:
@@ -23037,10 +23048,10 @@ class ReagentResource(DbApiResource):
         if not order_clauses:
             stmt = stmt.order_by("plate_number", "well_name")
 
-#             compiled_stmt = str(stmt.compile(
-#                 dialect=postgresql.dialect(),
-#                 compile_kwargs={"literal_binds": True}))
-#             logger.info('compiled_stmt %s', compiled_stmt)
+        # compiled_stmt = str(stmt.compile(
+        #     dialect=postgresql.dialect(),
+        #     compile_kwargs={"literal_binds": True}))
+        # logger.info('compiled_stmt %s', compiled_stmt)
             
         return (field_hash, columns, stmt, count_stmt,filename)
     
@@ -23303,7 +23314,8 @@ class SilencingReagentResource(ReagentResource):
         
         
     def build_sqlalchemy_columns(
-        self, fields, user=None, base_query_tables=None, custom_columns=None, show_preview=False):
+        self, fields, user=None, base_query_tables=None, custom_columns=None, 
+        show_preview=False, show_restricted=False):
         '''
         @return an array of sqlalchemy.sql.schema.Column objects
         @param fields - field definitions, from the resource schema
@@ -23466,36 +23478,37 @@ class SilencingReagentResource(ReagentResource):
                 pass
         
         
-            # 20180314 - restrict on is_restricted_sequence, is_restricted_structure
-
+        # 20180314 - restrict on is_restricted_sequence, is_restricted_structure
         rna_restricted_fields = ['sequence','anti_sense_sequence']
         fields_to_restrict = set(rna_restricted_fields)&set(
             [field['key'] for field in fields])
-        if fields_to_restrict \
-            and self._meta.authorization._is_resource_authorized(user, 'read') \
-                is not True:
-            logger.info('RNAi fields to restrict: %r', fields_to_restrict)
-            for field in fields_to_restrict:
-                if field == 'sequence':
-                    custom_columns['sequence'] = (
-                        select([
-                            case([
-                                (sirna_table.c.is_restricted_sequence,None)],
-                                else_=sirna_table.c.sequence)])
-                        .select_from(sirna_table)
-                        .where(sirna_table.c.reagent_id
-                            == literal_column('reagent.reagent_id'))
-                        )
-                if field == 'anti_sense_sequence':
-                    custom_columns['anti_sense_sequence'] = (
-                        select([
-                            case([
-                                (sirna_table.c.is_restricted_sequence,None)],
-                                else_=sirna_table.c.anti_sense_sequence)])
-                        .select_from(sirna_table)
-                        .where(sirna_table.c.reagent_id
-                            == literal_column('reagent.reagent_id'))
-                        )
+        if ( self._meta.authorization.is_restricted_view(user) 
+             or show_restricted is not True):
+            if fields_to_restrict:
+                logger.info('RNAi fields to restrict: %r', fields_to_restrict)
+                for field in fields_to_restrict:
+                    if field == 'sequence':
+                        custom_columns['sequence'] = (
+                            select([
+                                case([
+                                    (sirna_table.c.is_restricted_sequence,
+                                        SCHEMA.API_MSG_RESTRICTED_DATA)],
+                                    else_=sirna_table.c.sequence)])
+                            .select_from(sirna_table)
+                            .where(sirna_table.c.reagent_id
+                                == literal_column('reagent.reagent_id'))
+                            )
+                    if field == 'anti_sense_sequence':
+                        custom_columns['anti_sense_sequence'] = (
+                            select([
+                                case([
+                                    (sirna_table.c.is_restricted_sequence,
+                                        SCHEMA.API_MSG_RESTRICTED_DATA)],
+                                    else_=sirna_table.c.anti_sense_sequence)])
+                            .select_from(sirna_table)
+                            .where(sirna_table.c.reagent_id
+                                == literal_column('reagent.reagent_id'))
+                            )
         
         if DEBUG_BUILD_COLS: 
             logger.info('sirna custom_columns: %r', custom_columns.keys())
@@ -23683,7 +23696,7 @@ class SmallMoleculeReagentResource(ReagentResource):
 
     def build_sqlalchemy_columns(
         self, fields, user=None, base_query_tables=None, 
-        custom_columns=None, show_preview=False):
+        custom_columns=None, show_preview=False, show_restricted=False):
         '''
         @return an array of sqlalchemy.sql.schema.Column objects
         @param fields - field definitions, from the resource schema
@@ -23699,74 +23712,84 @@ class SmallMoleculeReagentResource(ReagentResource):
             custom_columns = {}
 
         smr_restricted_fields = ['smiles', 'inchi', 'molecular_formula',
-            'molecular_weight','molecular_mass','molfile']
+            'molecular_weight','molecular_mass','molfile','structure_image']
         fields_to_restrict = \
             set(smr_restricted_fields)&set([field[FIELD.KEY] for field in fields])
-        if fields_to_restrict \
-            and self._meta.authorization._is_resource_authorized(user, 'read') \
-                is not True:
-            logger.info('SM fields to restrict: %r', fields_to_restrict)
-
-            _smr = self.bridge['small_molecule_reagent']
-            _reagent = self.bridge['reagent']
-            _molfile = self.bridge['molfile']
-            
-            for field in fields_to_restrict:
-                if field == 'smiles':
-                    custom_columns['smiles'] = (
-                        select([
-                            case([
-                                (_smr.c.is_restricted_structure,None)],
-                                else_=_smr.c.smiles)])
-                        .select_from(_smr)
-                        .where(_smr.c.reagent_id==_reagent.c.reagent_id)
-                        )
-                if field == 'inchi':
-                    custom_columns['inchi'] = (
-                        select([
-                            case([
-                                (_smr.c.is_restricted_structure,None)],
-                                else_=_smr.c.inchi)])
-                        .select_from(_smr)
-                        .where(_smr.c.reagent_id==_reagent.c.reagent_id)
-                        )
-                if field == 'molecular_weight':
-                    custom_columns['molecular_weight'] = (
-                        select([
-                            case([
-                                (_smr.c.is_restricted_structure,None)],
-                                else_=_smr.c.molecular_weight)])
-                        .select_from(_smr)
-                        .where(_smr.c.reagent_id==_reagent.c.reagent_id)
-                        )
-                if field == 'molecular_mass':
-                    custom_columns['molecular_mass'] = (
-                        select([
-                            case([
-                                (_smr.c.is_restricted_structure,None)],
-                                else_=_smr.c.molecular_mass)])
-                        .select_from(_smr)
-                        .where(_smr.c.reagent_id==_reagent.c.reagent_id)
-                        )
-                if field == 'molecular_formula':
-                    custom_columns['molecular_formula'] = (
-                        select([
-                            case([
-                                (_smr.c.is_restricted_structure,None)],
-                                else_=_smr.c.molecular_formula)])
-                        .select_from(_smr)
-                        .where(_smr.c.reagent_id==_reagent.c.reagent_id)
-                        )
-                if field == 'molfile':
-                    custom_columns['molfile'] = (
-                        select([
-                            case([
-                                (_smr.c.is_restricted_structure,None)],
-                                else_=_molfile.c.molfile)])
-                        .select_from(_smr.join(
-                            _molfile, _smr.c.reagent_id==_molfile.c.reagent_id))
-                        .where(_smr.c.reagent_id==_reagent.c.reagent_id)
-                        )
+        
+        logger.info('fields to restrict: %r, %r', 
+            user, self._meta.authorization.is_restricted_view(user))
+        if ( self._meta.authorization.is_restricted_view(user) 
+             or show_restricted is not True):
+            if fields_to_restrict:
+                
+                logger.info('SM fields to restrict: %r', fields_to_restrict)
+    
+                _smr = self.bridge['small_molecule_reagent']
+                _reagent = self.bridge['reagent']
+                _molfile = self.bridge['molfile']
+                
+                for field in fields_to_restrict:
+                    logger.info('restricting field %r', field)
+                    if field == 'smiles':
+                        custom_columns['smiles'] = (
+                            select([
+                                case([
+                                    (_smr.c.is_restricted_structure,
+                                        SCHEMA.API_MSG_RESTRICTED_DATA)],
+                                    else_=_smr.c.smiles)])
+                            .select_from(_smr)
+                            .where(_smr.c.reagent_id==_reagent.c.reagent_id)
+                            )
+                    if field == 'inchi':
+                        custom_columns['inchi'] = (
+                            select([
+                                case([
+                                    (_smr.c.is_restricted_structure,
+                                        SCHEMA.API_MSG_RESTRICTED_DATA)],
+                                    else_=_smr.c.inchi)])
+                            .select_from(_smr)
+                            .where(_smr.c.reagent_id==_reagent.c.reagent_id)
+                            )
+                    if field == 'molecular_weight':
+                        custom_columns['molecular_weight'] = (
+                            select([
+                                case([
+                                    (_smr.c.is_restricted_structure,None)],
+                                    else_=_smr.c.molecular_weight)])
+                            .select_from(_smr)
+                            .where(_smr.c.reagent_id==_reagent.c.reagent_id)
+                            )
+                    if field == 'molecular_mass':
+                        custom_columns['molecular_mass'] = (
+                            select([
+                                case([
+                                    (_smr.c.is_restricted_structure,None)],
+                                    else_=_smr.c.molecular_mass)])
+                            .select_from(_smr)
+                            .where(_smr.c.reagent_id==_reagent.c.reagent_id)
+                            )
+                    if field == 'molecular_formula':
+                        custom_columns['molecular_formula'] = (
+                            select([
+                                case([
+                                    (_smr.c.is_restricted_structure,
+                                        SCHEMA.API_MSG_RESTRICTED_DATA)],
+                                    else_=_smr.c.molecular_formula)])
+                            .select_from(_smr)
+                            .where(_smr.c.reagent_id==_reagent.c.reagent_id)
+                            )
+                    if field == 'molfile':
+                        custom_columns['molfile'] = (
+                            select([
+                                case([
+                                    (_smr.c.is_restricted_structure,None)],
+                                    else_=_molfile.c.molfile)])
+                            .select_from(_smr.join(
+                                _molfile, _smr.c.reagent_id==_molfile.c.reagent_id))
+                            .where(_smr.c.reagent_id==_reagent.c.reagent_id)
+                            )
+                    if field == 'structure_image':
+                        custom_columns['structure_image'] = literal_column("'restricted'")
 
         columns = super(SmallMoleculeReagentResource, self).build_sqlalchemy_columns(
             fields, user=user, base_query_tables=base_query_tables, 
@@ -25453,208 +25476,213 @@ class LibraryResource(DbApiResource):
                     request.user,for_screen_facility_id) is False:
                 raise PermissionDenied
         
-        try:
-            # general setup
-            exact_fields = set(param_hash.get('exact_fields',[]))
-            manual_field_includes = set(param_hash.get('includes', []))
-            if exact_fields:
-                if 'comment_array' in exact_fields:
-                    manual_field_includes.add('comment_array')
-            else:
+        # general setup
+        exact_fields = set(param_hash.get('exact_fields',[]))
+        manual_field_includes = set(param_hash.get('includes', []))
+        if exact_fields:
+            if 'comment_array' in exact_fields:
                 manual_field_includes.add('comment_array')
-                
-            if is_for_detail:
-                manual_field_includes.add('concentration_types')
- 
-            (filter_expression, filter_hash, readable_filter_hash) = \
-                SqlAlchemyResource.build_sqlalchemy_filters(
-                    schema, param_hash=param_hash)
-            filename = self._get_filename(
-                readable_filter_hash, schema, is_for_detail)
-            filter_expression = \
-                self._meta.authorization.filter(request.user,filter_expression)
-                
-            order_params = param_hash.get('order_by', [])
-            field_hash = self.get_visible_fields(
-                schema['fields'], filter_hash.keys(), manual_field_includes,
-                param_hash.get('visibilities'),
-                exact_fields=set(param_hash.get('exact_fields', [])),
-                order_params=order_params)
-            order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
-                order_params, field_hash)
+        else:
+            manual_field_includes.add('comment_array')
             
-            rowproxy_generator = None
-            if use_vocab is True:
-                rowproxy_generator = \
-                    DbApiResource.create_vocabulary_rowproxy_generator(field_hash)
+        if is_for_detail:
+            manual_field_includes.add('concentration_types')
+        
+        (filter_expression, filter_hash, readable_filter_hash) = \
+            SqlAlchemyResource.build_sqlalchemy_filters(
+                schema, param_hash=param_hash)
+        filename = self._get_filename(
+            readable_filter_hash, schema, is_for_detail)
+        filter_expression = \
+            self._meta.authorization.filter(request.user,filter_expression)
+                
+        order_params = param_hash.get('order_by', [])
+        field_hash = self.get_visible_fields(
+            schema['fields'], filter_hash.keys(), manual_field_includes,
+            param_hash.get('visibilities'),
+            exact_fields=set(param_hash.get('exact_fields', [])),
+            order_params=order_params)
+        
+        order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
+            order_params, field_hash)
+            
+        rowproxy_generator = None
+        if use_vocab is True:
             rowproxy_generator = \
-                self._meta.authorization.get_row_property_generator(
-                    request.user, field_hash, rowproxy_generator)
+                DbApiResource.create_vocabulary_rowproxy_generator(field_hash)
+        rowproxy_generator = \
+            self._meta.authorization.get_row_property_generator(
+                request.user, field_hash, rowproxy_generator)
 
-            # specific setup
-            _l = self.bridge['library']
-            _comment_apilogs = ApiLogResource.get_resource_comment_subquery(
-                self._meta.resource_name)
-            _comment_apilogs = _comment_apilogs.cte('_comment_apilogs')
-            _well = self.bridge['well']
-            _plate = self.bridge['plate']
-            _copy = self.bridge['copy']
-            _apilog = self.bridge['reports_apilog']
-            custom_columns = {
-                'comment_array': (
-                    select([func.array_to_string(
-                        func.array_agg(
-                            _concat(                            
-                                cast(_comment_apilogs.c.name,
-                                    sqlalchemy.sql.sqltypes.Text),
-                                LIST_DELIMITER_SUB_ARRAY,
-                                cast(_comment_apilogs.c.date_time,
-                                    sqlalchemy.sql.sqltypes.Text),
-                                LIST_DELIMITER_SUB_ARRAY,
-                                _comment_apilogs.c.comment)
-                        ), 
-                        LIST_DELIMITER_SQL_ARRAY) ])
-                    .select_from(_comment_apilogs)
-                    .where(_comment_apilogs.c.key==_l.c.short_name)),
-                'preview_log_id': (
-                    select([_apilog.c.id])
-                        .select_from(_apilog)
-                        .where(_apilog.c.ref_resource_name==SCHEMA.LIBRARY.resource_name)
-                        .where(_apilog.c.key == _l.c.short_name)
-                        .where(_apilog.c.is_preview == True)
-                        .limit(1)
-                    ),
-                'preview_log_key': (
-                    select([_concat_with_sep((_apilog.c.ref_resource_name,
-                        _apilog.c.key,func.to_char(_apilog.c.date_time,
-                            'YYYY-MM-DD\"T\"HH24:MI:SS.MS')), '/')])
-                        .select_from(_apilog)
-                        .where(_apilog.c.ref_resource_name==SCHEMA.LIBRARY.resource_name)
-                        .where(_apilog.c.key == _l.c.short_name)
-                        .where(_apilog.c.is_preview == True)
-                        .limit(1)
-                    ),
-                'copy_plate_count': literal_column(
-                    '(select count(distinct(p.plate_id))'
-                    '    from plate p join copy c using(copy_id)'
-                    '    where c.library_id=library.library_id)'
-                    ).label('plate_count'),
-                'plate_count': literal_column(
-                    '(select count(distinct(w.plate_number))'
-                    '    from well w'
-                    '    where w.library_id=library.library_id)'
-                    ).label('plate_count'),
-                'copies': literal_column(
-                    "(select array_to_string(array_agg(c1.name),'%s') "
-                    '    from ( select c.name from copy c '
-                    '    where c.library_id=library.library_id '
-                    '    order by c.name) as c1 )' % LIST_DELIMITER_SQL_ARRAY
-                    ).label('copies'),
-                'screening_copies': literal_column(
-                    "(select array_to_string(array_agg(c1.name),'%s') "
-                    '    from ( select distinct(c.name) from copy c '
-                    '    join plate p using(copy_id) '
-                    '    where c.library_id=library.library_id '
-                    "    and c.usage_type='library_screening_plates' "
-                    "    and p.status in ('available') "
-                    '    order by c.name) as c1 )' % LIST_DELIMITER_SQL_ARRAY
-                    ).label('copies'),
-                # TODO: copies2 is the same in all respects, except that it is 
-                # used differently in the UI - not displayed as a list of links
-                'copies2': literal_column(
-                    "(select array_to_string(array_agg(c1.name),'%s') "
-                    '    from ( select c.name from copy c '
-                    '    where c.library_id=library.library_id '
-                    '    order by c.name) as c1 )' % LIST_DELIMITER_SQL_ARRAY
-                    ).label('copies2'),
-                'owner': literal_column(
-                    "(select u.first_name || ' ' || u.last_name "
-                    '    from screensaver_user u '
-                    '    where u.screensaver_user_id=library.owner_screener_id)'
-                    ).label('owner'),
-                'concentration_types': literal_column(
-                    '(select array_to_string(ARRAY['
-                    ' case when exists(select null from well '
-                    '  where well.library_id=library.library_id '
-                    "  and well.mg_ml_concentration is not null limit 1) then 'mg_ml' end, "
-                    ' case when exists(select null from well '
-                    '  where well.library_id=library.library_id '
-                    "  and well.molar_concentration is not null limit 1) then 'molar' end "
-                    "], '%s' ) )" % LIST_DELIMITER_SQL_ARRAY
-                    ),
-                'molar_concentrations': (
-                    select([func.array_agg(func.distinct(_well.c.molar_concentration))])
-                    .select_from(_well)
-                    .where(_well.c.library_id==_l.c.library_id)
-                    ),
-                'mg_ml_concentrations': (
-                    select([func.array_agg(func.distinct(_well.c.mg_ml_concentration))])
-                    .select_from(_well)
-                    .where(_well.c.library_id==_l.c.library_id)
-                    ),
-                'date_screenable': (
-                    select([func.min(_plate.c.date_plated)])
-                    .select_from(_plate.join(_copy, _plate.c.copy_id==_copy.c.copy_id))
-                    .where(_copy.c.library_id == _l.c.library_id)
-                    )
-                }
+        # specific setup
+        _l = self.bridge['library']
+        _comment_apilogs = ApiLogResource.get_resource_comment_subquery(
+            self._meta.resource_name)
+        _comment_apilogs = _comment_apilogs.cte('_comment_apilogs')
+        _well = self.bridge['well']
+        _plate = self.bridge['plate']
+        _copy = self.bridge['copy']
+        _apilog = self.bridge['reports_apilog']
+        custom_columns = {
+            'comment_array': (
+                select([func.array_to_string(
+                    func.array_agg(
+                        _concat(                            
+                            cast(_comment_apilogs.c.name,
+                                sqlalchemy.sql.sqltypes.Text),
+                            LIST_DELIMITER_SUB_ARRAY,
+                            cast(_comment_apilogs.c.date_time,
+                                sqlalchemy.sql.sqltypes.Text),
+                            LIST_DELIMITER_SUB_ARRAY,
+                            _comment_apilogs.c.comment)
+                    ), 
+                    LIST_DELIMITER_SQL_ARRAY) ])
+                .select_from(_comment_apilogs)
+                .where(_comment_apilogs.c.key==_l.c.short_name)),
+            'preview_log_id': (
+                select([_apilog.c.id])
+                    .select_from(_apilog)
+                    .where(_apilog.c.ref_resource_name==SCHEMA.LIBRARY.resource_name)
+                    .where(_apilog.c.key == _l.c.short_name)
+                    .where(_apilog.c.is_preview == True)
+                    .limit(1)
+                ),
+            'preview_log_key': (
+                select([_concat_with_sep((_apilog.c.ref_resource_name,
+                    _apilog.c.key,func.to_char(_apilog.c.date_time,
+                        'YYYY-MM-DD\"T\"HH24:MI:SS.MS')), '/')])
+                    .select_from(_apilog)
+                    .where(_apilog.c.ref_resource_name==SCHEMA.LIBRARY.resource_name)
+                    .where(_apilog.c.key == _l.c.short_name)
+                    .where(_apilog.c.is_preview == True)
+                    .limit(1)
+                ),
+            'copy_plate_count': literal_column(
+                '(select count(distinct(p.plate_id))'
+                '    from plate p join copy c using(copy_id)'
+                '    where c.library_id=library.library_id)'
+                ).label('plate_count'),
+            'plate_count': literal_column(
+                '(select count(distinct(w.plate_number))'
+                '    from well w'
+                '    where w.library_id=library.library_id)'
+                ).label('plate_count'),
+            'copies': literal_column(
+                "(select array_to_string(array_agg(c1.name),'%s') "
+                '    from ( select c.name from copy c '
+                '    where c.library_id=library.library_id '
+                '    order by c.name) as c1 )' % LIST_DELIMITER_SQL_ARRAY
+                ).label('copies'),
+            'screening_copies': literal_column(
+                "(select array_to_string(array_agg(c1.name),'%s') "
+                '    from ( select distinct(c.name) from copy c '
+                '    join plate p using(copy_id) '
+                '    where c.library_id=library.library_id '
+                "    and c.usage_type='library_screening_plates' "
+                "    and p.status in ('available') "
+                '    order by c.name) as c1 )' % LIST_DELIMITER_SQL_ARRAY
+                ).label('copies'),
+            # TODO: copies2 is the same in all respects, except that it is 
+            # used differently in the UI - not displayed as a list of links
+            'copies2': literal_column(
+                "(select array_to_string(array_agg(c1.name),'%s') "
+                '    from ( select c.name from copy c '
+                '    where c.library_id=library.library_id '
+                '    order by c.name) as c1 )' % LIST_DELIMITER_SQL_ARRAY
+                ).label('copies2'),
+            'owner': literal_column(
+                "(select u.first_name || ' ' || u.last_name "
+                '    from screensaver_user u '
+                '    where u.screensaver_user_id=library.owner_screener_id)'
+                ).label('owner'),
+            'concentration_types': literal_column(
+                '(select array_to_string(ARRAY['
+                ' case when exists(select null from well '
+                '  where well.library_id=library.library_id '
+                "  and well.mg_ml_concentration is not null limit 1) then 'mg_ml' end, "
+                ' case when exists(select null from well '
+                '  where well.library_id=library.library_id '
+                "  and well.molar_concentration is not null limit 1) then 'molar' end "
+                "], '%s' ) )" % LIST_DELIMITER_SQL_ARRAY
+                ),
+            'molar_concentrations': (
+                select([func.array_agg(func.distinct(_well.c.molar_concentration))])
+                .select_from(_well)
+                .where(_well.c.library_id==_l.c.library_id)
+                ),
+            'mg_ml_concentrations': (
+                select([func.array_agg(func.distinct(_well.c.mg_ml_concentration))])
+                .select_from(_well)
+                .where(_well.c.library_id==_l.c.library_id)
+                ),
+            'date_screenable': (
+                select([func.min(_plate.c.date_plated)])
+                .select_from(_plate.join(_copy, _plate.c.copy_id==_copy.c.copy_id))
+                .where(_copy.c.library_id == _l.c.library_id)
+                )
+            }
                      
-            base_query_tables = ['library']
+        base_query_tables = ['library']
 
-            columns = self.build_sqlalchemy_columns(
-                field_hash.values(), base_query_tables=base_query_tables,
-                custom_columns=custom_columns)
+        columns = self.build_sqlalchemy_columns(
+            field_hash.values(), base_query_tables=base_query_tables,
+            custom_columns=custom_columns)
+        
+        # is_released is required for the authorization filter
+        columns['is_released'] = _l.c.is_released
+        
+        # build the query statement
 
-            # build the query statement
+        j = _l
+        stmt = select(columns.values()).select_from(j)
 
-            j = _l
-            stmt = select(columns.values()).select_from(j)
+        if for_screen_facility_id:
+            stmt = stmt.where(_l.c.library_id.in_(
+                self.get_screen_library_ids(for_screen_facility_id)))
 
-            if for_screen_facility_id:
-                stmt = stmt.where(_l.c.library_id.in_(
-                    self.get_screen_library_ids(for_screen_facility_id)))
+        # TODO: 20181113 - this setting is subject to ongoing discussion:
+        # - these data and associated data should be removed from the 
+        # database rather than hidden from views - sde
+        stmt = stmt.where(not_(_l.c.library_type.in_(
+            SCHEMA.VOCAB.library.library_type.LIBRARY_TYPES_TO_HIDE)))
+        
+        # general setup
+         
+        (stmt, count_stmt) = self.wrap_statement(
+            stmt, order_clauses, filter_expression)
+        
+        if not order_clauses:
+            stmt = stmt.order_by("short_name")
 
-            # general setup
+        # compiled_stmt = str(stmt.compile(
+        #     dialect=postgresql.dialect(),
+        #     compile_kwargs={"literal_binds": True}))
+        # logger.info('compiled_stmt %s', compiled_stmt)
+            
+        title_function = None
+        if use_titles is True:
+            def title_function(key):
+                return field_hash[key]['title']
+        if is_data_interchange:
+            title_function = DbApiResource.datainterchange_title_function(
+                field_hash,schema['id_attribute'])
+            
+        if False:
+            logger.info(
+                'stmt: %s',
+                str(stmt.compile(
+                    dialect=postgresql.dialect(),
+                    compile_kwargs={"literal_binds": True})))
+        
+        return self.stream_response_from_statement(
+            request, stmt, count_stmt, filename,
+            field_hash=field_hash,
+            param_hash=param_hash,
+            is_for_detail=is_for_detail,
+            rowproxy_generator=rowproxy_generator,
+            title_function=title_function, meta=kwargs.get('meta', None),
+            use_caching=True)
              
-            (stmt, count_stmt) = self.wrap_statement(
-                stmt, order_clauses, filter_expression)
-            
-            if not order_clauses:
-                stmt = stmt.order_by("short_name")
-
-            # compiled_stmt = str(stmt.compile(
-            #     dialect=postgresql.dialect(),
-            #     compile_kwargs={"literal_binds": True}))
-            # logger.info('compiled_stmt %s', compiled_stmt)
-            
-            title_function = None
-            if use_titles is True:
-                def title_function(key):
-                    return field_hash[key]['title']
-            if is_data_interchange:
-                title_function = DbApiResource.datainterchange_title_function(
-                    field_hash,schema['id_attribute'])
-                
-            if False:
-                logger.info(
-                    'stmt: %s',
-                    str(stmt.compile(
-                        dialect=postgresql.dialect(),
-                        compile_kwargs={"literal_binds": True})))
-            
-            return self.stream_response_from_statement(
-                request, stmt, count_stmt, filename,
-                field_hash=field_hash,
-                param_hash=param_hash,
-                is_for_detail=is_for_detail,
-                rowproxy_generator=rowproxy_generator,
-                title_function=title_function, meta=kwargs.get('meta', None),
-                use_caching=True)
-             
-        except Exception, e:
-            logger.exception('on get list')
-            raise e  
-
     @classmethod
     def get_screen_library_ids(cls, for_screen_facility_id):
         

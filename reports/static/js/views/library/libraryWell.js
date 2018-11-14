@@ -170,6 +170,7 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
       if (view) {
         this.removeView(this.tabViews[key]);
       }
+      
       if (_.contains(delegateStack, appModel.API_PARAM_SHOW_RESTRICTED)){
         self.consumedStack.unshift(appModel.API_PARAM_SHOW_RESTRICTED);
         delegateStack = _.without(delegateStack, appModel.API_PARAM_SHOW_RESTRICTED);
@@ -192,6 +193,10 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
           e.stopPropagation();
           var url = [self.model.resource.apiUri,self.model.get('well_id'),
                      'report'].join('/');
+          var show_restricted = _.contains(self.consumedStack, appModel.API_PARAM_SHOW_RESTRICTED);
+          if (show_restricted){
+            url += '?' + appModel.API_PARAM_SHOW_RESTRICTED + '=true';
+          }
           appModel.download(url, self.model.resource);
           //url += '?format=xls&use_vocabularies=true&use_titles=true&raw_lists=true';
           //appModel.downloadUrl(url);

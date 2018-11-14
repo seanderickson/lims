@@ -21936,6 +21936,40 @@ class ReagentResourceAuthorization(LibraryResourceAuthorization):
  
         return filter_expression
         
+#     def get_row_property_generator(self, user, fields, extant_generator):
+#         '''
+#         Filter result properties based on authorization rules
+#         '''
+#         class Row:
+#             def __init__(self, row):
+#                 logger.debug(
+#                     'filter screen row: %r', 
+#                     [(key, row[key]) for key in row.keys()])
+#                 self.row = row
+# 
+#             def has_key(self, key):
+#                 return self.row.has_key(key)
+#             def keys(self):
+#                 return self.row.keys()
+#             def __getitem__(self, key):
+#                 if self.row[key] is None:
+#                     return None
+#                 else:
+#                     if key == 'structure_image':
+#                         if self.has_key('is_restricted_structure'):
+#                             if self.row['is_restricted_structure']:
+#                                 return None
+#                         return self.row[key]
+#                     else:
+#                         return self.row[key]
+# 
+#         def restrict_image_property_generator(cursor):
+#             if extant_generator is not None:
+#                 cursor = extant_generator(cursor)
+#             for row in cursor:
+#                 yield Row(row)
+#         
+#         return restrict_image_property_generator
 
 class ReagentResource(DbApiResource):
     
@@ -23199,6 +23233,10 @@ class ReagentResource(DbApiResource):
             # use "use_vocab" as a proxy to also adjust siunits for viewing
             rowproxy_generator = DbApiResource.create_siunit_rowproxy_generator(
                 field_hash, rowproxy_generator)
+        # FIXME: this applies the auth row generator before the value_template,
+        # and other generators have been applied; the auth gen should be applied
+        # last (ok, because build_sqlalchemy_columns is being used to restrict 
+        # in this case) - sde
         rowproxy_generator = \
             self._meta.authorization.get_row_property_generator(
                 request.user, field_hash, rowproxy_generator)
@@ -23210,14 +23248,13 @@ class ReagentResource(DbApiResource):
         if is_data_interchange:
             title_function = DbApiResource.datainterchange_title_function(
                 field_hash,schema['id_attribute'])
-
+            
         return self.stream_response_from_statement(
             request, stmt, count_stmt, filename,
             field_hash=field_hash, param_hash=param_hash,
             is_for_detail=is_for_detail,
             rowproxy_generator=rowproxy_generator,
             title_function=title_function, meta=kwargs.get('meta', None))
-    
     
     
     def delete_reagents_for_library(self, library):
@@ -23701,9 +23738,7 @@ class SmallMoleculeReagentResource(ReagentResource):
         @return an array of sqlalchemy.sql.schema.Column objects
         @param fields - field definitions, from the resource schema
         
-        TODO: 20180426 - replace the "linked" fields with custom joins here; as
-        in SilencingReagentResource
-        
+        FIXME: should restrict fields using the auth.rowproxy?
         '''
         
         logger.info(
@@ -23711,6 +23746,10 @@ class SmallMoleculeReagentResource(ReagentResource):
         if custom_columns is None:
             custom_columns = {}
 
+        reagent_table = self.bridge['reagent']
+
+        custom_columns['structure_image'] = reagent_table.c.well_id
+        
         smr_restricted_fields = ['smiles', 'inchi', 'molecular_formula',
             'molecular_weight','molecular_mass','molfile','structure_image']
         fields_to_restrict = \

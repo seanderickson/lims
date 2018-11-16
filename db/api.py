@@ -22081,22 +22081,23 @@ class ReagentResource(DbApiResource):
                 request, 
                 self.build_schema(
                     request.user,extra_dc_ids=extra_dc_ids, **param_hash), **kwargs)
-        
-        library_short_name = kwargs.pop('library_short_name')
-        try:
-            library = Library.objects.get(short_name=library_short_name)
-            return self.build_response(
-                request, 
-                self.build_schema(
-                    request.user,
-                    extra_dc_ids=extra_dc_ids,
-                    library_classification=library.classification), 
-                **kwargs)
-            
-        except Library.DoesNotExist, e:
-            raise Http404(
-                'Can not build schema - library def needed'
-                'no library found for short_name: %r' % library_short_name)
+
+        # FIXME: 20181115: not used after ReagentResource/SM/RNAi refactor
+#         library_short_name = kwargs.pop('library_short_name')
+#         try:
+#             library = Library.objects.get(short_name=library_short_name)
+#             return self.build_response(
+#                 request, 
+#                 self.build_schema(
+#                     request.user,
+#                     extra_dc_ids=extra_dc_ids,
+#                     library_classification=library.classification), 
+#                 **kwargs)
+#             
+#         except Library.DoesNotExist, e:
+#             raise Http404(
+#                 'Can not build schema - library def needed'
+#                 'no library found for short_name: %r' % library_short_name)
 
                 
     def build_schema(
@@ -22105,23 +22106,59 @@ class ReagentResource(DbApiResource):
         schema = deepcopy(
             super(ReagentResource, self).build_schema(user=user, **kwargs))
         
-        if library_classification:
-            if library_classification == 'rnai':
-                sub_data = self.get_sr_resource().build_schema(user, **kwargs)
-            elif library_classification == 'natural_product':
-                sub_data = self.get_npr_resource().build_schema(user, **kwargs)
-            elif library_classification == 'small_molecule':
-                sub_data = self.get_smr_resource().build_schema(user, **kwargs)
-            else:
-                raise ProgrammingError
-            logger.info('sub_resource field visibilities: %r', 
-                [(key,'%r'%fi['visibility']) for key, fi in sub_data['fields'].items()])
+#         if library_classification:
+#             logger.info('build schema: %r', library_classification)
+#             if library_classification == 'rnai':
+#                 sub_data = self.get_sr_resource().build_schema(user, **kwargs)
+#             elif library_classification == 'natural_product':
+#                 sub_data = self.get_npr_resource().build_schema(user, **kwargs)
+#             elif library_classification == 'small_molecule':
+#                 sub_data = self.get_smr_resource().build_schema(user, **kwargs)
+#             else:
+#                 raise ProgrammingError
+#             logger.info('sub_resource field visibilities: %r', 
+#                 [(key,'%r'%fi['visibility']) for key, fi in sub_data['fields'].items()])
+#             newfields = {}
+#             newfields.update(sub_data['fields'])
+#             newfields.update(schema['fields'])
+#             schema['fields'] = newfields
+#             
+#             schema['content_types'] = sub_data['content_types']
+        
+        if self._meta.resource_name in ['reagent', 'well']:
+            # TODO: 20181115: 
+            # This is a hack to build a composite schema containing all the 
+            # subtype field definitions;
+            # ResourceResouce code should be modified to build this
+            sub_data = self.get_resource_resource()._get_resource_schema(
+                'silencingreagent', user=user, **kwargs)
+            for field in sub_data['fields'].values():
+                field['visibility'] = []
+                field['editability'] = []
             newfields = {}
             newfields.update(sub_data['fields'])
             newfields.update(schema['fields'])
             schema['fields'] = newfields
-            
-            schema['content_types'] = sub_data['content_types']
+ 
+            sub_data = self.get_resource_resource()._get_resource_schema(
+                'smallmoleculereagent', user=user, **kwargs)
+            for field in sub_data['fields'].values():
+                field['visibility'] = []
+                field['editability'] = []
+            newfields = {}
+            newfields.update(sub_data['fields'])
+            newfields.update(schema['fields'])
+            schema['fields'] = newfields
+             
+            sub_data = self.get_resource_resource()._get_resource_schema(
+                'naturalproductreagent', user=user, **kwargs)
+            for field in sub_data['fields'].values():
+                field['visibility'] = []
+                field['editability'] = []
+            newfields = {}
+            newfields.update(sub_data['fields'])
+            newfields.update(schema['fields'])
+            schema['fields'] = newfields
             
         
         logger.info('build reagent schema for user: %r, resource: %r, '
@@ -23051,10 +23088,35 @@ class ReagentResource(DbApiResource):
         show_restricted = parse_val(
             param_hash.get(API_PARAM_SHOW_RESTRICTED, False),
             API_PARAM_SHOW_RESTRICTED,'boolean')
+        
         columns = self.build_sqlalchemy_columns(
             field_hash.values(), user=user, base_query_tables=base_query_tables,
             custom_columns=custom_columns, show_preview=show_preview,
             show_restricted=show_restricted )
+
+        if self._meta.resource_name == 'reagent':
+            # TODO: 20181115: 
+            # This is a hack to build a composite schema containing all the 
+            # subtype field definitions;
+            # ResourceResouce code should be modified to build this?
+            new_columns = {}
+            new_columns.update(columns)
+            sub_columns = self.get_sr_resource().build_sqlalchemy_columns(
+                field_hash.values(), user=user, base_query_tables=base_query_tables,
+                custom_columns=custom_columns, show_preview=show_preview,
+                show_restricted=show_restricted )
+            new_columns.update(sub_columns)
+            sub_columns = self.get_smr_resource().build_sqlalchemy_columns(
+                field_hash.values(), user=user, base_query_tables=base_query_tables,
+                custom_columns=custom_columns, show_preview=show_preview,
+                show_restricted=show_restricted )
+            new_columns.update(sub_columns)
+            sub_columns = self.get_npr_resource().build_sqlalchemy_columns(
+                field_hash.values(), user=user, base_query_tables=base_query_tables,
+                custom_columns=custom_columns, show_preview=show_preview,
+                show_restricted=show_restricted )
+            new_columns.update(sub_columns)
+            columns = new_columns
 
         # is_released is required for the authorization filter
         columns['is_released'] = _library.c.is_released
@@ -23519,8 +23581,9 @@ class SilencingReagentResource(ReagentResource):
         rna_restricted_fields = ['sequence','anti_sense_sequence']
         fields_to_restrict = set(rna_restricted_fields)&set(
             [field['key'] for field in fields])
-        if ( self._meta.authorization.is_restricted_view(user) 
-             or show_restricted is not True):
+        if ( show_preview is not True 
+                and self._meta.authorization.is_restricted_view(user) 
+                    or show_restricted is not True):
             if fields_to_restrict:
                 logger.info('RNAi fields to restrict: %r', fields_to_restrict)
                 for field in fields_to_restrict:
@@ -23755,10 +23818,12 @@ class SmallMoleculeReagentResource(ReagentResource):
         fields_to_restrict = \
             set(smr_restricted_fields)&set([field[FIELD.KEY] for field in fields])
         
-        logger.info('fields to restrict: %r, %r', 
-            user, self._meta.authorization.is_restricted_view(user))
-        if ( self._meta.authorization.is_restricted_view(user) 
-             or show_restricted is not True):
+        logger.info('fields to restrict: %r, %r, %r, %r, %r', 
+            fields_to_restrict, user, self._meta.authorization.is_restricted_view(user),
+            show_preview, show_restricted)
+        if ( show_preview is not True
+                and (self._meta.authorization.is_restricted_view(user) 
+                    or show_restricted is not True)):
             if fields_to_restrict:
                 
                 logger.info('SM fields to restrict: %r', fields_to_restrict)
@@ -24521,6 +24586,7 @@ class WellResource(DbApiResource):
 
         logger.debug('search data: %r', search_data)
         kwargs_for_log = kwargs.copy()
+        kwargs_for_log[API_PARAM_SHOW_RESTRICTED] = True
         kwargs_for_log[SCHEMA.API_PARAM_NESTED_SEARCH] = search_data
         kwargs_for_log['includes'] = ['*', 'molfile','-structure_image']
         
@@ -24966,7 +25032,7 @@ class WellResource(DbApiResource):
     @classmethod
     def create_vendor_compound_name_base_query(cls, well_search_data):
         
-        IS_SMALL_MOLECULE_ONLY = True
+        IS_SMALL_MOLECULE_ONLY = False
         
         # Process the patterns by line
         parsed_lines = well_search_data
@@ -25006,7 +25072,7 @@ class WellResource(DbApiResource):
         clause_vn = []
         for term in search_items:
             clause_cn.append(_cn.c.compound_name.ilike('%{}%'.format(term)))
-            clause_vn.append(_r.c.vendor_identifier.ilike('%{}%'.format(term)))
+            clause_vn.append(_r.c.vendor_identifier==term)
         if len(clause_cn) > 1:
             clause_cn = or_(*clause_cn)
             clause_vn = or_(*clause_vn)
@@ -25026,7 +25092,7 @@ class WellResource(DbApiResource):
             select([_well.c.well_id])
             .select_from(vjoin)
             .where(clause_vn))
-        query = querycn.union_all(query_vendor)
+        query = querycn.union(query_vendor)
         return query
         
     @classmethod

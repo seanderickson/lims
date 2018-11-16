@@ -1,6 +1,6 @@
 { 
   "facility_id": "200001",
-  "title": "Reagent Counts for Small Molecule Screens",
+  "title": "Reagent counts for small molecule screens",
   "screen_type": "small_molecule",
   "study_type": "in_silico",
   "summary": "Annotates each small molecule reagent with the number of times it has been screened, and the count of positive hits per reagent (library well) across all small molecule screens. This data is based on primary screening data only and the \"positive\" designations were determined by the investigator(s) responsible for each screen.",

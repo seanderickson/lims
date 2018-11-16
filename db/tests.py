@@ -10131,7 +10131,10 @@ class ScreensaverUserResource(DBResourceTestCase):
         # 2.B Verify user2 is a lab member
         user1_output_data2 = self.get_single_resource(
             resource_uri, 
-            {'screensaver_user_id': user1_output_data['screensaver_user_id']})
+            {
+                'screensaver_user_id': user1_output_data['screensaver_user_id'],
+                'includes': ['lab_member_ids']
+            })
         self.assertTrue('lab_member_ids' in user1_output_data2)
         lab_member_ids = user1_output_data2['lab_member_ids']
         self.assertTrue(
@@ -10219,7 +10222,10 @@ class ScreensaverUserResource(DBResourceTestCase):
         # 2.B Verify user2 is a lab member
         lab_head_updated = self.get_single_resource(
             resource_uri, 
-            {'screensaver_user_id': lab_head['screensaver_user_id']})
+            {
+                'screensaver_user_id': lab_head['screensaver_user_id'],
+                'includes': ['lab_member_ids']
+            })
         self.assertTrue('lab_member_ids' in lab_head_updated)
         lab_member_ids = lab_head_updated['lab_member_ids']
         self.assertTrue(
@@ -10277,7 +10283,10 @@ class ScreensaverUserResource(DBResourceTestCase):
         # 2.B Verify user2 is a lab member
         lab_head_updated = self.get_single_resource(
             resource_uri, 
-            {'screensaver_user_id': lab_head['screensaver_user_id']})
+            {
+                'screensaver_user_id': lab_head['screensaver_user_id'],
+                'includes': ['lab_member_ids']
+            })
         self.assertTrue('lab_member_ids' in lab_head_updated)
         lab_member_ids = lab_head_updated['lab_member_ids']
         self.assertTrue(
@@ -11205,7 +11214,10 @@ class ScreensaverUserResource(DBResourceTestCase):
         resource_uri = '/'.join([resource_uri,lab_head['username']])
         lab_head_updated = self.get_single_resource(
             resource_uri, 
-            {'screensaver_user_id': lab_head['screensaver_user_id']})
+            {
+                'screensaver_user_id': lab_head['screensaver_user_id'],
+                'includes': ['lab_member_ids']
+            })
         self.assertTrue('lab_member_ids' in lab_head_updated)
         lab_member_ids = lab_head_updated['lab_member_ids']
         self.assertTrue(
@@ -11714,15 +11726,15 @@ class DataSharingLevel(DBResourceTestCase):
     def setup_library(self):
         
         short_name = 'library1'
-        resource_uri = '/'.join([BASE_URI_DB, 'library',short_name])
-        self.library1 = self.get_entity(resource_uri)
+        library_resource_uri = '/'.join([BASE_URI_DB, 'library',short_name])
+        self.library1 = self.get_entity(library_resource_uri)
         if self.library1 is None:
             logger.info('library not found, creating: %s', short_name)
             self.library1 = self.create_library({
-                'short_name': short_name,
+                LIBRARY.SHORT_NAME: short_name,
                 START_PLATE: 1, 
                 END_PLATE: 20,
-                SCREEN_TYPE: 'small_molecule' })
+                SCREEN_TYPE: 'small_molecule'})
     
             logger.info('create wells...')
             plate = 1
@@ -11746,6 +11758,21 @@ class DataSharingLevel(DBResourceTestCase):
                 resp.status_code in [200], 
                 (resp.status_code, self.get_content(resp)))
 
+            # NOTE: set the library as released so that the screeners can see it
+            library_patch = {
+                LIBRARY.IS_RELEASED: True                 
+            }
+            resp = self.api_client.patch(
+                library_resource_uri, format='json', data=library_patch, 
+                authentication=self.get_credentials(), 
+                **{ 'limit': 0, 'includes': '*'} )
+            self.assertTrue(
+                resp.status_code in [200], 
+                (resp.status_code, self.get_content(resp)))
+            new_library_data = self.get_library(short_name)
+            self.assertTrue(new_library_data[LIBRARY.IS_RELEASED])
+            self.assertIsNone(new_library_data[LIBRARY.PREVIEW_LOG_ID])
+            
     def get_screenresult_json(self, screen_facility_id, username=None, data=None):
         data_for_get = { 'includes': '*' }
         if data is not None:
@@ -12208,8 +12235,8 @@ class DataSharingLevel(DBResourceTestCase):
         expected_wells = set(wellids_to_test)
         reported_wells = set(reported_reagents.keys())
         self.assertEqual(expected_wells, reported_wells,
-            'not all wells were found: missing: %r, extra: %r' %
-            (expected_wells-reported_wells, reported_wells-expected_wells))
+            'not all wells were found: missing: %r, expected: %r, reported: %r' %
+            (expected_wells-reported_wells, expected_wells, reported_wells))
         for well_id, reagent in reported_reagents.items():
             logger.info('reported reagent: %s %r', well_id, reagent)
             for dc_id, dc in reported_datacolumns.items():

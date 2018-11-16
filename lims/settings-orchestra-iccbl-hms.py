@@ -16,6 +16,7 @@ print 'PROJECT_ROOT: ', PROJECT_ROOT
     
 try:
     from app_data_iccbl import APP_PUBLIC_DATA
+    APP_PUBLIC_DATA.SESSION_COOKIE_AGE = SESSION_COOKIE_AGE
 except ImportError:
     print >>sys.stderr, '''APP_PUBLIC_DATA not defined.  Please configure a version of
     app_data.py for this site.'''
@@ -85,6 +86,7 @@ ALLOWED_HOSTS = [
 # although not all choices may be available on all operating systems.
 # In a Windows environment this must be set to your system time zone.
 TIME_ZONE = 'US/Eastern'
+APP_PUBLIC_DATA.TIME_ZONE = TIME_ZONE
 
 # Language code for this installation. All choices can be found here:
 # http://www.i18nguy.com/unicode/language-identifiers.html

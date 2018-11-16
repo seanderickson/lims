@@ -17,3 +17,6 @@ class APP_PUBLIC_DATA:
 
     small_molecule_cherry_pick_ratio_allowed = 0.003
     rnai_cherry_pick_ratio_allowed = 0.0165
+
+    # Interval between user activity and logout for the UI
+    BROWSER_IDLE_TIMEOUT_SECONDS = 2 * 60 * 60 # 2 hours

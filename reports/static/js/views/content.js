@@ -9,6 +9,7 @@ define([
   'views/generic_detail_layout',
   'views/generic_edit',
   'views/library/library',
+  'views/library/libraryListView',
   'views/library/libraryCopy',
   'views/library/libraryCopyPlate',
   'views/library/libraryWells',
@@ -34,7 +35,7 @@ define([
   'templates/about.html'
 ], 
 function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout, 
-         EditView, LibraryView, LibraryCopyView, LibraryCopyPlateView,
+         EditView, LibraryView, LibraryListView, LibraryCopyView, LibraryCopyPlateView,
          LibraryWellsView, LibraryWellView, LibraryCopyWellsView, 
          ScreenView, LibraryScreeningView, CherryPickRequestView,
          PlateLocationView, UserAdminView, UserView, UserGroupAdminView, 
@@ -44,8 +45,9 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
 
   var VIEWS = {
     'ListView': ListView, 
-    'DetailView': DetailLayout, 
+    'DetailView': DetailLayout,
     'LibraryView': LibraryView,
+    'LibraryListView': LibraryListView,
     'LibraryCopyView': LibraryCopyView, 
     'LibraryCopyPlateView': LibraryCopyPlateView,
     'ScreenView': ScreenView,

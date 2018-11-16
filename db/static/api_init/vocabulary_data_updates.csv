@@ -155,3 +155,4 @@ other_academic,labaffiliation.category,7,"Other - Academic","Other - Academic",F
 other_industry,labaffiliation.category,8,"Other - Industry","Other - Industry",FALSE,
 nci,library.type,10,NCI,NCI,TRUE,
 dos,library.type,4,DOS,DOS,TRUE,
+annotation,library.type,1,Annotation,Annotation,TRUE,

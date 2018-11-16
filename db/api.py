@@ -183,6 +183,8 @@ API_PARAM_VOLUME_OVERRIDE = 'volume_override'
 API_PARAM_SET_DESELECTED_TO_ZERO = 'set_deselected_to_zero'
 API_PARAM_DC_IDS = 'dc_ids'
 API_PARAM_SHOW_RESTRICTED = 'show_restricted'
+API_PARAM_SHOW_ARCHIVED = 'show_archived'
+
 
 logger = logging.getLogger(__name__)
 
@@ -14841,6 +14843,7 @@ class LibraryScreeningResource(ActivityResource):
                           .join(_ap, _ap.c.plate_id==_p.c.plate_id))
                     .where(_ap.c.library_screening_id==library_screening_id))]
             
+            kwargs[API_PARAM_SHOW_ARCHIVED] = True
             return self.get_library_resource().get_list(request,
                 short_name__in=library_names, **kwargs)
 
@@ -25573,13 +25576,21 @@ class LibraryResource(DbApiResource):
         if schema is None:
             raise Exception('schema not initialized')
         
+        show_archived = parse_val(
+            param_hash.get(API_PARAM_SHOW_ARCHIVED, False),
+            API_PARAM_SHOW_ARCHIVED,'boolean')
+
         is_for_detail = kwargs.pop('is_for_detail', False)
+        if is_for_detail is True:
+            show_archived = True
+
         for_screen_facility_id = param_hash.pop('for_screen_facility_id', None)
         if for_screen_facility_id is not None:
             if self.get_screen_resource()._meta.authorization\
                 .has_screen_read_authorization(
                     request.user,for_screen_facility_id) is False:
                 raise PermissionDenied
+            show_archived = True
         
         # general setup
         exact_fields = set(param_hash.get('exact_fields',[]))
@@ -25627,7 +25638,23 @@ class LibraryResource(DbApiResource):
         _well = self.bridge['well']
         _plate = self.bridge['plate']
         _copy = self.bridge['copy']
+        _screen = self.bridge['screen']
+        _ap = self.bridge['assay_plate']
+        _aw = self.bridge['assay_well']
+        _sr = self.bridge['screen_result']
         _apilog = self.bridge['reports_apilog']
+        
+        # NOTE: this query is slow
+        screens_data_loaded = (
+            select([_well.c.library_id, _sr.c.screen_id])
+            .select_from(_aw.join(_well, _aw.c.well_id==_well.c.well_id)
+                .join(_sr, _aw.c.screen_result_id==_sr.c.screen_result_id)
+                .join(_screen, _sr.c.screen_id==_screen.c.screen_id))
+            .where(_screen.c.study_type==None)
+            .group_by(_well.c.library_id, _sr.c.screen_id)
+            ).cte('screens_data_loaded')
+        
+
         custom_columns = {
             'comment_array': (
                 select([func.array_to_string(
@@ -25724,7 +25751,42 @@ class LibraryResource(DbApiResource):
                 select([func.min(_plate.c.date_plated)])
                 .select_from(_plate.join(_copy, _plate.c.copy_id==_copy.c.copy_id))
                 .where(_copy.c.library_id == _l.c.library_id)
-                )
+                ),
+            'screens_screening': (
+                select([func.array_to_string(
+                    func.array_agg(literal_column('facility_id')),
+                    LIST_DELIMITER_SQL_ARRAY)])
+                .select_from(
+                    select([_screen.c.facility_id])
+                    .select_from(_screen.join(
+                        _ap, _screen.c.screen_id==_ap.c.screen_id))
+                    .where(_ap.c.plate_number.between(
+                        literal_column('library.start_plate'),
+                        literal_column('library.end_plate'), symmetric=True))
+                    .group_by(_screen.c.facility_id)
+                    .order_by(
+                        "(substring({field_name}, '^[0-9]+'))::int asc nulls first " # cast to integer
+                        ",substring({field_name}, '[^0-9_].*$')  asc nulls first"  # works as text
+                        .format(field_name='facility_id'))
+                    .alias('inner_screens_scrn')
+                    )
+                ),
+            'screens_data_loaded': (
+                select([func.array_to_string(
+                    func.array_agg(literal_column('facility_id')),
+                    LIST_DELIMITER_SQL_ARRAY)])
+                .select_from(
+                    select([_screen.c.facility_id])
+                    .select_from(_screen.join(
+                        screens_data_loaded, _screen.c.screen_id==screens_data_loaded.c.screen_id))
+                    .where(screens_data_loaded.c.library_id==literal_column('library.library_id'))
+                    .order_by(
+                        "(substring({field_name}, '^[0-9]+'))::int asc nulls first " # cast to integer
+                        ",substring({field_name}, '[^0-9_].*$')  asc nulls first"  # works as text
+                        .format(field_name='facility_id'))
+                    .alias('inner_screens_dl')
+                    )
+                ),
             }
                      
         base_query_tables = ['library']
@@ -25735,7 +25797,7 @@ class LibraryResource(DbApiResource):
         
         # is_released is required for the authorization filter
         columns['is_released'] = _l.c.is_released
-        
+        columns['is_archived'] = _l.c.is_archived
         # build the query statement
 
         j = _l
@@ -25745,12 +25807,11 @@ class LibraryResource(DbApiResource):
             stmt = stmt.where(_l.c.library_id.in_(
                 self.get_screen_library_ids(for_screen_facility_id)))
 
-        # TODO: 20181113 - this setting is subject to ongoing discussion:
-        # - these data and associated data should be removed from the 
-        # database rather than hidden from views - sde
-        stmt = stmt.where(not_(_l.c.library_type.in_(
-            SCHEMA.VOCAB.library.library_type.LIBRARY_TYPES_TO_HIDE)))
-        
+        if show_archived is not True and is_for_detail is not True:
+            # Allow archived libraries to be shown for detail viewing (user
+            # has requested the URI specifically)
+            stmt = stmt.where(_l.c.is_archived == False)
+
         # general setup
          
         (stmt, count_stmt) = self.wrap_statement(

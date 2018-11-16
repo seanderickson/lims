@@ -114,6 +114,7 @@ class LIBRARY(schema_obj):
     VERSION_NUMBER = 'version_number'
     IS_RELEASED = 'is_released'
     PREVIEW_LOG_ID = 'preview_log_id'
+    IS_ARCHIVED = 'is_archived'
 
 class COPY(schema_obj):
     resource_name = 'librarycopy'
@@ -397,7 +398,6 @@ class VOCAB(reports.schema.VOCAB):
         
         class library_type(schema_obj):
             FRAGMENT = 'fragment'
-            ANNOTATION = 'annotation'
             NATURAL_PRODUCTS = 'natural_products'
             ACADEMIC_COLLECTION = 'academic_collection'
             KNOWN_BIOACTIVES = 'known_bioactives'
@@ -407,16 +407,13 @@ class VOCAB(reports.schema.VOCAB):
             MIRNA_INHIBITOR = 'mirna_inhibitor'
             COMMERCIAL = 'commercial'
             OTHER = 'other'
-
+            
+            # Retired
             DOS = 'dos'
             NCI = 'nci'
+            ANNOTATION = 'annotation'
             # NIH_MLP = 'nih_mlp' # TODO: not used in ICCB-L
 
-            # TODO: this setting is subject to ongoing discussion:
-            # - these data and associated data should be removed from the 
-            # database rather than hidden from views - sde
-            LIBRARY_TYPES_TO_HIDE = [DOS, NCI, ANNOTATION] # NIH_MLP
-            
     class screensaver_user(schema_obj):
         
         class classification(schema_obj):

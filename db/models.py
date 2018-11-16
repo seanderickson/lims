@@ -1208,6 +1208,7 @@ class Library(models.Model):
         related_name='libraries_loaded', null=True)
     
     is_released = models.BooleanField(default=False)
+    is_archived = models.BooleanField(default=False)
     
     @property
     def classification(self):

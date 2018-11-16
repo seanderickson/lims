@@ -42,7 +42,6 @@ define([
       self._classname = 'List2 - ' + resource.key;
       var urlSuffix = self.urlSuffix = "";
       var uriStack = args.uriStack || [];
-
       if (!self._options.extraControls){
         self._options.extraControls = [];
       } else {
@@ -520,12 +519,13 @@ define([
           search_title_val += '[ ' + or_clauses + ' ]';
         }
       }            
-
-      if(search_title_val !== ''){
-        self.trigger('update_title', 'Search: ' + search_title_val);
-      } else {
-        self.trigger('update_title', '');
-      }
+      
+      // 20181115 - removed per JAS
+      //if(search_title_val !== ''){
+      //  self.trigger('update_title', 'Search: ' + search_title_val);
+      //} else {
+      //  self.trigger('update_title', '');
+      //}
       
       return url;
     },

@@ -256,6 +256,7 @@ define([
         var vocabulary = getVocabulary();
         if(!_.isUndefined(value) && !_.isNull(value) && vocabulary){
           value = getTitle(vocabulary,value);
+          return value;
         }
         else if(_.isNumber(value)){
           var formatter = new Iccbl.IntegerFormatter(cell_options);

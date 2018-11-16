@@ -2965,8 +2965,9 @@ class LibraryResource(DBResourceTestCase):
         filename = (
             '%s/db/static/test_data/libraries/clean_data_small_molecule.sdf'
                 % APP_ROOT_DIR )
-
-        data_for_get = { 'limit': 0, 'includes': ['*'] }
+        
+        # Note: include chembank_id because visibility was set to "none"
+        data_for_get = { 'limit': 0, 'includes': ['*','chembank_id','molfile'] }
         data_for_get[DJANGO_ACCEPT_PARAM] = SDF_MIMETYPE
 
         logger.info('Open and PUT file: %r', filename)
@@ -3022,8 +3023,8 @@ class LibraryResource(DBResourceTestCase):
         filename = ( APP_ROOT_DIR 
             + '/db/static/test_data/libraries/clean_data_small_molecule_update.sdf')
 
-        data_for_get = { 'limit': 0, 'includes': ['*', '-structure_image'] }
-        data_for_get[DJANGO_ACCEPT_PARAM] = SDF_MIMETYPE
+#         data_for_get = { 'limit': 0, 'includes': ['*', '-structure_image'] }
+#         data_for_get[DJANGO_ACCEPT_PARAM] = SDF_MIMETYPE
 
         logger.info('Open and PATCH file: %r', filename)
         with open(filename) as input_file:

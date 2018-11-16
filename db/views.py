@@ -38,7 +38,7 @@ def well_image(request, well_id):
     auth = ReagentResourceAuthorization('reagent')
     match = WELL_ID_PATTERN.match(well_id)
     if not match:
-        logger.warn('invalid well_id format: %d, pattern: %s' 
+        logger.warn('invalid well_id format: %r, pattern: %r' 
             % (well_id,WELL_ID_PATTERN))
         raise Http404('invalid well id format: %s' % well_id)
     else:

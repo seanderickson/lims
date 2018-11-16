@@ -107,10 +107,10 @@
         "reagent":{
           "view": "list",
           "expanded": false,
+          "alias": "compound_search",
           "submenus": {
             "smallmoleculereagent":{
-              "view": "list",
-              "alias": "compound_search"
+              "view": "list"
             },
             "silencingreagent":{
               "view": "list"

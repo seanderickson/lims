@@ -288,17 +288,18 @@
   "compound_search": {
     "key": "compound_search",
     "header_message": "Compound Search",
-    "title": "Small Molecule Compound Name or Vendor ID Search",
-    "listing_title": "Small Molecule Compound Name or Vendor ID Search",
+    "title": "Compound Name or Vendor ID Search",
+    "listing_title": "Compound Name or Vendor ID Search",
     "listView": "LibraryWellsView",
     "detailView": "LibraryWellView",
-    "api_resource": "smallmoleculereagent",
+    "api_resource": "reagent",
     "url_root": "/db/api/v1",
-    "description": "Search for compounds",
+    "description": "Search for reagents",
     "options": { 
       "rpp_selections" : [24,96,384,1000],
       "rpp": 24,
-      "order": []  }
+      "order": [],
+      "includes": ["screen_type","compound_name"] }
   },    
   "smallmoleculereagent": {
     "key": "smallmoleculereagent",

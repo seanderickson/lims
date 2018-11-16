@@ -17,6 +17,14 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
   
   var LibraryWellsView = Backbone.Layout.extend({
     
+    // REAGENT_RESTRICTED_FIELDS: visible only to Admins
+    // TODO: move this to metadata
+    REAGENT_RESTRICTED_FIELDS: [
+      'sequence','anti_sense_sequence',
+      'smiles', 'inchi', 'molecular_formula',
+        'molecular_weight','molecular_mass','molfile','structure_image',
+        'molfile'],
+        
     template: _.template(layout),
     
     initialize: function(args) {
@@ -278,6 +286,8 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         }
         if (newResource.key == 'compound_search'){
           url += '/compound_search';
+//          console.log('new field screen_type',newFields['screen_type']['visibility']);
+//          newFields['screen_type']['visibility'] == ['l','d'];
         }
         
         if (self.library && self.library.get('is_pool') !== true){
@@ -320,14 +330,14 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         });
         
         var show_restricted_control = $([
-          '<label class="checkbox-inline pull-left" ',
+          '<label class="checkbox-inline pull-left" style="display: none;" ',
           '   title="Show restricted structure or sequence information, if applicable" >',
           '  <input type="checkbox">Show restricted structures</input>&nbsp;',
           '</label>'
           ].join(''));
         if (self.resource.key == 'silencingreagent'){
           show_restricted_control = $([
-            '<label class="checkbox-inline pull-left" ',
+            '<label class="checkbox-inline pull-left" style="display: none;" ',
             '   title="Show restricted structure or sequence information, if applicable" >',
             '  <input type="checkbox">Show restricted sequences</input>',
             '</label>'
@@ -576,6 +586,15 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
 
         var view = new WellListView(viewArgs);
 
+        function has_restricted_fields(includes) {
+          return !_.isEmpty(_.intersection(includes, self.REAGENT_RESTRICTED_FIELDS));
+        }
+        self.listenTo(view.listModel, 'change:includes', 
+          function(model, changed, options){
+            show_restricted_control.toggle(has_restricted_fields(model.get('includes')));
+          });
+        show_restricted_control.toggle(has_restricted_fields(view.listModel.get('includes')));
+        
         var initialSearchHash = view.listModel.get(appModel.URI_PATH_SEARCH);
         var initial_show_restricted = 
           _.result(initialSearchHash, appModel.API_PARAM_SHOW_RESTRICTED, false);
@@ -745,8 +764,13 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         var schemaUrl = [self.resource.apiUri,'schema'].join('/');
         appModel.getResourceFromUrl(schemaUrl, createReagentView, options);
       } else {
-        // 20180320 - only get the schema if it is not in the initialize args
-        createReagentView(self.resource);
+        // 20181115 - get the explicit schema specified:
+        // TODO: Due to a hack for the composite schema generation for the reagent
+        // resource, the reagent schema must be generated
+        // see ReagentResource.build_schema
+        var schemaUrl = [self.resource.apiUri,'schema'].join('/');
+        appModel.getResourceFromUrl(schemaUrl, createReagentView, options);
+        // createReagentView(self.resource);
       }
     }
     

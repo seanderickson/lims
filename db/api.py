@@ -23896,7 +23896,15 @@ class SmallMoleculeReagentResource(ReagentResource):
                             .where(_smr.c.reagent_id==_reagent.c.reagent_id)
                             )
                     if field == 'structure_image':
-                        custom_columns['structure_image'] = literal_column("'restricted'")
+                        custom_columns['structure_image'] = (
+                            select([
+                                case([
+                                    (_smr.c.is_restricted_structure,'restricted')],
+                                    else_=reagent_table.c.well_id)])
+                            .select_from(_smr)
+                            .where(_smr.c.reagent_id==_reagent.c.reagent_id)
+                            )
+
 
         columns = super(SmallMoleculeReagentResource, self).build_sqlalchemy_columns(
             fields, user=user, base_query_tables=base_query_tables, 

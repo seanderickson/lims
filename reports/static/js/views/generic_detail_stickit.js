@@ -53,7 +53,7 @@ define([
       });
 
       self.show_all_fields_control = $([
-        '<label class="checkbox-inline" ',
+        '<label class="checkbox-inline" id="show_all_fields_control" ',
         '   title="Show all fields available for the resource" >',
         '  <input type="checkbox">show all available fields',
         '</label>'
@@ -280,12 +280,11 @@ define([
       };
           
       function imageGetter(value){
-        
         if (!_.isEmpty(value) && value != '-' ){
           console.log('image:', value);
           return '<img src="' + value + '" alt="structure image" />';
         }
-      };
+      }
       
       data_type_formatters = {
         'date': dateGetter,

@@ -26,25 +26,12 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
     initialize: function(args) {
       var self = this;
       this.__klazz = 'libraryWell';
-//      this.tabViews = {}; // view cache
-//      this.uriStack = args.uriStack;
-//      this.consumedStack = [];
       
       this.tabbed_resources = _.extend({}, 
         _.mapObject(this.tabbed_resources_template, function(val,key){
           return _.clone(val);
         }));
       
-      console.log('self.model.resource.key', self.model.resource.key);
-      if ( self.model.resource.key != 'silencingreagent'){
-        console.log('remove duplex_wells tab for', self.model.resource.key);
-        delete self.tabbed_resources['duplex_wells'];
-      } else {
-//        if (self.model.get('is_pool') != true){
-//          console.log('remove duplex_wells tab for non pool well', self.model, self.model.get('is_pool'));
-//          delete self.tabbed_resources['duplex_wells'];
-//        }
-      }
       if (! self.model.has('other_wells')){
           delete self.tabbed_resources['other_wells_with_reagent'];
         
@@ -147,11 +134,18 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
             console.log('remove duplex_wells tab for non pool well', self.model, self.model.get('is_pool'));
             delete self.tabbed_resources['duplex_wells'];
             $('#duplex_wells').remove();
+          } else if (!self.model.has('duplex_wells')){
+            delete self.tabbed_resources['duplex_wells'];
+            $('#duplex_wells').remove();
           }
           if (_.isEmpty(self.model.get('other_wells_with_reagent'))){
             console.log('remove other_wells tab for non pool well', self.model, self.model.get('other_wells'));
             delete self.tabbed_resources['other_wells'];
             $('#other_wells').remove();
+          }
+          if (self.model.get('library_well_type') != 'experimental'){
+            delete self.tabbed_resources['annotations'];
+            $('#annotations').remove();
           }
           self.change_to_tab(viewId, self.uriStack );
         },
@@ -208,8 +202,18 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
         afterRender: function(){
           var detail_instance = this;
           DetailView.prototype.afterRender.apply(this,arguments);
+          
+          if (self.model.get('is_deprecated') != true){
+            detail_instance.$el.find('#is_deprecated').parent().hide();
+          }
+          
           var is_restricted = ( self.model.get('is_restricted_structure')
               || self.model.get('is_restricted_sequence') );
+          if (!is_restricted){
+            detail_instance.$el.find('#is_restricted_sequence').parent().hide();
+            detail_instance.$el.find('#is_restricted_structure').parent().hide();
+          }
+          
           if (appModel.hasPermission(self.model.resource.key, 'read')
               && is_restricted ){
             
@@ -253,10 +257,7 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
               self.model.fetch({
                 data: data_for_get
               });
-              
             });
-          
-          
           }
         }
       });
@@ -327,11 +328,16 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
                 '<div class="col-xs-6" id="annotation_info-'+facility_id + '"></div>',
                 '</div>',
                 ].join(''));
-              console.log('studyData entry', studyData, facility_id, $studyContainer);
               $content.append($studyContainer);
               var model = new Backbone.Model(studyData);
               model.resource = studyResource;
-              var studyView = new DetailView({
+              var StudyView = DetailView.extend({
+                afterRender: function(){
+                  DetailView.prototype.afterRender.apply(this,arguments);
+                  $('#show_all_fields_control').remove();
+                }
+              });
+              var studyView = new StudyView({
                 model: model,
                 resource: studyResource,
                 buttons: []
@@ -347,20 +353,24 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
               }
               _.each(_.values(schema.fields), appModel.parseSchemaField );
               schema = _.extend(schema, appModel.schemaClass);
-              console.log('study specific schema', schema);
-              console.log('values', studyData.values);
               var model = new Backbone.Model(studyData.values);
               model.resource = schema;
-              var studySpecificDetail = new DetailView({
+              var StudyDetailView = DetailView.extend({
+                afterRender: function(){
+                  DetailView.prototype.afterRender.apply(this,arguments);
+                  $('#show_all_fields_control').remove();
+                }
+              });
+              var studySpecificDetail = new StudyDetailView({
                 model: model,
                 resource: schema,
                 buttons: []
               });
               $studyContainer.find('#annotation_info-'+facility_id + '')
                 .append(studySpecificDetail.render().$el);
+              $('#show_all_fields_control').remove();
             });
             this.$el.find('#resource_content').html($content);
-            
           }
         });
         self.setView('#tab_container', new AnnotationView()).render();
@@ -377,13 +387,18 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
       this.reportUriStack();
     },
 
+    
     /** Generate a duplex well report for the given pool well **/
     setDuplexWells: function(delegateStack){
+
       var self = this;
-      var url = [appModel.dbApiUri,'well',self.model.key,'duplex_wells'].join('/')
+      var url = [appModel.dbApiUri,'well',self.model.key,'duplex_wells'].join('/');
+      
+      console.log('setDuplexWells');
+      var siResource = appModel.getResource('silencingreagent');
       
       function showDuplexWells(response){
-        console.log('process duplex data...', response);
+
         if (!response|| _.isEmpty(response)){
           console.log('empty duplex information');
           return;
@@ -391,124 +406,114 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
         var duplex_wells = _.result(response,'duplex_wells');
         var confirmed_positive_values = _.result(response,'confirmed_positive_values');
         if (!duplex_wells){
-          appModel.error('no duplex well information in response');
+          appModel.error('duplex_wells not found in the response');
           return;
         }
         if (!confirmed_positive_values){
-          appModel.error('No confirmed positive values in the response');
+          appModel.error('confirmed_positive_values not found in the response');
           return;
         }
-        var ColoredConfirmationCell = Backgrid.Cell.extend({
-          render: function(){
-            this.$el.empty();
-            var key = this.column.get('name');
-            if (key == 'screen_facility_id'){
-              this.$el.html(this.model.get(key));
-            }else{
-              var confirmationValue = parseInt(this.model.get(key));
+        
+        
+        var grid = $('<table>');
+        grid.addClass('backgrid duplex-table table-striped table-condensed table-hover');
+        
+        
+        var thead = $('<thead>');
+        var tr = $('<tr>');
+        var td = $('<th>');
+        td.append([
+          siResource.fields['vendor_identifier']['title'] + ':',
+          siResource.fields['sequence']['title'] + ':',
+          siResource.fields['well_id']['title'] + ':'
+        ].join('<br/>'));
+        tr.append(td);
+        
+        _.each(duplex_wells, function(duplex_well){
+          var td = $('<th>');
+          td.append([
+            duplex_well['vendor_id'],duplex_well['sequence'], 
+          ].join('<br>'));
+          td.append('<br>')
+          var hrefTemplate = '#library/{library_short_name}/well/{well_id}'
+          var href = Iccbl.formatString(hrefTemplate,duplex_well);
+          td.append($('<a>', {
+            tabIndex : -1,
+            href : href,
+            target : '_blank',
+          }).text(duplex_well['well_id']));              
+          tr.append(td);
+        });
+        tr.append($('<th>').text('Screen'));
+        
+        thead.append(tr);
+        grid.append(thead);
+        console.log('confirmed_positive_values', confirmed_positive_values);
+        if (!_.isEmpty(confirmed_positive_values)){
+          for(var i=0; i<confirmed_positive_values.length; i++){
+            console.log('i', i);
+            tr = $('<tr>');
+            if (i==0){
+              td = $('<td>').html('<strong>Duplex Activity<br/>Confirmation Data</strong>');
+              td.attr('rowspan','0');
+              tr.append(td);
+            }
+            
+            cpvals = confirmed_positive_values[i];
+            
+            _.each(duplex_wells, function(duplex_well){
+              td = $('<td>');
+              var well_id = duplex_well['well_id'];
+              var confirmationValue = parseInt(cpvals[well_id]);
               if (confirmationValue == 3){
-                this.$el.attr('style','background-color: blue;');
+                td.attr('style','background-color: blue;');
               }else if(confirmationValue == 2){ 
-                this.$el.attr('style','background-color: red;');
+                td.attr('style','background-color: red;');
               }else{
-                this.$el.attr('style','background-color: white;');
+                td.attr('style','background-color: white;');
               }
-            }
-            return this;
+              tr.append(td);
+            });
+            td = $('<td>');
+            var link = $('<a>',{
+              tabIndex: -1,
+              href: '#screen/' + cpvals['screen_facility_id'],
+              target: '_blank',
+              title: cpvals['screen_title']
+            }).text(cpvals['screen_facility_id']);
+            td.append(link);
+            tr.append(td);
+            grid.append(tr);
           }
-        });
-        var colTemplate = {
-          'cell' : 'string',
-          'order' : -1,
-          'sortable': false,
-          'searchable': false,
-          'editable' : false,
-          'visible': true,
-          'headerCell': Backgrid.HeaderCell.extend({
-            sortable: function() { return false; },
-            render: function(){
-              this.$el.empty();
-              var well_data = this.column.get("label");
-              this.$el.append([well_data['vendor_id'],well_data['sequence'], 
-                               ].join('<br>'));
-              this.$el.append('<br>')
-              var hrefTemplate = '#library/{library_short_name}/well/{well_id}'
-              var href = Iccbl.formatString(hrefTemplate,well_data);
-              this.$el.append($('<a>', {
-                tabIndex : -1,
-                href : href,
-                target : '_blank',
-              }).text(well_data['well_id']));              
-              
-              return this;
-            }
-          })
-        };
-        var columns = [
-            _.extend({},colTemplate,{
-              'name' : 'screen_facility_id',
-              'label' : 'Screen',
-              'description' : 'Screen',
-              'order': 1,
-              'sortable': true,
-              'cell': ColoredConfirmationCell
-            })
-        ];
+        }
+        grid.find('th').addClass('renderable');
+        grid.find('td').addClass('renderable');
+      
+        var $legend = $([
+          '<label>Legend: ',
+          '<label>&nbsp;<button style="background-color: red;" ',
+            'class="btn btn-default btn-lg" type="button">',
+            '</button> Pool result not confirmed </label>',
+          '<label>&nbsp;<button style="background-color: blue;" ',
+            'class="btn btn-default btn-lg" type="button">',
+            '</button> Pool result confirmed </label>',
+          '<label>&nbsp;<button style="background-color: white;" ',
+            'class="btn btn-default btn-lg" type="button">',
+            '</button> Inconclusive or no data</label>',
+          '</label>'
+          ].join(''));
+        var $content = $([
+          '<div class="row"><div class="col-lg-12" id="grid"></div></div>',
+          '<div class="row"><div class="col-lg-12 text-center" id="legend"></div></div>'
+          ].join(''));
         
-        _.each(duplex_wells, function(well_data){
-          var well_id = well_data['well_id'];
-          var label = well_data
-          
-          columns.push(
-            _.extend({},colTemplate,{
-              'name' : well_id,
-              'label' : label,
-              'description' : 'Duplex Well Data',
-              'order': 1,
-              'sortable': false,
-              'cell': ColoredConfirmationCell
-            })
-          );
-        });
-        var newCollection = new Backbone.Collection(
-          confirmed_positive_values,
-          { comparator: 'screen_facility_id' });
-        var colModel = new Backgrid.Columns(columns);
-        var _grid = new Backgrid.Grid({
-          columns: colModel,
-          collection: newCollection,
-          className: 'backgrid table-striped table-condensed table-hover'
-        });
-        
-        var GridView = Backbone.Layout.extend({
-          template: _.template(genericLayout),
-          afterRender: function(){
-            $content = $([
-              '<div class="row"><div class="col-xs-12" id="legend"></div></div>',
-              '<div class="row"><div class="col-xs-12" id="grid"></div></div>'
-              ].join(''));
-            $legend = $([
-              '<div class="well col-xs-12">',
-              '<label  class="col-xs-1">Legend:</label>',
-              '<span class="col-xs-9"><ul class="list-inline">',
-              '<li><label><button style="background-color: red;" ',
-                'class="btn btn-default" type="button">',
-                '</button> Pool result not confirmed</label></li>',
-              '<li><label><button style="background-color: blue;" ',
-                'class="btn btn-defaul" type="button">',
-                '</button> Pool result confirmed</label></li>',
-              '<li><label><button style="background-color: white;" ',
-                'class="btn btn-default" type="button">',
-                '</button> Inconclusive or no data</label></li>',
-              '</ul></span></div>'
-              ].join(''));
-            $content.find('#legend').html($legend);
-            $content.find('#grid').html(_grid.render().$el);
-            this.$el.find('#resource_content').html($content);
-          }
-        });
-        
-        self.setView('#tab_container', new GridView()).render();
+        if (!_.isEmpty(confirmed_positive_values)){
+          $content.find('#legend').html($legend);
+        } else {
+          $content.find('#legend').html('No confirmation data recorded for duplex wells');
+        }
+        $content.find('#grid').html(grid);
+        self.$el.find('#tab_container').html($content);
       };
       $.ajax({
         type : "GET",
@@ -520,8 +525,8 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
       });
       
       this.reportUriStack([]);
-      
     }
+    
   });
 
   return LibraryWellView;

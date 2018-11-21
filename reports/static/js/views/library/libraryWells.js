@@ -286,8 +286,6 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         }
         if (newResource.key == 'compound_search'){
           url += '/compound_search';
-//          console.log('new field screen_type',newFields['screen_type']['visibility']);
-//          newFields['screen_type']['visibility'] == ['l','d'];
         }
         
         if (self.library && self.library.get('is_pool') !== true){

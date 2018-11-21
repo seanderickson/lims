@@ -389,7 +389,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         return;
       }else if (uiResourceId == 'about'){
         var AboutView = Backbone.Layout.extend({
-          template: _.template(aboutLayout),
+          template: _.template(aboutLayout)({ static_url: window.static_url }),
           initialize: function(){
             this._classname = 'AboutView';
           }

@@ -40,7 +40,8 @@ define([
     serialize: function() {
       console.log('serialize:', this.contactInfo);
       return {
-        'data': this.contactInfo, 
+        'data': this.contactInfo,
+        'static_url': window.static_url
       };      
     },    
     

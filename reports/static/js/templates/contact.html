@@ -1,17 +1,35 @@
-<div class='row'>
-  <h2>Contact Information</h2>
-  <div id='generic-detail-table' class=''>
-    <table class='table table-condensed data-list'>
+<div class="jumbotron" >
+<div class="row">
+  <a href="#">
+    <img 
+      src="<%= static_url %>/images/screensaver-s.png"
+      style="display: block; margin: auto; width: 10%; max-width: 178px;"
+      >
+    <!-- 
+    <img 
+        src="<%= static_url %>/images/screensaver.png"
+        style="display: block; margin: auto; width: 90%; max-width: 556px;"
+        alt="Screensaver" > 
+     -->
+  </a><br/>
+</div>
+<div class="row">
+
+  <div class="col-xs-12 col-md-6">
+  <p class="lead">Contact Information</p>
+  <table class='backgrid'>
 <% 
   _.each(data, function(contactEntry) { 
 %>
-     <tr>
-        <td class='dl-title col-xs-4' id="title-<%=contactEntry[1] %>" title=''><%=contactEntry[0] %></td>
-        <td class='dl-data col-xs-8' id="<%=contactEntry[0] %>"><%=contactEntry[2] %></td>
-     </tr>
+   <tr>
+      <td class=' col-xs-4' id="title-<%=contactEntry[1] %>" title=''><%=contactEntry[0] %></td>
+      <td class=' col-xs-8' id="<%=contactEntry[0] %>"><%=contactEntry[2] %></td>
+   </tr>
 <% 
   }); 
 %>
-    </table>
-  </div>
-</div>     
+  </table>
+  
+  </div>    
+</div> 
+</div>    

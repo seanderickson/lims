@@ -219,6 +219,14 @@ div.backgrid-paginator {
   background-color: #94fcba;
 }
 
+.duplex-table thead th,
+.duplex-table td {
+ font-weight: bold;
+ text-align: left;
+ vertical-align: top;
+}
+
+
 /** wellselector **/
 
 .wellselector thead th,

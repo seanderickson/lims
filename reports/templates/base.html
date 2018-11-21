@@ -118,7 +118,9 @@
   <script language="javascript" type="text/javascript">
     window.logged_in = "{{ user.is_authenticated|yesno:"true,false" }}"==="true";
     window.is_superuser = "{{ user.is_superuser|yesno:"true,false" }}"==="true";
-    window.user = "{{ user }}"
+    window.user = "{{ user }}";
+    window.logout_url = "{% url 'logout' %}";
+    window.static_url = "{{STATIC_URL}}";
   </script>
   <!-- navbar reports -->
   {% block navbar %}

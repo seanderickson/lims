@@ -42,7 +42,7 @@ define([
     ].join('')),
     
     choiceFieldTemplate: _.template([
-      '<div class="form-group" key="form-group-<%=key%>" >',
+      '<div class="form-group" key="form-group-<%=key%>" title="<%=title%>" >',
       '    <div class="" >',
       '      <div data-editor  key="<%=key%>" style="min-height: 0px; padding-top: 0px; margin-bottom: 0px;" />',
       '      <div data-error class="text-danger" ></div>',
@@ -303,7 +303,7 @@ define([
       
       var schema1 = {};
       schema1['user_id'] = {
-        title: '',
+        title: 'Enter an eCommons ID (if available) or name of the user',
         key: 'user_id',
         type: Backbone.Form.editors.Select,
         editorClass: 'form-control user-select',
@@ -311,7 +311,7 @@ define([
         template: self.choiceFieldTemplate 
       };
       schema1['screen_facility_id'] = {
-        title: '',
+        title: 'Enter the screen ID or text to search in the title',
         key: 'screen_facility_id',
         type: Backbone.Form.editors.Select,
         editorClass: 'form-control screen-select',
@@ -321,7 +321,7 @@ define([
       
       var libraryOptions = appModel.getLibraryOptions();
       schema1['library_short_name'] = {
-        title: '',
+        title: 'Enter the library name or plate number',
         key: 'library_short_name',
         type: Backbone.Form.editors.Select,
         editorClass: 'form-control library-select',

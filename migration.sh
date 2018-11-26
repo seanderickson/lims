@@ -692,9 +692,9 @@ function create_studies {
   
   echo "wait for server process: $server_pid to start..." >>"$LOGFILE" 
   sleep 10
-  echo "create study $study_id, $study_file ..." >>"$LOGFILE" 
   study_id=200001
   study_file=docs/studies/study_${study_id}.json
+  echo "create study $study_id, $study_file ..." >>"$LOGFILE" 
   # lead_screener=sde_edit
   PYTHONPATH=. python reports/utils/django_requests.py -c ${credential_file} \
     -a POST http://localhost:${BOOTSTRAP_PORT}/db/api/v1/study/create_screened_count_study \
@@ -800,11 +800,11 @@ function main {
   
   setup_production_users
   
-  create_studies
+#  create_studies
 
-  if [[ $IS_DEV_SERVER -ne 1 ]]; then
-    run_expiration_scripts
-  fi
+#  if [[ $IS_DEV_SERVER -ne 1 ]]; then
+#    run_expiration_scripts
+#  fi
   # put this here to see if LSF will start reporting results
   # exit 0
     

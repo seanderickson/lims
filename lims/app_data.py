@@ -5,10 +5,11 @@ class APP_PUBLIC_DATA:
     ''' Include public data about the application'''
 
     # NOTE: Override this file in production, and include in the settings.py 
-    # - All variables must be present
+
     @classmethod
     def as_dict(cls):
-        _vars = vars(cls)
+        _vars = vars(APP_PUBLIC_DATA)
+        _vars.update(vars(cls))
         _vars = { k:v for k, v in _vars.iteritems() 
             if '__' not in k and callable(getattr(cls, k)) is not True }
         return _vars

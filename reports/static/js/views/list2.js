@@ -74,10 +74,6 @@ define([
         pageSize: parseInt(self.listModel.get('rpp'))
       };
 
-//      if (! self._options.url) {
-//        self._options.url = self._options.resource.apiUri + '/' + self.urlSuffix;
-//      }
-      
       var collection;
       if( !_options.collection){
         var url = self._options.url || resource.apiUri;
@@ -1046,14 +1042,8 @@ define([
       }
 
       if(_.has(self._options,'extraControls')){
-        self.$('#extra_controls').append(
-          '<div id="extra_controls_div" class="controls-right"></div>');
         _.each(self._options.extraControls, function(control){
-          // Adjust the checkbox types, so that the first also has a margin
-          // otherwise, wrapped checkboxes are offset
-          control.has('input[type="checkbox"]').css('margin-left','10px');
-          if (appModel.DEBUG) console.log('append extra control: ', control);
-          self.$('#extra_controls_div').append(control);
+          self.$('#extra_controls').append(control);
         });
       }
       if(_.has(self._options,'extraListControls')){

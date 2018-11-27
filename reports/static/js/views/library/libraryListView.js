@@ -28,7 +28,8 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView) {
           '  <input type="checkbox">Show archived libraries</input>&nbsp;',
           '</label>'
           ].join(''));
-        
+        show_archived_control.css('margin-left','10px');
+
         extraControls.push(show_archived_control);
       }      
       LibraryListView.__super__.initialize.apply(this, arguments);      

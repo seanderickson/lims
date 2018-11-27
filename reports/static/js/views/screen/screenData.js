@@ -108,10 +108,10 @@ define([
       var key = 'detail';
 
       var $loadScreenResultsButton = $(
-        '<button class="btn btn-default btn-sm" role="button" \
+        '<button class="btn btn-default btn-sm controls-right" role="button" \
         id="loadScreenResults" >Load data</button>');
       var $deleteScreenResultsButton = $(
-        '<button class="btn btn-default btn-sm" role="button" \
+        '<button class="btn btn-default btn-sm controls-right" role="button" \
         id="deleteScreenResults" >Delete data</button>');
       
       
@@ -137,6 +137,7 @@ define([
           '  <input type="checkbox">Show positive rows only',
           '</label>'
           ].join(''));
+        show_positives_control.css('margin-left','10px');
         var show_mutual_positives_control = $([
           '<label class="checkbox-inline" ',
           '       title="Show columns from other screens that have overlapping (mutual) positives." >',

@@ -38,10 +38,6 @@ DATABASES = {
 # See https://docs.djangoproject.com/en/1.5/ref/settings/#allowed-hosts
 ALLOWED_HOSTS = []
 
-
-# NOTE: SITE_ID (for multiple site support) is not being used.
-# SITE_ID = 1
-
 # NOTE: Django internationalization is not being used
 USE_I18N = False
 # Language code for this installation. All choices can be found here:
@@ -83,6 +79,9 @@ STATICFILES_FINDERS = (
     'django.contrib.staticfiles.finders.FileSystemFinder',
     'django.contrib.staticfiles.finders.AppDirectoriesFinder',
 )
+# Make this unique, and don't share it with anybody.
+SECRET_KEY = 'tell_no_1'
+SITE_ID = 1
 
 TEMPLATES = [
     {

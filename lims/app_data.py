@@ -17,6 +17,7 @@ class APP_PUBLIC_DATA:
         return _vars
 
     app_name = 'Screensaver'
+    app_description='Laboratory Information Management System'
     facility_name = 'Screening Facility'
     facility_url = 'http://facility.website.address.here/'
     site_url = 'https://website.address.here/lims'
@@ -29,7 +30,7 @@ class APP_PUBLIC_DATA:
     contact_informatics_name = 'Informatics Contact'
     contact_informatics_email = 'informatics_contact@email.address.here'
 
-    software_development_facility = 'ICCB-Longwood Screening Facility'
+    software_development_facility = 'ICCB-Longwood Screening Facility, Harvard Medical School'
     software_development_facility_url = 'http://iccb.med.harvard.edu/'
     software_repository_url = 'https://github.com/hmsiccbl/lims'
     

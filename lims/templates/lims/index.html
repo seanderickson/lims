@@ -1,0 +1,21 @@
+{% extends "lims/base.html" %}
+{% block head %}
+
+<link rel="shortcut icon" type="image/png" href="{{STATIC_URL}}/images/favicon.ico?v=1"/>
+
+<title>{{ page_title }}</title>
+<!-- 
+  NOTE: The bundle name is created by the assets-webpack-plugin module in the 
+  frontend webpack build (see reports/static/webpack.config. The bundle name
+  is made available to the template through the 
+  django context processor: lims.webpack_bundle_hash_name_processor
+  which is configured in the lims.base_settings.py.
+ -->
+<script src="{{ STATIC_URL }}{{ WEBPACK_BUNDLE_NAME }}" ></script>
+{% endblock %}
+
+{% block application%}
+<div id="application_div"  class="container-fluid">
+<div id="initial">Loading...</div>
+</div>
+{% endblock %}

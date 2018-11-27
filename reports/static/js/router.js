@@ -97,7 +97,7 @@ function($, _, Backbone, appModel) {
       var route = this.get_route(uriStack);
 
       // TODO: this mirrors the handler for route match in main.js
-      document.title = 'Screensaver LIMS' + ': ' + route;
+      // document.title = 'Screensaver LIMS' + ': ' + route;
 
       console.log('route: ', route, options);
       

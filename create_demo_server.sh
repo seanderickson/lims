@@ -120,12 +120,12 @@ function set_settings {
     error "no $APP_DATA_FILE found for APP_DATA_FILE migration.properties setting"
   fi
 
-  login_template="reports/templates/login.html"
-  demo_login_template="reports/templates/login_demo.html"
-  if [[ -e $demo_login_template ]]; then
-    echo "copy $demo_login_template to $login_template"
-    cp $demo_login_template $login_template
-  fi
+#  login_template="reports/templates/login.html"
+#  demo_login_template="reports/templates/login_demo.html"
+#  if [[ -e $demo_login_template ]]; then
+#    echo "copy $demo_login_template to $login_template"
+#    cp $demo_login_template $login_template
+#  fi
 
   echo "set_settings done: $(ts) ..." >> "$LOGFILE"
 }
@@ -139,6 +139,7 @@ function gitpull {
   # Forgo the heavy-handed approach  
   #  git reset --hard $REMOTE/$BRANCH >> "$LOGFILE" 2>&1 || error "git hard reset failed: $?"
   git checkout $REMOTE/$BRANCH ./db/static/api_init/*.csv
+  git checkout $REMOTE/$BRANCH ./reports/templates/login.html
   git pull --ff-only $REMOTE $BRANCH >>"$LOGFILE" 2>&1 || error "git-pull failed: $?"
 
   _debug 'done'

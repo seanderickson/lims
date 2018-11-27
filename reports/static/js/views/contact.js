@@ -17,7 +17,6 @@ define([
 	    var self = this;
 	    
 	    var app_data = appModel.getAppData();
-	    console.log('app_data', app_data.toJSON());
 	    this.contactInfo = [
         ['Screening Facility', 'Screening Facility Information', 
           Iccbl.formatString('<a href="{facility_url}">{facility_name}</a>', 

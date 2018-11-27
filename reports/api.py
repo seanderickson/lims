@@ -3346,10 +3346,7 @@ class ResourceResource(ApiResource):
 
     def get_app_data(self, request, **kwargs):
         
-        app_data = {attr:value for
-            attr, value in settings.APP_PUBLIC_DATA.__dict__.iteritems()
-                if '__' not in attr }
-        
+        app_data = settings.APP_PUBLIC_DATA.as_dict()
         return self.build_response(
             request, app_data, **kwargs)
 

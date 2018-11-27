@@ -1,11 +1,12 @@
 from __future__ import unicode_literals
+
+from django.conf import settings
 from django.conf.urls import include, url
+from django.contrib import admin
+import django.contrib.auth.views
+
 from lims import views
 
-from django.contrib import admin
-from django.conf import settings
-
-import django.contrib.auth.views
 
 admin.autodiscover()
 
@@ -24,9 +25,8 @@ urlpatterns = [
         django.contrib.auth.views.LoginView.as_view(
             template_name='login.html',
             redirect_authenticated_user=True,
-            extra_context={ 
-                'contact_feedback_email': settings.APP_PUBLIC_DATA.contact_feedback_email 
-                }),
+            extra_context=settings.APP_PUBLIC_DATA.as_dict()
+            ),
         name='login'),
     url(r'^accounts/logout/$', 
         django.contrib.auth.views.LogoutView.as_view(), name='logout'),

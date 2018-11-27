@@ -118,13 +118,13 @@ function($, _, Backbone, Iccbl, appModel, AppView, AppRouter,
   var serverAccessTimeKey = 'serverAccessTimeKey';
   $(document).bind("ajaxSend", function(event, jqxhr, settings){
     console.log('ajaxSend', arguments);
-// Remove: "global: false" flag should  prevent trigger event handler 
-// see: app_state.initialized()
-//    if ( settings.url.indexOf(appModel.reportsApiUri + '/job') >= 0 ){
-//      // suppress the spinner for job panel updates
-//      // FIXME: show spinner if explicitly loading the jobs view itself (use router)
-//      return;
-//    }
+    // Remove: "global: false" flag should  prevent trigger event handler 
+    // see: app_state.initialized()
+    //    if ( settings.url.indexOf(appModel.reportsApiUri + '/job') >= 0 ){
+    //      // suppress the spinner for job panel updates
+    //      // FIXME: show spinner if explicitly loading the jobs view itself (use router)
+    //      return;
+    //    }
     $('#loading').fadeIn({duration:100});
     loadCount++;
     
@@ -171,20 +171,23 @@ function($, _, Backbone, Iccbl, appModel, AppView, AppRouter,
     Backbone.history.start({ pushState: false, root: '/' });
   });
   
-  // Set the document title
-  Backbone.history.on('route', function(router, route, params) {
-    var title = _.reduce(
-        params,
-        function(memo, item){
-          if(item){
-            if (memo !== ' ') memo += ', ';
-            memo += item;
-          }
-          return memo ;
-        }, ' ');              
-    
-      document.title = 'Screensaver LIMS' + ':' + title;
-   }, this);   
+//  // Set the document title
+//  Backbone.history.on('route', function(router, route, params) {
+//    console.log('params', params);
+//    var title = _.reduce(
+//        params,
+//        function(memo, item){
+//          if(item){
+//            if (memo !== ' ') memo += ', ';
+//            memo += item;
+//          }
+//          return memo ;
+//        }, ' ');              
+//      title = title.trim();
+//      if (!_.isEmpty(title)) title = ': ' + title;
+//      title = appModel.getAppData().get('page_title') + title;
+//      document.title = title;
+//   }, this);   
   
   // Logout timer
   

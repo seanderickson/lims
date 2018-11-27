@@ -342,6 +342,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       var consumedStack = this.consumedStack = [];
       var uiResourceId;
       var resource;
+      var titleStack = [appModel.getAppData().get('page_title')];
       
       self.cleanup();
       
@@ -386,10 +387,16 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         Backbone.Layout.setupView(view);
         self.setViewInternal(view);
         self.reportUriStack([]);
-        return;
+        titleStack.push(resource.title);
       }else if (uiResourceId == 'about'){
+        var app_data = appModel.getAppData();
         var AboutView = Backbone.Layout.extend({
-          template: _.template(aboutLayout)({ static_url: window.static_url }),
+          template: _.template(aboutLayout)({ 
+            static_url: window.static_url,
+            software_repository_url: app_data.get('software_repository_url'),
+            software_development_facility_url: app_data.get('software_development_facility_url'),
+            software_development_facility: app_data.get('software_development_facility')
+          }),
           initialize: function(){
             this._classname = 'AboutView';
           }
@@ -400,7 +407,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         self.objects_to_destroy.push(view);
         self.setViewInternal(view);
         self.reportUriStack([]);
-        return;
+        titleStack.push(resource.title);
       }else if (uiResourceId == 'contact'){
         $('#navbar').children().removeClass('active');
         $('#navbar').children('#contact').addClass('active');
@@ -408,9 +415,9 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         self.objects_to_destroy.push(view);
         self.setViewInternal(view);
         self.reportUriStack([]);
-        return;
+        titleStack.push(resource.title);
       }
-      if (!_.isEmpty(uriStack) 
+      else if (!_.isEmpty(uriStack) 
             && !_.contains(appModel.LIST_ARGS, uriStack[0]) ) {
         // DETAIL VIEW
         
@@ -419,6 +426,8 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         }else{ 
           try{
             var _key = Iccbl.popKeyFromStack(resource, uriStack, consumedStack );
+            titleStack.push(resource.title);
+            titleStack.push(_key);
             var options = {};
             if (uiResourceId == 'screen'){
               // Use the special "ui" url for screen
@@ -440,7 +449,10 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       } else {
         // LIST VIEW
         self.showList(resource, uriStack);
+        titleStack.push(_.result(resource,'listing_title', resource.title));
       }
+
+      document.title = titleStack.join(': ');
     }
   });
 

@@ -109,7 +109,7 @@
 </style>
 
   {% block head %}
-    <title>Screensaver</title>
+    <title>{{ page_title }}</title>
   {% endblock %}
 
 </head>
@@ -131,8 +131,8 @@
   </div>
   {% block footer %}  
 	  <div id="footer">
-	    <div class="container">
-	      <a href="#">Screensaver</a> | <a href="http://iccb.med.harvard.edu/">ICCB-Longwood</a>
+	    <div class="container text-center">
+	      <a href="{{software_repository_url}}" target="_blank">Screensaver</a> | <a href="{{software_development_facility_url}}" target="_blank" >{{software_development_facility}}</a>
 	    </div>
 	  </div>
   {% endblock %}

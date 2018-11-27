@@ -1,20 +1,20 @@
 {   
   "home": {
-    "title": "Screensaver LIMS",
+    "title": "Home",
     "route": "/",
     "view": "HomeView",
     "content_header": "Welcome",
     "description": "home"
   },
   "about": {
-    "title": "Screensaver LIMS",
+    "title": "About",
     "route": "about",
     "view": "AboutView",
     "content_header": "Screensaver LIMS",
     "description": "About page"
   },  
   "contact": {
-    "title": "Screensaver LIMS",
+    "title": "Contact",
     "route": "contact",
     "view": "ContactView",
     "content_header": "ICCB-L Screensaver LIMS",

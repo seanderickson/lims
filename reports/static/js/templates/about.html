@@ -2,15 +2,15 @@
 <div class="jumbotron" >
   <a href="#">
     <img 
-      src="<%= static_url %>images/screensaver-s.png"
-      style="display: block; margin: auto; width: 10%; max-width: 178px;"
+      src="<%= static_url %>images/screensaver.png"
+      style="display: block; margin: auto; width: 90%; max-width: 556px; "
       >
   </a><br/>
     
   <p class="lead">
   <a href="http://screensaver.med.harvard.edu">Screensaver</a> is an open source, 
   web-based lab information management system (LIMS),<br/>developed at and used 
-  by the <a href='http://iccb.med.harvard.edu/' target='blank'>ICCB-Longwood Screening Facility</a> 
+  by the <a href="<%= software_development_facility_url %>" target='_blank'><%=software_development_facility %></a> 
   to address the informatics needs of our small molecule and RNAi screens.
   <p>
   Screensaver supports the storage and comparison of screening data sets, as 
@@ -18,8 +18,8 @@
   and laboratory work requests.
 	<p>
 	<p>
-	<a href='https://github.com/hmsiccbl/lims/wiki' target='blank'>Software Information</a>, 
-  License (<a href="https://github.com/seanderickson/lims/blob/master/LICENSE">MIT</a>)
+	<a href="<%=software_repository_url %>" target='_blank'>Software Information</a>, 
+  License (<a href="<%=software_repository_url%>/blob/master/LICENSE" target='_blank'  >MIT</a>)
 	</p>
 </div>
 </div>

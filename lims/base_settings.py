@@ -32,23 +32,36 @@ DATABASES = {
     }
 }
 
-# Hosts/domain names that are valid for this site; required if DEBUG is False
+
+# Hosts/domain names that are valid for this site.
+# INSTALL TODO: required if DEBUG is False
 # See https://docs.djangoproject.com/en/1.5/ref/settings/#allowed-hosts
 ALLOWED_HOSTS = []
 
+
+# NOTE: SITE_ID (for multiple site support) is not being used.
+# SITE_ID = 1
+
+# NOTE: Django internationalization is not being used
+USE_I18N = False
+# Language code for this installation. All choices can be found here:
+# http://www.i18nguy.com/unicode/language-identifiers.html
+# NOTE: Django internationalization is not being used; so this has no effect.
+LANGUAGE_CODE = 'en-us'
+# Django format localization is not being used
+USE_L10N = False
+
+
 # Local time zone for this installation. Choices can be found here:
 # http://en.wikipedia.org/wiki/List_of_tz_zones_by_name
-# FIXME: set to the local time zone for the installation
+# INSTALL TODO: set to the local time zone for the installation
 TIME_ZONE = 'UTC'
-
-LANGUAGE_CODE = 'en-us'
-SITE_ID = 1
-USE_I18N = True
-USE_L10N = True
-# If you set this to False, Django will not use timezone-aware datetimes.
+# Use timezone aware datetime information when handling datetimes in Django:
+# NOTE: postgresql (stores) values internally as UTC, and the connection 
+# converts using the TIME_ZONE setting .
 USE_TZ = True
 
-# /accounts/login is the default
+# NOTE: /accounts/login is the default
 LOGIN_URL = '/accounts/login/'
 # Default if "next" is not given as a request param
 LOGIN_REDIRECT_URL='/lims/'

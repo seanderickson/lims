@@ -88,12 +88,6 @@ ALLOWED_HOSTS = [
 TIME_ZONE = 'US/Eastern'
 APP_PUBLIC_DATA.TIME_ZONE = TIME_ZONE
 
-# Language code for this installation. All choices can be found here:
-# http://www.i18nguy.com/unicode/language-identifiers.html
-LANGUAGE_CODE = 'en-us'
-
-SITE_ID = 1
-
 AUTHENTICATION_BACKENDS = ('reports.auth.CustomAuthenticationBackend',)
 
 # Absolute path to the directory static files should be collected to.
@@ -297,4 +291,7 @@ LOGGING = {
         },
     }
 }
+
+if DEBUG:
+    print 'app_public_data', '\n'.join(map(str,APP_PUBLIC_DATA.as_dict().items()))
 

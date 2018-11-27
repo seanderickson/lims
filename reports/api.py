@@ -2115,8 +2115,7 @@ class ApiResource(SqlAlchemyResource):
                             return '{} {}{}'.format(
                                 si_unit.convert_decimal(
                                     val,default_unit, options.get('decimals',3)),
-                                si_unit.get_siunit_symbol(options['default_unit']),
-                                options['symbol'])
+                                si_unit.get_siunit_symbol(default_unit), options['symbol'])
                         else:
                             (symbol,default_unit) = si_unit.get_siunit(val)
                             

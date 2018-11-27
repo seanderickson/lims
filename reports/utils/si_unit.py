@@ -20,19 +20,20 @@ def get_siunit(test_value):
     (best_match_symbol_val)<=test_value<(next_higher_symbol_val)
     '''
     siunits = [
-      ['T', 1e12],
-      ['G', 1e9],
-      ['M', 1e6],
-      ['k', 1e3],
-      ['', 1],
-      ['m', 1e-3,],
-      ['μ', 1e-6,],
-      ['n', 1e-9 ],
-      ['p', 1e-12 ]
+      ['T', Decimal('1e12')],
+      ['G', Decimal('1e9')],
+      ['M', Decimal('1e6')],
+      ['k', Decimal('1e3')],
+      ['', Decimal(1)],
+      ['m', Decimal('1e-3')],
+      ['μ', Decimal('1e-6')],
+      ['n', Decimal('1e-9')],
+      ['p', Decimal('1e-12')]
       ]
     for symbol,val in siunits:
         if val <= abs(test_value):
             return (symbol,val)
+
     return None
 
 def convert_decimal(

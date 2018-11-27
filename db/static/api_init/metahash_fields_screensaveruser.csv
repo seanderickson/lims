@@ -31,7 +31,7 @@ sm_data_sharing_level,fields.screensaveruser,,,"Data Access",40,,TRUE,"Small mol
 rnai_data_sharing_level,fields.screensaveruser,,,"Data Access",41,,TRUE,"RNAi data sharing level","RNAi DSL",TRUE,useragreement.data_sharing_level,[d],,integer,,"{ 'group': 'Data Access' }",select,,,,,,3
 is_active,fields.screensaveruser,auth_user,,"Data Access",42,,TRUE,"True if the user is currently active and may log in to the system","Can Log In",TRUE,,[l;d],[c;u],boolean,,"{ 'group': 'Data Access' }",,,,,,,3
 is_staff,fields.screensaveruser,auth_user,,"Data Access",43,,TRUE,"For information purposes only - permissions are granted using UserGroups","Is Staff",TRUE,,[d],[c;u],boolean,,"{ 'group': 'Data Access' }",,,,,,[readEverythingAdmin],
-is_superuser,fields.screensaveruser,auth_user,,"Data Access",44,,TRUE,"User has all permissions on the system","Is Superuser",TRUE,,[d],[c;u],boolean,,"{ 'group': 'Data Access' }",,,,,,[superusers],
+is_superuser,fields.screensaveruser,auth_user,,"Data Access",44,,TRUE,"User has all permissions on the system","Is Super User",TRUE,,[d],[c;u],boolean,,"{ 'group': 'Data Access' }",,,,,,[superusers],
 lab_member_ids,fields.screensaveruser,custom,,Lab,45,,TRUE,"Lab member Screensaver user IDs","Lab Members",TRUE,,[none],,list,link,"{ 'hrefTemplate': '#screensaveruser/{__val__}', 'separator': '<br/>' }",multiselect3,,,,,,1
 lab_member_names,fields.screensaveruser,custom,,Lab,46,,TRUE,"Lab member name(s)","Lab Member Name(s)",TRUE,,,,list,,,,,,,,,1
 lab_member_emails,fields.screensaveruser,custom,,Lab,47,,TRUE,"Lab member email(s)","Lab Member Email(s)",TRUE,,,,list,,,,,,,,,1

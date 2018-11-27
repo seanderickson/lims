@@ -537,8 +537,8 @@ class Migration(migrations.Migration):
                 ('solvent', models.TextField()),
                 ('date_loaded', models.DateTimeField(null=True)),
                 ('date_publicly_available', models.DateTimeField(null=True)),
-                ('is_released', models.BooleanField(default=False)),
-                ('is_archived', models.BooleanField(default=False)),
+#                 ('is_released', models.BooleanField(default=False)),
+#                 ('is_archived', models.BooleanField(default=False)),
 #                 ('version_number', models.IntegerField(default=0)),
             ],
             options={

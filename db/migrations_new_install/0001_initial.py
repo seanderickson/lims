@@ -291,6 +291,7 @@ class Migration(migrations.Migration):
                 ('date_publicly_available', models.DateTimeField(null=True)),
                 ('version_number', models.IntegerField(default=0)),
                 ('is_released', models.BooleanField(default=False)),
+                ('is_archived', models.BooleanField(default=False)),
             ],
             options={
                 'db_table': 'library',

@@ -11,7 +11,9 @@ class APP_PUBLIC_DATA:
         _vars = vars(APP_PUBLIC_DATA)
         _vars.update(vars(cls))
         _vars = { k:v for k, v in _vars.iteritems() 
-            if '__' not in k and callable(getattr(cls, k)) is not True }
+            if '__' not in k 
+                and hasattr(cls, k)
+                and callable(getattr(cls, k)) is not True }
         return _vars
 
     app_name = 'Screensaver'

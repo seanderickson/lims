@@ -556,7 +556,19 @@ def create_well_volume_adjustment_logs(apps, schema_editor):
         'wvac_id',
         'screen_facility_id',
         'assay_plate_count']
-    
+
+    # NOTES: 20181127
+    # This query excludes the wvacs associated with lcp's that have no cherry_pick_assay_plates assigned:
+    orphaned_sql = '''
+        select cpr.cherry_pick_request_id, cpr.date_created 
+        from lab_cherry_pick lcp 
+        join cherry_pick_request cpr using(cherry_pick_request_id)  
+        where cherry_pick_assay_plate_id is null;
+    '''
+    # These are mostly uncompleted cherry picks, but some (from before 2008) 
+    # represent faulty migrations and manual updates
+    # TODO: correct this?
+        
     wva_query_sql = '''
         select * from (
         select

@@ -9,7 +9,7 @@ import re
 
 from django.db.utils import ProgrammingError
 
-from db import WELL_NAME_PATTERN, WELL_ID_PATTERN, COPYWELL_ID_PATTERN
+from db import WELL_NAME_PATTERN, WELL_ID_PATTERN
 from reports import ValidationError
 
 
@@ -181,20 +181,36 @@ def well_id_name(well_id):
     wellcol = match.group(4)
     return '%s%s' % (wellrow, str(wellcol).zfill(2)) 
 
+# def parse_copywell_id(pattern):
+#     match = COPYWELL_ID_PATTERN.match(pattern)
+#     if not match:
+#         return (None,None,None,None)
+#     else:
+#         copy = match.group(2)
+#         plate = int(match.group(3))
+#         wellrow = match.group(5).upper()
+#         wellcol = match.group(6)
+#         wellname = '%s%s' % (wellrow, str(wellcol).zfill(2)) 
+# #         plate = str(plate).zfill(5)
+#         return ( copy, plate, well_id(plate, wellname), wellname)
 
 def parse_copywell_id(pattern):
-    match = COPYWELL_ID_PATTERN.match(pattern)
-    if not match:
-        return (None,None,None,None)
+    
+    parts = pattern.split('/')
+    
+    if len(parts) < 3:
+        raise ValidationError(
+            key='copywell_id',
+            msg='Invalid pattern: must contain "library_short_name/copy_name/well_id"')
     else:
-        copy = match.group(2)
-        plate = int(match.group(3))
-        wellrow = match.group(5).upper()
-        wellcol = match.group(6)
-        wellname = '%s%s' % (wellrow, str(wellcol).zfill(2)) 
-#         plate = str(plate).zfill(5)
-        return ( copy, plate, well_id(plate, wellname), wellname)
-
+        library_short_name = parts[0]
+        copy_name = parts[1]
+        _well_id = parts[2]
+        plate_number = well_id_plate_number(_well_id)
+        well_name = well_id_name(_well_id)
+            
+        return (copy_name, plate_number, well_id(plate_number, well_name), well_name)
+        
 def parse_well_id(pattern):
     match = WELL_ID_PATTERN.match(pattern)
     if not match:

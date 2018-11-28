@@ -886,7 +886,7 @@ class ApiResource(SqlAlchemyResource):
                     id_parts.append(val)
         return id_parts
     
-    def get_id(self,deserialized, validate=False, schema=None, **kwargs):
+    def get_id(self,deserialized, validate=False, schema=None, id_attribute=None, **kwargs):
         ''' 
         return the full ID for the resource, as defined by the "id_attribute"
         - if validate=True, raises ValidationError if some or all keys are missing
@@ -895,8 +895,8 @@ class ApiResource(SqlAlchemyResource):
         '''
         if schema is None:
             raise ProgrammingError
-        
-        id_attribute = schema['id_attribute']
+        if id_attribute is None:
+            id_attribute = schema['id_attribute']
         fields = schema[RESOURCE.FIELDS]
         logger.debug('get_id: %r, %r', self._meta.resource_name, id_attribute)
         kwargs_for_id = {}
@@ -2699,13 +2699,13 @@ class ApiLogResource(ApiResource):
                         "date_trunc('millisecond',reports_apilog.date_time)")
                 # TODO: 20180530
                 # Remove timzone from queries: assume all times are for the current
-#                         "date_trunc('millisecond',reports_apilog.date_time) AT TIME ZONE 'UTC' ")
+                #     "date_trunc('millisecond',reports_apilog.date_time) AT TIME ZONE 'UTC' ")
                         # TODO: convert to UTC - SQLAlchemy and raw SQL return different values
                         # for the following (SQLAlchemy generates a timezone, raw sql UTC)
-#                         "to_char(reports_apilog.date_time, 'YYYY-MM-DD\"T\"HH24:MI:SS.MS')"
-#                         "|| to_char(extract('timezone_hour' from parent_log.date_time),'S00')" 
-#                         "||':'" 
-#                         "|| to_char(extract('timezone_minute' from parent_log.date_time),'FM00')" )
+                #     "to_char(reports_apilog.date_time, 'YYYY-MM-DD\"T\"HH24:MI:SS.MS')"
+                #     "|| to_char(extract('timezone_hour' from parent_log.date_time),'S00')" 
+                #     "||':'" 
+                #     "|| to_char(extract('timezone_minute' from parent_log.date_time),'FM00')" )
                 # timezone:
                 # to_char(reports_apilog.date_time, 'YYYY-MM-DD\"T\"HH24:MI:SS.MS') 
                 # - this should be applied to all times
@@ -2809,10 +2809,10 @@ class ApiLogResource(ApiResource):
             if diffs or json_field:
                 rowproxy_generator = create_diff_generator(rowproxy_generator)
             
-#             compiled_stmt = str(stmt.compile(
-#                 dialect=postgresql.dialect(),
-#                 compile_kwargs={"literal_binds": True}))
-#             logger.info('compiled_stmt %s', compiled_stmt)
+            # compiled_stmt = str(stmt.compile(
+            #     dialect=postgresql.dialect(),
+            #     compile_kwargs={"literal_binds": True}))
+            # logger.info('compiled_stmt %s', compiled_stmt)
             
             return self.stream_response_from_statement(
                 request, stmt, count_stmt, filename, 

@@ -6835,7 +6835,9 @@ class CopyWellResource(DbApiResource):
         
         custom_columns = {
             'copywell_id': (
-                _concat(_c.c.name,'/',_w.c.well_id)),
+                _concat(_l.c.short_name,'/',_c.c.name,'/',_w.c.well_id)),
+#             'copywell_id': (
+#                 _concat(_c.c.name,'/',_w.c.well_id)),
             'volume': case([
                 (_w.c.library_well_type==WELL_TYPE.EXPERIMENTAL, 
                      func.coalesce(_cw.c.volume, 
@@ -6945,8 +6947,11 @@ class CopyWellResource(DbApiResource):
 
     def get_id(self, deserialized, validate=False, schema=None, **kwargs):
         
+        # Use a shortened "id_attribute" as library_short_name is not required here
+        id_attribute = ['copy_name', 'well_id']
         id_kwargs = DbApiResource.get_id(
-            self, deserialized, validate=validate, schema=schema, **kwargs)
+            self, deserialized, validate=validate, schema=schema, 
+            id_attribute=id_attribute, **kwargs)
         
         well_id = id_kwargs.get('well_id')
         # For now: well_id overrides other keys;
@@ -7145,9 +7150,11 @@ class CopyWellResource(DbApiResource):
             new_volume = copywell.volume + volume
             
             log = self.make_child_log(parent_log)
-            log.key = '/'.join([copy.name, copywell.well_id])
-            log.uri = '/'.join([
-                log.ref_resource_name,'library',copy.library.short_name, log.key])
+            log.key = '/'.join([copy.library.short_name, copy.name, copywell.well_id])
+            log.uri = '/'.join([log.ref_resource_name,log.key])
+#            log.key = '/'.join([copy.name, copywell.well_id])
+#            log.uri = '/'.join([
+#                log.ref_resource_name,'library',copy.library.short_name, log.key])
             log.diffs = {
                 'volume': [copywell.volume, new_volume]}
             log.parent_log = parent_log
@@ -7171,8 +7178,12 @@ class CopyWellResource(DbApiResource):
         copywells_allocated = set()
         for copywell in copywells_to_allocate:
             copy = copywell.copy
-            key = '/'.join([copy.name, copywell.well_id])
-            logger.debug('copywell: %r: vol: %r, requested: %r', 
+            # NOTE: make the log key more robust, with library name as well
+            # - TODO: should library name be optional for the copywell key
+            key = '/'.join([copy.library.short_name, copy.name, copywell.well_id])
+            logger.info('copywell: %r: vol: %r, requested: %r', 
+#            key = '/'.join([copy.name, copywell.well_id])
+#            logger.debug('copywell: %r: vol: %r, requested: %r', 
                 copywell, copywell.volume, volume)
             if copywell.volume < volume:
                 copywell_volume_warnings.append(
@@ -7188,9 +7199,10 @@ class CopyWellResource(DbApiResource):
             
             log = self.make_child_log(parent_log)
             log.key = key
-            # NOTE: make the log uri more robust, with library name as well
-            log.uri = '/'.join([
-                log.ref_resource_name,'library',copy.library.short_name,log.key])
+            log.uri = '/'.join([log.ref_resource_name,log.key])
+#            # NOTE: make the log uri more robust, with library name as well
+#            log.uri = '/'.join([
+#                log.ref_resource_name,'library',copy.library.short_name,log.key])
             log.diffs = {
                 'volume': [copywell.volume, new_volume]}
             log.parent_log = parent_log
@@ -7250,10 +7262,13 @@ class CopyWellResource(DbApiResource):
                     'copywell to deallocate not located: %r', copywell_id)
                 
             log = self.make_child_log(parent_log)
-            log.key = '/'.join([copy.name, copywell.well_id])
-            # NOTE: make the log uri more robust, with library name as well
-            log.uri = '/'.join([
-                log.ref_resource_name,'library',copy.library.short_name,log.key])
+            log.key = '/'.join([
+                copy.library.short_name, copy.name, copywell.well_id])
+            log.uri = '/'.join([log.ref_resource_name,log.key])
+#            log.key = '/'.join([copy.name, copywell.well_id])
+#            # NOTE: make the log uri more robust, with library name as well
+#            log.uri = '/'.join([
+#                log.ref_resource_name,'library',copy.library.short_name,log.key])
             if set_deselected_to_zero is False:
                 new_volume = copywell.volume + cpr.transfer_volume_per_well_approved
             else:
@@ -7285,10 +7300,14 @@ class CopyWellResource(DbApiResource):
             for plate in plates_adjusted:
                 plate_log = self.get_plate_resource().make_child_log(parent_log)
                 plate_log.key = '/'.join([
-                    plate.copy.name, str(plate.plate_number)])
-                # NOTE: make the log uri more robust, with library name as well
-                plate_log.uri = '/'.join([
-                    log.ref_resource_name,'library',copy.library.short_name,log.key])
+                    copy.library.short_name, plate.copy.name, 
+                    str(plate.plate_number)])
+                plate_log.uri = '/'.join([log.ref_resource_name,log.key])
+#                plate_log.key = '/'.join([
+#                    plate.copy.name, str(plate.plate_number)])
+#                # NOTE: make the log uri more robust, with library name as well
+#                plate_log.uri = '/'.join([
+#                    log.ref_resource_name,'library',copy.library.short_name,log.key])
                 if plate.cplt_screening_count < 1:
                     logger.warn(
                         'deallocation: plate: %r, cplt_screening_count already 0',
@@ -7361,10 +7380,12 @@ class CopyWellResource(DbApiResource):
                         key='library_plate',
                         msg=msg)
             log = self.make_child_log(parent_log)
-            log.key = '/'.join([copy.name, copywell.well_id])
-            # NOTE: make the log uri more robust, with library name as well
-            log.uri = '/'.join([
-                log.ref_resource_name,'library',copy.library.short_name,log.key])
+            log.key = '/'.join([copy.library.short_name, copy.name, copywell.well_id])
+            log.uri = '/'.join([log.ref_resource_name,log.key])
+#            log.key = '/'.join([copy.name, copywell.well_id])
+#            # NOTE: make the log uri more robust, with library name as well
+#            log.uri = '/'.join([
+#                log.ref_resource_name,'library',copy.library.short_name,log.key])
             logger.debug('copywell: %r, volume: %r, cpr.transfer volume: %r', 
                 copywell, copywell.volume, cpr.transfer_volume_per_well_approved)
             new_volume = copywell.volume - cpr.transfer_volume_per_well_approved
@@ -7394,11 +7415,14 @@ class CopyWellResource(DbApiResource):
                 continue
             
             plate_log = self.get_plate_resource().make_child_log(parent_log)
-            plate_log.key = '/'.join([ 
-                plate.copy.name, str(plate.plate_number)])
-            # NOTE: make the log uri more robust, with library name as well
-            plate_log.uri = '/'.join([
-                log.ref_resource_name,'library',copy.library.short_name,log.key])
+            plate_log.key = '/'.join([
+                copy.library.short_name, plate.copy.name, str(plate.plate_number)])
+            plate_log.uri = '/'.join([log.ref_resource_name,log.key])
+#            plate_log.key = '/'.join([ 
+#                plate.copy.name, str(plate.plate_number)])
+#            # NOTE: make the log uri more robust, with library name as well
+#            plate_log.uri = '/'.join([
+#                log.ref_resource_name,'library',copy.library.short_name,log.key])
             new_plate_cplt_screening_count = plate.cplt_screening_count +1
             plate_log.diffs = {
                 'cplt_screening_count': [
@@ -10495,7 +10519,8 @@ class ScreenerCherryPickResource(DbApiResource):
              
 class LabCherryPickResource(DbApiResource):        
 
-    LCP_COPYWELL_KEY = '{source_copy_name}/{source_well_id}'
+    LCP_COPYWELL_KEY = '{library_short_name}/{source_copy_name}/{source_well_id}'
+    # LCP_COPYWELL_KEY = '{source_copy_name}/{source_well_id}'
 
     class Meta:
 
@@ -11261,17 +11286,17 @@ class LabCherryPickResource(DbApiResource):
                 'selected': case([
                     (_lcp.c.copy_id==_copy.c.copy_id, text('true') )],
                         else_=text('false')),
-                # 'source_copywell_id': (
-                #     case([(_lcp.c.copy_id!=None,
-                #             _concat(_library.c.short_name,'/',_copy.c.name,'/',
-                #                 _lcp.c.source_well_id)
-                #         )],
-                #         else_=None )),
                 'source_copywell_id': (
                     case([(_lcp.c.copy_id!=None,
-                            _concat(_copy.c.name, '/', _lcp.c.source_well_id)
+                            _concat(_library.c.short_name,'/',_copy.c.name,'/',
+                                _lcp.c.source_well_id)
                         )],
                         else_=None )),
+#                 'source_copywell_id': (
+#                     case([(_lcp.c.copy_id!=None,
+#                             _concat(_copy.c.name, '/', _lcp.c.source_well_id)
+#                         )],
+#                         else_=None )),
                 'source_copy_well_volume': case([
                     (_well.c.library_well_type==WELL_TYPE.EXPERIMENTAL, 
                          func.coalesce(_cw.c.volume, 
@@ -11426,13 +11451,13 @@ class LabCherryPickResource(DbApiResource):
                     'selected_copy_name': case([
                         (_lcp.c.copy_id==_copy.c.copy_id, _copy.c.name )],
                             else_=_original_copy.c.name),
+#                     'source_copywell_id': (
+#                         _concat(_copy.c.name, '/', _lcp.c.source_well_id)
+#                             ),
                     'source_copywell_id': (
-                        _concat(_copy.c.name, '/', _lcp.c.source_well_id)
+                        _concat(_library.c.short_name,'/',_copy.c.name,'/',
+                            _lcp.c.source_well_id)
                             ),
-                    # 'source_copywell_id': (
-                    #     _concat(_library.c.short_name,'/',_copy.c.name,'/',
-                    #         _lcp.c.source_well_id)
-                    #         ),
                     'status': case([
                         (and_(_lcp.c.copy_id==_copy.c.copy_id,
                               _lcp.c.cherry_pick_assay_plate_id==None,), 

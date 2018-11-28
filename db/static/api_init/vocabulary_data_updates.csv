@@ -156,3 +156,11 @@ other_industry,labaffiliation.category,8,"Other - Industry","Other - Industry",F
 nci,library.type,10,NCI,NCI,TRUE,
 dos,library.type,4,DOS,DOS,TRUE,
 annotation,library.type,1,Annotation,Annotation,TRUE,
+principal_investigator,user.classification,1,"only Principal Investigators can be lab heads","Principal Investigator","Principal Investigator",
+graduate_student,user.classification,2,,"Graduate Student","Graduate Student",
+iccb_fellow,user.classification,3,,"ICCB Fellow","ICCB Fellow",TRUE
+research_assistant,user.classification,4,,"Research Assistant","Research Assistant",
+postdoc,user.classification,5,,Postdoc,Postdoc,
+staff,user.classification,6,,Staff,Staff,
+other,user.classification,7,,Other,Other,
+unassigned,user.classification,8,,Unassigned,Unassigned,

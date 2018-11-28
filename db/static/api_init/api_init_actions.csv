@@ -1,7 +1,7 @@
 command,resource,file
 patch,resource,metahash_resource_data.csv
-patch,vocabulary,vocabulary_data.csv
 patch,vocabulary,vocabulary_data_generated.csv
+patch,vocabulary,vocabulary_data.csv
 patch,vocabulary,vocabulary_attachedfiletype_data.csv
 patch,vocabulary,vocabulary_checklists_data.csv
 patch,vocabulary,vocabulary_activity_data.csv

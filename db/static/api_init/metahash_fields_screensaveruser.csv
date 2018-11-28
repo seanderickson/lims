@@ -1,6 +1,6 @@
 key,scope,table,field,category,ordinal,comment,filtering,description,title,ordering,vocabulary_scope_ref,visibility,editability,data_type,display_type,display_options,edit_type,alias,is_restricted,regex,required,view_groups,data_access_level
-screensaver_user_id,fields.screensaveruser,,,,100,"Arbitrarily assigned internal user ID for the User",TRUE,"Internal user ID","Screensaver User ID",TRUE,,[l;d],,string,link,"{ 'hrefTemplate': '#screensaveruser/{screensaver_user_id}' }",,,,,,,
-name,fields.screensaveruser,custom,,,2,,TRUE,"Full name (last, first)",Name,TRUE,,[l;d],,string,,,,,,,,,1
+screensaver_user_id,fields.screensaveruser,,,,100,"Arbitrarily assigned internal user ID for the User",TRUE,"Internal user ID","Screensaver User ID",TRUE,,[],,string,link,"{ 'hrefTemplate': '#screensaveruser/{screensaver_user_id}' }",,,,,,,
+name,fields.screensaveruser,custom,,,2,,TRUE,"Full name (last, first)",Name,TRUE,,[l;d],,string,link,"{ 'hrefTemplate': '#screensaveruser/{screensaver_user_id}' }",,,,,,,1
 first_name,fields.screensaveruser,,,,3,,TRUE,"First name","First Name",TRUE,,[e],[c;u],string,,,,,,,TRUE,,1
 last_name,fields.screensaveruser,,,,4,,TRUE,"Last name","Last Name",TRUE,,[e],[c;u],string,,,,,,,TRUE,,1
 classification,fields.screensaveruser,,,,5,,TRUE,Classification,Classification,TRUE,user.classification,[l;d],[c;u],string,,,select,,,,FALSE,,3
@@ -32,7 +32,7 @@ rnai_data_sharing_level,fields.screensaveruser,,,"Data Access",41,,TRUE,"RNAi da
 is_active,fields.screensaveruser,auth_user,,"Data Access",42,,TRUE,"True if the user is currently active and may log in to the system","Can Log In",TRUE,,[l;d],[c;u],boolean,,"{ 'group': 'Data Access' }",,,,,,,3
 is_staff,fields.screensaveruser,auth_user,,"Data Access",43,,TRUE,"For information purposes only - permissions are granted using UserGroups","Is Staff",TRUE,,[d],[c;u],boolean,,"{ 'group': 'Data Access' }",,,,,,[readEverythingAdmin],
 is_superuser,fields.screensaveruser,auth_user,,"Data Access",44,,TRUE,"User has all permissions on the system","Is Super User",TRUE,,[d],[c;u],boolean,,"{ 'group': 'Data Access' }",,,,,,[superusers],
-lab_member_ids,fields.screensaveruser,custom,,Lab,45,,TRUE,"Lab member Screensaver user IDs","Lab Members",TRUE,,[none],,list,link,"{ 'hrefTemplate': '#screensaveruser/{__val__}', 'separator': '<br/>' }",multiselect3,,,,,,1
+lab_member_ids,fields.screensaveruser,custom,,Lab,45,,TRUE,"Lab member Screensaver user IDs","Lab Members",TRUE,,[api],,list,link,"{ 'hrefTemplate': '#screensaveruser/{__val__}', 'separator': '<br/>' }",multiselect3,,,,,,1
 lab_member_names,fields.screensaveruser,custom,,Lab,46,,TRUE,"Lab member name(s)","Lab Member Name(s)",TRUE,,,,list,,,,,,,,,1
 lab_member_emails,fields.screensaveruser,custom,,Lab,47,,TRUE,"Lab member email(s)","Lab Member Email(s)",TRUE,,,,list,,,,,,,,,1
 permissions,fields.user,,,"Data Access",48,,TRUE,"Permissions assigned directly to the user","User Permission(s)",TRUE,,[api],[c;u],list,,,multiselect2,,,,,[readEverythingAdmin],

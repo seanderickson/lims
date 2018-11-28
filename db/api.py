@@ -12290,12 +12290,14 @@ class LibraryCopyResource(DbApiResource):
                 'avg_plate_volume': _copy_statistics.c.avg_plate_volume,
                 'min_plate_volume': _copy_statistics.c.min_plate_volume,
                 'max_plate_volume': _copy_statistics.c.max_plate_volume,
+                # TODO: 20181127 - implement round using metadata
                 'avg_plate_screening_count': (
-                    select([func.avg(_p.c.screening_count)])
+                    select([func.round(func.avg(_p.c.screening_count), 2)])
                     .select_from(_p)
                     .where(_p.c.copy_id == literal_column('copy.copy_id'))),
+                # TODO: 20181127 - implement round using metadata
                 'avg_plate_cp_screening_count': (
-                    select([func.avg(_p.c.cplt_screening_count)])
+                    select([func.round(func.avg(_p.c.cplt_screening_count), 2)])
                     .select_from(_p)
                     .where(_p.c.copy_id == literal_column('copy.copy_id'))),
                 'min_mg_ml_concentration': _copy_statistics.c.min_mg_ml_concentration,

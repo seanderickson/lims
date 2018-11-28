@@ -1215,7 +1215,6 @@ define([
         return obj.val == appModel.VOCAB_USER_CLASSIFICATION_PI;
       });
       resource.fields['classification'].choiceHash = vocab_cls;
-      resource.fields['classification']['vocabulary_scope_ref'] = null;
       var hideForLabMember = [
         'lab_head_id','lab_affiliation_id','lab_member_ids',
         'lab_head_appointment_category','lab_head_appointment_department',

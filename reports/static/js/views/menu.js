@@ -25,8 +25,6 @@ define([
       serialize: function(){
         var menuData = appModel.getMenu();
         var uiResources = appModel.get('ui_resources');
-        console.log('serialize', menu, uiResources);
-        
         return {
           menu: menuData,
           ui_resources: uiResources

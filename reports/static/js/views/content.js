@@ -426,6 +426,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         }else{ 
           try{
             var _key = Iccbl.popKeyFromStack(resource, uriStack, consumedStack );
+            console.log('Generate detail view:', resource.key, _key, uriStack)
             titleStack.push(resource.title);
             titleStack.push(_key);
             var options = {};

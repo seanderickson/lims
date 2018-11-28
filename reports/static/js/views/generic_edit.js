@@ -1090,16 +1090,14 @@ define([
     },
     
     _createVocabularyChoices: function(fi) {
-      // 1. start with fieldinformation.choices
+      // 1. start with fieldinformation.choiceHash
       // 2. override with fieldinformation.vocabulary:
       // 2.a from fieldinformation.vocabulary, if available
       // 2.b fetch and add vocabulary from server
+
       var choiceHash = fi.choiceHash || [];
       if (_.isEmpty(choiceHash)) {
-        //  TODO 20171204 - test using the fi.choices to override
-        //      if (!_.isEmpty(fi.vocabulary_scope_ref)) {
         choiceHash = []
-        // replace the fi.choices with the vocabulary, if available
         try{
           var vocabulary = appModel.getVocabulary(fi.vocabulary_scope_ref);
           _.each(_.keys(vocabulary),function(choice) {

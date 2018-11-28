@@ -37,7 +37,7 @@ def get_siunit(test_value):
     return None
 
 def convert_decimal(
-    raw_val, default_unit=1e-6, decimals=1, multiplier=None, 
+    raw_val, default_unit='1e-6', decimals=1, multiplier=None, 
     track_significance=False):
     '''
     Convert a decimal by scaling to the default unit and rounding to the 

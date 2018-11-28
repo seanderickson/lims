@@ -56,7 +56,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
           appModel.getModel(resourceId, copy_well_id, this.showDetail );
         }
       } else {
-        if (_.isEmpty(uriStack)) {
+        if (_.isEmpty(uriStack) && _.isUndefined(self.library)) {
           self.consumedStack = [];
           self.reportUriStack([]);
           self.showCopyWellSearchForm();

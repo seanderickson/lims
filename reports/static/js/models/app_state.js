@@ -2441,6 +2441,13 @@ define([
       
       var formSchema = {};
       
+      var downloadOptions = self.getVocabularySelectOptions('resource.content_type');
+      downloadOptions = _.filter(downloadOptions, function(option){
+        return (
+            option.val != 'json' // never json
+            && _.contains(resource.content_types, option.val));
+      });
+      
       formSchema['use_vocabularies'] = {
         title: 'Use vocabulary labels',
         help: 'If selected, vocabulary key values will be replaced with labels',
@@ -2475,7 +2482,8 @@ define([
         title: 'Download type',
         help: 'Select the data format',
         key: 'content_type',
-        options: _.without(resource.content_types, 'json'), // never json
+        options: downloadOptions,
+//        options: _.without(resource.content_types, 'json'), // never json
         type: 'Select',
         validators: ['required'],
         template: _.template([

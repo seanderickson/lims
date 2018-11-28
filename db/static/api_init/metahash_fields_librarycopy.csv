@@ -1,5 +1,5 @@
 key,scope,table,field,category,ordinal,comment,filtering,description,title,ordering,json_field_type,vocabulary_scope_ref,visibility,editability,data_type,display_type,display_options,edit_type,is_restricted,nested_resource,regex,validation_message
-library_short_name,fields.librarycopy,library,short_name,Library,0,,TRUE,"The library short name",Library,TRUE,,,[l;d],,string,link,"{ 'hrefTemplate': '#library/{library_short_name}' }",,,,,
+library_short_name,fields.librarycopy,library,short_name,Library,0,,TRUE,"The library short name","Library Name",TRUE,,,[l;d],,string,link,"{ 'hrefTemplate': '#library/{library_short_name}' }",,,,,
 copy_name,fields.librarycopy,copy,name,,1,,TRUE,"Copy name",Copy,TRUE,,,[l;d],[c],string,link,"{ 'hrefTemplate': '#library/{library_short_name}/copy/{copy_name}' }",,,,"^[\w :]+$","Only letters, numbers, spaces, and colons are allowed."
 usage_type,fields.librarycopy,,,,2,,TRUE,"Copy usage type","Copy Usage Type",TRUE,,copy.usage_type,[l;d],[c;u],string,,,select,,,,
 screen_type,fields.librarycopy,library,screen_type,Library,3,,TRUE,"Screen type","Screen Type",TRUE,,screen.type,[d],,string,,,select,,,,
@@ -14,7 +14,7 @@ avg_plate_volume,fields.librarycopy,custom,,"Plate and Well",10,,TRUE,"The avera
 min_plate_volume,fields.librarycopy,custom,,"Plate and Well",11,,TRUE,"The minimum well volume remaining across all library screening plates of this copy","Min Well Remaining Vol",TRUE,,,[l;d],,decimal,siunit,"{ 'decimals': 2, 'multiplier': 1, 'symbol': 'L', 'defaultUnit': 1e-6  }",,,,,
 max_plate_volume,fields.librarycopy,custom,,"Plate and Well",12,,TRUE,"The maximum well volume remaining across all library screening plates of this copy","Max Well Remaining Vol",TRUE,,,[l;d],,decimal,siunit,"{ 'decimals': 2, 'multiplier': 1, 'symbol': 'L', 'defaultUnit': 1e-6  }",,,,,
 copy_plate_count,fields.librarycopy,custom,,,13,,TRUE,"The number of plates in this copy","Copy Plate Count",TRUE,,,[l;d],,string,link,"{ 'hrefTemplate': '#library/{library_short_name}/copy/{copy_name}/plate' }",,,,,
-library_full_name,fields.librarycopy,library,name,Library,14,,TRUE,"Library full name","Library Full Name",TRUE,,,,,string,link,"{ 'hrefTemplate': '#library/{library_short_name}' }",,,,,
+library_full_name,fields.librarycopy,library,library_name,Library,14,,TRUE,"Library full name","Library Full Name",TRUE,,,,,string,link,"{ 'hrefTemplate': '#library/{library_short_name}' }",,,,,
 start_plate,fields.librarycopy,library,start_plate,Library,15,,TRUE,"Library start plate","Start Plate",TRUE,,,,,integer,,"{ 'orderSeparator': '' }",,,,,
 end_plate,fields.librarycopy,library,end_plate,Library,16,,TRUE,"Library end plate","End Plate",TRUE,,,,,integer,,"{ 'orderSeparator': '' }",,,,,
 min_molar_concentration,fields.librarycopy,custom,,"Well Statistics",21,,TRUE,"The minimum molar concentration (diluted) of the wells of the copy's plates","Min Well Molar Conc",TRUE,,,[l;d],,decimal,siunit,"{ 'decimals': 2, 'multiplier': 1, 'symbol': 'M', 'defaultUnit': 1e-3, 'hideIfEmpty': true }",,,,,

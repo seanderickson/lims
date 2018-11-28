@@ -1,5 +1,6 @@
 <div id="generic-detail-top" class="row controls">
-  <div class="col-sm-6" id="generic-detail-buttonpanel-left">
+  <div class="col-sm-6">
+    <div class="btn-toolbar" id="generic-detail-buttonpanel-left">
 <% 
   if (buttons_left) {
     buttons_left.each(function(key) {
@@ -9,8 +10,10 @@
     }); 
   }  
 %>
+    </div>
   </div>
-  <div class="col-sm-6" id="generic-detail-buttonpanel-right">
+  <div class="col-sm-6">
+    <div class="btn-toolbar" id="generic-detail-buttonpanel-right">
 <% 
   if (buttons_right) {
     buttons_right.each(function(key) {
@@ -20,6 +23,7 @@
     }); 
   }  
 %>
+    </div>
   </div>
 </div>
 

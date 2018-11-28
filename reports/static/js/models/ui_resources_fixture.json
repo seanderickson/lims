@@ -348,7 +348,7 @@
         "-copy_plate_count","-min_molar_concentration",
         "-max_molar_concentration","-min_mg_ml_concentration",
         "-max_mg_ml_concentration","-plate_locations",
-        "-avg_plate_cp_screening_count"],
+        "-avg_plate_cp_screening_count", "start_plate","end_plate"],
       "search": {
         "plates_available__gt": 0,
         "-library_type__in": "dos",
@@ -369,7 +369,7 @@
         "-copy_plate_count","-min_molar_concentration",
         "-max_molar_concentration","-min_mg_ml_concentration",
         "-max_mg_ml_concentration","-plate_locations",
-        "-avg_plate_cp_screening_count"],
+        "-avg_plate_cp_screening_count","start_plate","end_plate"],
       "search": {
         "plates_available__gt": 0,
         "min_plate_volume__lt": 0.000007,

@@ -365,7 +365,7 @@ define([
             var id = affiliation.get('lab_affiliation_id');
             var name = affiliation.get('name');
             var category = affiliation.get('category')
-            options.push({ val: id, label: category + ' - ' + name });
+            options.push({ val: id, label: name + ' (' + category + ')' });
           });
           self.set(prop,options);
           if (callBack) callBack(options);

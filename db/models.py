@@ -333,9 +333,12 @@ class CherryPickRequest(models.Model):
 
     comments = models.TextField(null=True)
     assay_plate_type = models.TextField()
+    
+    # Cherry Pick Follow-up Assays fields
     assay_protocol_comments = models.TextField(null=True)
     cherry_pick_assay_protocols_followed = models.TextField(null=True)
     cherry_pick_followup_results_status = models.TextField(null=True)
+
 
     # True when screener requested a random layout for the cherry pick plates
     is_randomized_assay_plate_layout = models.BooleanField(default=False)
@@ -555,13 +558,6 @@ class Screen(models.Model):
         'Screen', null=True, related_name='follow_up_screen',
         on_delete=models.CASCADE)
     
-    # REMOVE for SS2 - study_type replaces this as a marker
-    project_phase = models.TextField(null=True)
-    # REMOVE for SS2 - use parent_screen instead
-    project_id = models.TextField(null=True)
-    
-    
-    # New, from status migration (0004)
     status = models.TextField(null=True)
     status_date = models.DateField(null=True)
     
@@ -676,6 +672,13 @@ class Screen(models.Model):
     
     # cell_line = models.ForeignKey('CellLine', null=True) 
     # transfection_agent = models.ForeignKey('TransfectionAgent', null=True)
+
+    # REMOVE for SS2 - study_type replaces this as a marker
+    project_phase = models.TextField(null=True)
+    # REMOVE for SS2 - use parent_screen instead
+    project_id = models.TextField(null=True)
+    
+    
     
     def get_screen_users(self):
         users = [user for user in self.collaborators.all()]

@@ -43,3 +43,6 @@ screener_cherry_pick_count_cumulative,fields.cherrypickrequest,custom,,33,,,,TRU
 screener_picks_not_screened,fields.cherrypickrequest,custom,,34,,Warnings,,TRUE,"Selected screener cherry picks that have not been screened","Screener Picks Not Screened",TRUE,,,[none],,list,,,,,,,,,,,
 screened_experimental_well_count,fields.cherrypickrequest,screen,,35,fields.screen/unique_screened_experimental_well_count,Warnings,,,,,,,,[none],,integer,,,,,,,,,,,
 screener_picks_no_copies,fields.cherrypickrequest,custom,,36,,Warnings,,TRUE,"Screener cherry picks with no available cherry pick screening copies","Screener Picks with No Availlable Copies",TRUE,,,[none],,list,,,,,,,,,,,
+cherry_pick_assay_protocols_followed,fields.cherrypickrequest,,,37,,"Follow Up Assays",,TRUE,"Assay protocols followed","Assay protocols followed",TRUE,,cpr.assay_protocols_followed,[d],[c;u],string,,"{ 'group': 'Cherry Pick Protocol Information' }",select,,,,,,,,
+assay_protocol_comments,fields.cherrypickrequest,,,38,,"Follow Up Assays",,TRUE,"Assay protocol comments","Assay protocol comments",TRUE,,,[d],[c;u],string,,"{ 'group': 'Cherry Pick Protocol Information' }",textarea,,,,,,,,
+cherry_pick_followup_results_status,fields.cherrypickrequest,,,39,,"Follow Up Assays",,TRUE,"Follow-up results status","Follow-up Results Status",TRUE,,cpr.followup_results_status,[d],[c;u],string,,,select,,,,,,,,

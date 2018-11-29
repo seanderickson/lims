@@ -57,6 +57,9 @@ define([
       UserView.__super__.initialize.apply(this, arguments);      
       var self = this;
       // Merge the parent user.js tabs and modify the tab order
+      // NOTE: 20181128 - doing this after parent initialization overrides the 
+      // TabbedController permission checking on tabs
+      
       var keyOrder = ['detail'].concat(_.keys(this.screensaver_tabbed_resources));
       if (_.has(this.tabbed_resources, 'usergrouppermissions')){
         keyOrder.push('usergrouppermissions');
@@ -68,23 +71,30 @@ define([
         orderedTabs[key] = tempTabs[key];
       });
       self.tabbed_resources = orderedTabs;
-      
-      if (appModel.getCurrentUser().username != this.model.get('username')){
-        _.each(_.keys(this.tabbed_resources), function(key){
-          if(key !== 'detail' && !appModel.hasPermission(
-              self.tabbed_resources[key].resource,'read')){
+
+      _.each(_.keys(this.tabbed_resources), function(key){
+        if(key !== 'detail' && !appModel.hasPermission(
+            self.tabbed_resources[key].resource,'read')){
+          if (appModel.getCurrentUser().username == self.model.get('username')){
+            // 20181128 - Allow users to see their own activities and screens
+            if (!_.contains(['activity','screens'], key)){
+              delete self.tabbed_resources[key];
+            }
+          } else {
             delete self.tabbed_resources[key];
           }
-        });
+        }
+      });
+
+      if (!this.model.has('screens')){
+        delete self.tabbed_resources['screens'];
       }
       
+      // Usergroup should be hidden, this is a fail-safe
       if (this.model.get('is_staff') != true){
         delete self.tabbed_resources['usergrouppermissions'];
       }
       
-      if (!this.model.has('screens')){
-        delete self.tabbed_resources['screens'];
-      }
       _.bindAll(this,'addServiceActivity');
     },
 

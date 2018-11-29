@@ -35,13 +35,33 @@ define([
         wellsToLeaveEmpty = wellsToLeaveEmpty.split(',').join(', ');
         self.model.set('wells_to_leave_empty', wellsToLeaveEmpty);
       }
+
+      var tabbed_resources_initial = this.tabbed_resources;
       
       TabbedController.prototype.initialize.apply(this,arguments);
+
+      // add back in tabs viewable for screeners
+      var screener_tabs = [
+        'screenercherrypicks','labcherrypicks'];
+      _.each(screener_tabs, function(tab){
+        self.tabbed_resources[tab] = tabbed_resources_initial[tab];
+      });
+      
+      if (! this.model.get('number_plates')>0){
+        delete this.tabbed_resources['cherrypickplates'];
+      }
+      if(self.model.get('total_number_lcps') == 0){
+        delete this.tabbed_resources['labcherrypicks'];
+        delete this.tabbed_resources['sourceplates'];
+      }      
+      if(self.model.get('number_plates_completed') == 0){
+        delete this.tabbed_resources['transformer'];
+      }
       _.bindAll(this, 'createScpView','createLcpView',
                 'showScpSearchForm','showWellsToLeaveEmptyDialog');
     },
 
-    cherry_pick_tabbed_resources: {
+    tabbed_resources: {
       detail: { 
         description: 'Details', 
         title: 'Details', 
@@ -100,17 +120,17 @@ define([
     serialize: function() {
       var self = this;
 
-      this.tabbed_resources = _.extend({},this.cherry_pick_tabbed_resources);
-      if (! this.model.get('number_plates')>0){
-        delete this.tabbed_resources['cherrypickplates'];
-      }
-      if(self.model.get('total_number_lcps') == 0){
-        delete this.tabbed_resources['labcherrypicks'];
-        delete this.tabbed_resources['sourceplates'];
-      }      
-      if(self.model.get('number_plates_completed') == 0){
-        delete this.tabbed_resources['transformer'];
-      }
+//      this.tabbed_resources = _.extend({},this.cherry_pick_tabbed_resources);
+//      if (! this.model.get('number_plates')>0){
+//        delete this.tabbed_resources['cherrypickplates'];
+//      }
+//      if(self.model.get('total_number_lcps') == 0){
+//        delete this.tabbed_resources['labcherrypicks'];
+//        delete this.tabbed_resources['sourceplates'];
+//      }      
+//      if(self.model.get('number_plates_completed') == 0){
+//        delete this.tabbed_resources['transformer'];
+//      }
       
       return {
         'base_url': self.model.resource.key + '/' + self.model.key,
@@ -502,7 +522,8 @@ define([
       var url = [self.model.resource.apiUri, 
                  self.model.key,
                  'source_plate'].join('/');
-      var resource = appModel.getResource('librarycopyplate')
+      var resource = appModel.getResource('librarycopyplate');
+      console.log('resource', resource);
       var fields = resource.fields;
       var includes = [];
       _.each([
@@ -516,8 +537,10 @@ define([
         'first_date_screened',
         'last_date_screened'],
         function(hidden_field){
-          fields[hidden_field]['visibility'] = [];
-          includes.unshift('-' + hidden_field);
+          if (_.has(fields, hidden_field)){
+            fields[hidden_field]['visibility'] = [];
+            includes.unshift('-' + hidden_field);
+          }
         }
       );
       _.each([

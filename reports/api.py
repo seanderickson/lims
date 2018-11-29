@@ -331,11 +331,12 @@ def write_authorization(_func):
     @wraps(_func)
     def _inner(self, *args, **kwargs):
         request = args[0]
-        resource_name = kwargs.pop('resource_name', self._meta.resource_name)
+        resource_name = self._meta.resource_name
+#         resource_name = kwargs.pop('resource_name', self._meta.resource_name)
         if not self._meta.authorization._is_resource_authorized(
             request.user,'write', **kwargs):
-            msg = 'write auth failed for user: %r, resource: %r' \
-                % (request.user, resource_name)
+            msg = "write auth failed for: username: '{}', resource: '{}'"\
+                .format(request.user.username, resource_name)
             logger.warn(msg)
             raise PermissionDenied(msg)
         if resource_name != 'screenresult':
@@ -353,13 +354,15 @@ def read_authorization(_func):
     @wraps(_func)
     def _inner(self, *args, **kwargs):
         request = args[0]
-        resource_name = kwargs.pop('resource_name', self._meta.resource_name)
+        resource_name = self._meta.resource_name
+#         resource_name = kwargs.pop('resource_name', self._meta.resource_name)
         if DEBUG_AUTHORIZATION:
             logger.info('read auth for: %r using: %r', 
                 resource_name, self._meta.authorization)
         if not self._meta.authorization._is_resource_authorized(
                 request.user,'read', **kwargs):
-            msg = 'read auth failed for: %r, %r' % (request.user, resource_name)
+            msg = "read auth failed for: username: '{}', resource: '{}'"\
+                .format(request.user.username, resource_name)
             logger.warn(msg)
             raise PermissionDenied(msg)
 

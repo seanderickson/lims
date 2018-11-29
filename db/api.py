@@ -3119,6 +3119,8 @@ class ScreenAuthorization(UserGroupAuthorization):
         if authorized is True:
             return True
         else:
+            # NOTE: only checking if the user has screens here:
+            # filter will restrict
             screensaver_user = ScreensaverUser.objects.get(username=user.username)
             authorized_screens = self.get_read_authorized_screens(screensaver_user)
             
@@ -7449,6 +7451,8 @@ class CherryPickRequestAuthorization(ScreenAuthorization):
         if authorized is True:
             return True
         
+        # NOTE: allow active users access:
+        # Filter will restrict further
         return user.is_active
 
     def filter(self, user, filter_expression):
@@ -7666,6 +7670,10 @@ class CherryPickRequestResource(DbApiResource):
     
     def dispatch_source_plate_view(self, request, **kwargs):
 
+        resource_name = kwargs.pop('resource_name', self._meta.resource_name)
+        if self._meta.authorization.is_restricted_view(request.user):
+            raise PermissionDenied
+
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
         
@@ -7676,7 +7684,7 @@ class CherryPickRequestResource(DbApiResource):
         kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
         kwargs['schema'] = \
             self.get_librarycopyplate_resource().build_schema(user=request.user)
-        # NOTE: authorization is performed in LibraryCopyPlateResource
+        # TODO: this will bypass LibraryCopyPlateResource.authorization
         return self.get_librarycopyplate_resource()\
             .build_list_response(request, **kwargs)
         
@@ -8017,9 +8025,8 @@ class CherryPickRequestResource(DbApiResource):
         self.is_authenticated(request)
 
         resource_name = kwargs.pop('resource_name', self._meta.resource_name)
-        authorized = self._meta.authorization._is_resource_authorized(
-            request.user, 'read', **kwargs)
-        if authorized is not True:
+        if not self._meta.authorization\
+            ._is_resource_authorized(request.user, 'read', **kwargs):
             raise PermissionDenied
         
         if request.method.lower() != 'get':
@@ -11587,7 +11594,8 @@ class CherryPickPlateResource(DbApiResource):
         authentication = MultiAuthentication(IccblBasicAuthentication(),
                                              IccblSessionAuthentication())
         resource_name = 'cherrypickassayplate'
-        authorization = CherryPickRequestAuthorization(resource_name)
+        # authorization = CherryPickRequestAuthorization(resource_name)
+        authorization = UserGroupAuthorization(resource_name)
         
         ordering = []
         filtering = {}
@@ -12601,9 +12609,6 @@ class PublicationAuthorization(ScreenAuthorization):
     def get_row_property_generator(self, user, fields, extant_generator):
         return extant_generator
     
-    def has_publication_read_authorization(self, user, publication_id):
-        return True
-    
     # def filter(self, user, filter_expression):
     #     
     #     if self.is_restricted_view(user):
@@ -12978,50 +12983,50 @@ class PublicationResource(DbApiResource):
 
         return HttpResponse(status=204)
 
-class AttachedFileAuthorization(ScreenAuthorization):
-    '''
-    Extend ScreenAuthorization for convenient access to sharing levels
-    '''
-    
-    def filter(self, user, filter_expression):
-        if self.is_restricted_view(user) is False:
-            return filter_expression
-
-        screensaver_user = ScreensaverUser.objects.get(username=user.username)
-        my_screens = self.get_user_screens(screensaver_user)
-        
-        auth_filter = or_(
-            column('screen_facility_id').in_(
-                [screen.facility_id for screen in my_screens]),
-            column('username') == user.username)
-            
-        if filter_expression is not None:
-            filter_expression = and_(filter_expression, auth_filter)
-        else:
-            filter_expression = auth_filter
-
-        return filter_expression
-        
-    def get_row_property_generator(self, user, fields, extant_generator):
-        return extant_generator
-    
-    def has_file_read_authorization(self, user, attached_file_id):
-        logger.info('has_file_read_authorization: %r, %r', user, attached_file_id)
-        is_restricted = self.is_restricted_view(user)
-        if is_restricted is not True:
-            return True
-        screensaver_user = ScreensaverUser.objects.get(username=user.username)
-        attached_file = AttachedFile.objects.get(attached_file_id=attached_file_id)
-        
-        if attached_file.screensaver_user == screensaver_user:
-            return True
-        elif attached_file.screen:
-            authorized_screens = self.get_read_authorized_screens(screensaver_user)
-            return attached_file.screen in authorized_screens
-        if attached_file.screensaver_user is None and attached_file.screen is None:
-            return True
-        logger.info('return False')
-        return False
+# class AttachedFileAuthorization(ScreenAuthorization):
+#     '''
+#     Extend ScreenAuthorization for convenient access to sharing levels
+#     '''
+#     
+#     def filter(self, user, filter_expression):
+#         if self.is_restricted_view(user) is False:
+#             return filter_expression
+# 
+#         screensaver_user = ScreensaverUser.objects.get(username=user.username)
+#         my_screens = self.get_user_screens(screensaver_user)
+#         
+#         auth_filter = or_(
+#             column('screen_facility_id').in_(
+#                 [screen.facility_id for screen in my_screens]),
+#             column('username') == user.username)
+#             
+#         if filter_expression is not None:
+#             filter_expression = and_(filter_expression, auth_filter)
+#         else:
+#             filter_expression = auth_filter
+# 
+#         return filter_expression
+#         
+#     def get_row_property_generator(self, user, fields, extant_generator):
+#         return extant_generator
+#     
+#     def has_file_read_authorization(self, user, attached_file_id):
+#         logger.info('has_file_read_authorization: %r, %r', user, attached_file_id)
+#         is_restricted = self.is_restricted_view(user)
+#         if is_restricted is not True:
+#             return True
+#         screensaver_user = ScreensaverUser.objects.get(username=user.username)
+#         attached_file = AttachedFile.objects.get(attached_file_id=attached_file_id)
+#         
+#         if attached_file.screensaver_user == screensaver_user:
+#             return True
+#         elif attached_file.screen:
+#             authorized_screens = self.get_read_authorized_screens(screensaver_user)
+#             return attached_file.screen in authorized_screens
+#         if attached_file.screensaver_user is None and attached_file.screen is None:
+#             return True
+#         logger.info('return False')
+#         return False
         
 class AttachedFileResource(DbApiResource):
 
@@ -13031,7 +13036,7 @@ class AttachedFileResource(DbApiResource):
         authentication = MultiAuthentication(IccblBasicAuthentication(),
                                              IccblSessionAuthentication())
         resource_name = 'attachedfile'
-        authorization = AttachedFileAuthorization(resource_name)
+        authorization = UserGroupAuthorization(resource_name)
         serializer = LimsSerializer()
         always_return_data = True
 
@@ -20039,34 +20044,35 @@ class ScreensaverUserResourceAuthorization(UserResourceAuthorization):
         return extant_generator
     
         
-class UserChecklistAuthorization(ScreensaverUserResourceAuthorization):        
-
-    def _is_resource_authorized(
-        self, user, permission_type, **kwargs):
-        authorized = \
-            super(UserChecklistAuthorization, self)\
-                ._is_resource_authorized(user, permission_type, **kwargs)
-        if authorized is True:
-            return True
-        
-        return user.is_active
-
-    def filter(self, user, filter_expression):
-        
-        if self.is_restricted_view(user) is False:
-            return filter_expression
-        
-        auth_filter = column('username') == user.username
-        if filter_expression is not None:
-            filter_expression = and_(filter_expression, auth_filter)
-        else:
-            filter_expression = auth_filter
-
-        return filter_expression
-
-    def get_row_property_generator(self, user, fields, extant_generator):
-        # If the user may see the CPR, there are no property restrictions
-        return extant_generator
+# class UserChecklistAuthorization(ScreensaverUserResourceAuthorization):        
+# 
+#     def _is_resource_authorized(
+#         self, user, permission_type, **kwargs):
+#         authorized = \
+#             super(UserChecklistAuthorization, self)\
+#                 ._is_resource_authorized(user, permission_type, **kwargs)
+#         if authorized is True:
+#             return True
+#         
+#         return user.is_active
+# 
+#     def filter(self, user, filter_expression):
+#         
+#         if self.is_restricted_view(user) is False:
+#             return filter_expression
+#
+#         NOTE: auth filter requires "username" field be included in query         
+#         auth_filter = column('username') == user.username
+#         if filter_expression is not None:
+#             filter_expression = and_(filter_expression, auth_filter)
+#         else:
+#             filter_expression = auth_filter
+# 
+#         return filter_expression
+# 
+#     def get_row_property_generator(self, user, fields, extant_generator):
+#         # If the user may see the CPR, there are no property restrictions
+#         return extant_generator
 
     
 class UserChecklistResource(DbApiResource):
@@ -20076,7 +20082,7 @@ class UserChecklistResource(DbApiResource):
         authentication = MultiAuthentication(IccblBasicAuthentication(),
                                              IccblSessionAuthentication())
         resource_name = 'userchecklist'
-        authorization = UserChecklistAuthorization(resource_name)
+        authorization = UserGroupAuthorization(resource_name)
         serializer = LimsSerializer()
 
     def __init__(self, **kwargs):

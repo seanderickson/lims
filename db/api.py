@@ -5569,12 +5569,17 @@ class ScreenResultResource(DbApiResource):
                     columns=assay_well_fieldnames, null=PSYCOPG_NULL)
                 logger.info('assay_wells created.')
                 
+                # USE copy_expert so that delimiter, quoting can be defined
                 logger.info(
                     'use copy_from to create %d result_values...', rvs_to_create)
                 result_value_file.seek(0)
-                conn.copy_from(
-                    result_value_file, 'result_value', sep=str(','), 
-                    columns=fieldnames, null=PSYCOPG_NULL)
+                copy_command = \
+                    '''COPY result_value ({}) FROM STDIN 
+                       WITH (FORMAT CSV, NULL "{}", DELIMITER '{}', QUOTE '{}' )'''.format(
+                         ','.join(fieldnames), PSYCOPG_NULL, ',', '"')
+                
+                logger.info('text: %r', copy_command)
+                conn.copy_expert(copy_command, result_value_file)
                 logger.info('result_values created.')
             screenresult_log.diffs.update({
                 'result_values_created': [None,rvs_to_create],

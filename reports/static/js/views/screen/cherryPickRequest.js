@@ -1246,21 +1246,18 @@ define([
         url = [self.model.resource.apiUri, 
                    self.model.key,
                    'lab_cherry_pick_plating'].join('/');
-        // NOTE: 201703 - display showPlateMapping
         var downloadPlateMappingButton = $([
           '<a class="btn btn-default btn-sm" ',
              'title="Download plate mapping file (available if plates are assigned)"',
             'role="button" id="plate_mapping_file" href="#">',
             'Download plate mapping files</a>'
           ].join(''));
-        plate_mapping_controls.push(downloadPlateMappingButton);
         var showPlateMappingButton = $([
           '<a class="btn btn-default btn-sm" ',
              'title="Show the plate mapping in a grid (available if plates are assigned)"',
             'role="button" id="plate_mapping_grid" href="#">',
             'Show plate mapping</a>'
           ].join(''));
-        plate_mapping_controls.push(showPlateMappingButton);
         downloadPlateMappingButton.click(function(e){
           e.preventDefault();
           console.log('download plate mapping file');
@@ -1274,7 +1271,12 @@ define([
           self.showPlateMappingGrid(url);
         });
         schemaUrl = url + '/schema';
-      }      
+
+        if (appModel.hasGroup('readEverythingAdmin')){
+          plate_mapping_controls.push(downloadPlateMappingButton);
+        }      
+        plate_mapping_controls.push(showPlateMappingButton);
+      }
 
       function createView(resource){
         view = self.createLcpView(delegateStack,resource, url);
@@ -1332,66 +1334,67 @@ define([
           '  <input id="showManuallySelected" type="checkbox">Manually Selected',
           '</label>'
         ].join(''));
-      checkboxDiv.append(showCopyWellsControl);
-      checkboxDiv.append(showAllCopyWellsControl);
-      if (self.model.get('number_unfulfilled_lab_cherry_picks') > 0){
-        checkboxDiv.append(showUnfulfilledWellsControl);
-      }
-      checkboxDiv.append(showInsufficientWellsControl);
-      checkboxDiv.append(showManuallySelectedWellsControl);
-      checkboxDiv.prepend('<label for="show_input_group">show</label>');
-      
-      var extraListControls = [checkboxDiv];
-//      extraControls.push(checkboxDiv);
-      
       var setSelectedLcpButton = $([
         '<a class="btn btn-default btn-sm" ',
           'style="display: none; " ',
           'role="button" id="save_button_lcp_selected" href="#">',
           'Save selections</a>'
         ].join(''));
-      extraControls.push(setSelectedLcpButton);
       var updateSelectedLcpButton = $([
         '<a class="btn btn-default btn-sm" ',
           'style="display: none; " ',
           'role="button" id="update_selected_button" href="#">',
           'Update selections</a>'
         ].join(''));
-      extraControls.push(updateSelectedLcpButton);
       var cancelSelectedButton = $([
         '<a class="btn btn-default btn-sm" ',
           'style="display: none; " ',
           'role="button" id="cancel_selected_button" href="#">',
           'Cancel selections</a>'
         ].join(''));
-      extraControls.push(cancelSelectedButton);
       var reserveAndMapSelectedButton = $([
         '<a class="btn btn-default btn-sm" ',
           'style="display: none; " ',
           'role="button" id="reserve_map_selected_button" href="#">',
           'Reserve selections and map to plates</a>'
         ].join(''));
-      if(appModel.hasPermission('labcherrypick','write')){
-        extraControls.push(reserveAndMapSelectedButton);
-      }
       var deleteLcpsButton = $([
           '<a class="btn btn-default btn-sm" ',
           'style="display: none; " ',
           'role="button" id="deleteLcpsButton" href="#">',
           'Delete lab cherry picks</a>'
         ].join(''));
-      if(appModel.hasPermission('labcherrypick','write')){
-        extraControls.push(deleteLcpsButton);
-      }
       var cancelReservation = $([
           '<a class="btn btn-default btn-sm" ',
           'style="display: none; " ',
           'role="button" id="cancel_reservation" href="#">',
           'Cancel reservation and delete plating assignments</a>'
         ].join(''));
-      if(appModel.hasPermission('labcherrypick','write')){
-        extraControls.push(cancelReservation);
+      var extraListControls = [];
+      if (appModel.hasGroup('readEverythingAdmin')){
+        checkboxDiv.append(showCopyWellsControl);
+        checkboxDiv.append(showAllCopyWellsControl);
+        if (self.model.get('number_unfulfilled_lab_cherry_picks') > 0){
+          checkboxDiv.append(showUnfulfilledWellsControl);
+        }
+        checkboxDiv.append(showInsufficientWellsControl);
+        checkboxDiv.append(showManuallySelectedWellsControl);
+        checkboxDiv.prepend('<label for="show_input_group">show</label>');
+        extraListControls.push(checkboxDiv);
+        extraControls.push(setSelectedLcpButton);
+        extraControls.push(updateSelectedLcpButton);
+        extraControls.push(cancelSelectedButton);
+        if(appModel.hasPermission('labcherrypick','write')){
+          extraControls.push(reserveAndMapSelectedButton);
+        }
+        if(appModel.hasPermission('labcherrypick','write')){
+          extraControls.push(deleteLcpsButton);
+        }
+        if(appModel.hasPermission('labcherrypick','write')){
+          extraControls.push(cancelReservation);
+        }
       }
+      
 
       if(appModel.hasPermission('labcherrypick','write')){
         if (self.model.get('number_plates') == 0){
@@ -1401,60 +1404,63 @@ define([
           cancelReservation.show();
         }
       }
-      ///// Library and Plate comments /////
       
-      resource.fields['library_plate']['backgridCellType'] = 
-        Iccbl.CommentArrayLinkCell.extend({
-          comment_attribute: 'library_plate_comment_array',
-          title_function: function(model){
-            return 'Comments for Plate: ' 
-              + model.get('library_short_name') + '/' 
-              + model.get('source_copy_name')  + '/'
-              + model.get('library_plate');
-          }
-        });
+      if (appModel.hasGroup('readEverythingAdmin')){
 
-      resource.fields['source_copy_name']['backgridCellType'] = 
-        Iccbl.LinkCell.extend({
-          render: function(){
-            var self = this;
-            Iccbl.LinkCell.prototype.render.apply(this, arguments);
-            var comments = this.model.get('source_copy_comments');
-            if (!_.isEmpty(comments)){
-              this.$el.attr('title', comments);
-              this.$el.append(Iccbl.createCommentIcon(
-                comments,
-                'Comments for Copy: ' 
-                  + self.model.get('library_short_name') + '/'
-                  + self.model.get('source_copy_name')
-                ));
+        ///// Library and Plate comments /////
+        resource.fields['library_plate']['backgridCellType'] = 
+          Iccbl.CommentArrayLinkCell.extend({
+            comment_attribute: 'library_plate_comment_array',
+            title_function: function(model){
+              return 'Comments for Plate: ' 
+                + model.get('library_short_name') + '/' 
+                + model.get('source_copy_name')  + '/'
+                + model.get('library_plate');
             }
-            return this;
-          }
-        },resource.fields['source_copy_name'].display_options);
+          });
 
-      resource.fields['library_name']['backgridCellType'] =
-        Iccbl.CommentArrayLinkCell.extend({
-          comment_attribute: 'library_comment_array',
-          title_function: function(model){
-            return 'Comments for library: ' + model.get('library_short_name');
-          }
-        });
-      
-      resource.fields['library_short_name']['backgridCellType'] =
-        Iccbl.CommentArrayLinkCell.extend({
-          comment_attribute: 'library_comment_array',
-          title_function: function(model){
-            return 'Comments for library: ' + model.get('library_short_name');
-          }
-        });
-      
-      ///// end Library and Plate comments /////
+        resource.fields['source_copy_name']['backgridCellType'] = 
+          Iccbl.LinkCell.extend({
+            render: function(){
+              var self = this;
+              Iccbl.LinkCell.prototype.render.apply(this, arguments);
+              var comments = this.model.get('source_copy_comments');
+              if (!_.isEmpty(comments)){
+                this.$el.attr('title', comments);
+                this.$el.append(Iccbl.createCommentIcon(
+                  comments,
+                  'Comments for Copy: ' 
+                    + self.model.get('library_short_name') + '/'
+                    + self.model.get('source_copy_name')
+                  ));
+              }
+              return this;
+            }
+          },resource.fields['source_copy_name'].display_options);
 
-      if(self.model.get('has_pool_screener_cherry_picks') === true){
-        resource.fields['pool_reagent_vendor_id']['visibility'] = ['l','d'];
-      }
+        resource.fields['library_name']['backgridCellType'] =
+          Iccbl.CommentArrayLinkCell.extend({
+            comment_attribute: 'library_comment_array',
+            title_function: function(model){
+              return 'Comments for library: ' + model.get('library_short_name');
+            }
+          });
       
+        resource.fields['library_short_name']['backgridCellType'] =
+          Iccbl.CommentArrayLinkCell.extend({
+            comment_attribute: 'library_comment_array',
+            title_function: function(model){
+              return 'Comments for library: ' + model.get('library_short_name');
+            }
+          });
+      
+        ///// end Library and Plate comments /////
+        if(self.model.get('has_pool_screener_cherry_picks') === true){
+          resource.fields['pool_reagent_vendor_id']['visibility'] = ['l','d'];
+        }
+      
+      } // end Admin controls
+
       // Track user LCP selections
       var Collection = Backbone.Collection.extend({
         // explicitly define the id so that collection compare & equals work
@@ -1539,657 +1545,660 @@ define([
       self.listenTo(view, 'afterRender', function(event) {
         view.$el.find('#list-title').show().append(
           '<H4 id="title">Lab Cherry Picks for : ' + self.model.key + '</H4>');
-//        view.$el.find('#extra_controls').removeClass().addClass('col-sm-10');
-//        view.$el.find('#list_controls').removeClass().addClass('col-sm-2');
       });
     
-      var initialSearchHash = view.listModel.get(appModel.URI_PATH_SEARCH);
-      if (_.has(initialSearchHash, 'show_copy_wells')
-          && initialSearchHash.show_copy_wells.toLowerCase()=='true') {
-        showCopyWellsControl.find('input[type="checkbox"]').prop('checked',true);
-      }
-      if (_.has(initialSearchHash, 'show_available_and_retired_copy_wells')
-          && initialSearchHash.show_available_and_retired_copy_wells.toLowerCase()=='true') {
-        showAllCopyWellsControl.find('input[type="checkbox"]').prop('checked',true);
-        showCopyWellsControl.find('input[type="checkbox"]').prop('checked',false);
-      }
-      if (_.has(initialSearchHash, 'show_unfulfilled')
-          && initialSearchHash.show_unfulfilled.toLowerCase()=='true') {
-        showUnfulfilledWellsControl.find('input[type="checkbox"]').prop('checked',true);
-      }
-      if (_.has(initialSearchHash, 'show_insufficient')
-          && initialSearchHash.show_insufficient.toLowerCase()=='true') {
-        showInsufficientWellsControl.find('input[type="checkbox"]').prop('checked',true);
-      }
-      if (_.has(initialSearchHash, 'show_manual')
-          && initialSearchHash.show_manual.toLowerCase()=='true') {
-        showManuallySelectedWellsControl.find('input[type="checkbox"]').prop('checked',true);
-      }
-      
-      view.grid.columns.on('update', function(){
-        view.$el.find('td').removeClass('edited');
-      });
-      // Manage LCP selection updates
-      view.collection.on('add', function(model){
-        // cache the 'selected' property for update management
-        model.set(
-          { selected_on_server: model.get('selected') },
-          { silent: true }
-        );
-      });
-      view.collection.on('change', function(model){
-        console.log('collection changed', arguments);
-        if (!model.has('selected_on_server')){
-          // Block changes caused by changing the field schema with other actions 
-          // that happen before the selected_on_server flag is set
-          return;
+      if (appModel.hasGroup('readEverythingAdmin')){
+        // setup Admin-functions
+        
+        var initialSearchHash = view.listModel.get(appModel.URI_PATH_SEARCH);
+        if (_.has(initialSearchHash, 'show_copy_wells')
+            && initialSearchHash.show_copy_wells.toLowerCase()=='true') {
+          showCopyWellsControl.find('input[type="checkbox"]').prop('checked',true);
         }
-        //if (!(showCopyWellsControl.find('input[type="checkbox"]').prop('checked')
-        //    || showAllCopyWellsControl.find('input[type="checkbox"]').prop('checked'))){
-        //  return;
-        //}
-
-        var current_copy_name = model.get('source_copy_name');
-        var source_well_id = model.get('source_well_id');
-        var source_copy_id = model.get('source_copy_id');
-        var selected_copy_name = model.get('selected_copy_name');
-
-        if (model.get('selected') != model.get('selected_on_server')) {
-          if (self.model.get('number_plates') != 0){
-            if (_.isEmpty(selected_copy_name)){
-              appModel.showModalMessage({
-                title: 'Note:',
-                body: 'New selections can not be made unless plating '+
-                  'assignments are deallocated'
-              });
-              model.set('selected',false);
-            } else {
-              lcpSelectionUpdateCollection.add(model);
-            }
-          } else {
-            lcpSelectionUpdateCollection.add(model);
-          }
-        } else {
-          lcpSelectionUpdateCollection.remove(model);
+        if (_.has(initialSearchHash, 'show_available_and_retired_copy_wells')
+            && initialSearchHash.show_available_and_retired_copy_wells.toLowerCase()=='true') {
+          showAllCopyWellsControl.find('input[type="checkbox"]').prop('checked',true);
+          showCopyWellsControl.find('input[type="checkbox"]').prop('checked',false);
         }
-        if (model.get('selected')) {
-          // unselect others in the group
-          _.each(view.collection.where({'source_well_id':source_well_id}),
-            function(collection_model){
-              if (collection_model.get('source_copy_name')!==current_copy_name){
-                collection_model.set({'selected': false});
-              }
-          });
+        if (_.has(initialSearchHash, 'show_unfulfilled')
+            && initialSearchHash.show_unfulfilled.toLowerCase()=='true') {
+          showUnfulfilledWellsControl.find('input[type="checkbox"]').prop('checked',true);
         }
-      });
-      
-      lcpSelectionUpdateCollection.on('update reset', function(){
-        if (!lcpSelectionUpdateCollection.isEmpty()){
-          appModel.setPagePending(null, 'Selection updates are unsaved, continue anyway?');
-          cancelSelectedButton.show();
-          if (self.model.get('number_plates') == 0){
-            setSelectedLcpButton.show();
-          }else{
-            updateSelectedLcpButton.show();
-          }
-          reserveAndMapSelectedButton.hide();
-          deleteLcpsButton.hide();
-          cancelReservation.hide();
-        } else {
-          setSelectedLcpButton.hide();
-          updateSelectedLcpButton.hide();
-          cancelSelectedButton.hide();
-          if (self.model.get('number_plates') == 0){
-            deleteLcpsButton.show();
-            reserveAndMapSelectedButton.show();
-          } else {
-            cancelReservation.show();
-          }
-          appModel.clearPagePending();
+        if (_.has(initialSearchHash, 'show_insufficient')
+            && initialSearchHash.show_insufficient.toLowerCase()=='true') {
+          showInsufficientWellsControl.find('input[type="checkbox"]').prop('checked',true);
         }
-      });
-      // Make sure that on reset actions (page changes), selections are persisted
-      view.collection.on('reset', function(){
-        // Note: on "reset" the "add" methods aren't being called
-        view.collection.each(function(model){
+        if (_.has(initialSearchHash, 'show_manual')
+            && initialSearchHash.show_manual.toLowerCase()=='true') {
+          showManuallySelectedWellsControl.find('input[type="checkbox"]').prop('checked',true);
+        }
+        
+        view.grid.columns.on('update', function(){
+          view.$el.find('td').removeClass('edited');
+        });
+        // Manage LCP selection updates
+        view.collection.on('add', function(model){
+          // cache the 'selected' property for update management
           model.set(
             { selected_on_server: model.get('selected') },
             { silent: true }
           );
         });
-        lcpSelectionUpdateCollection.each(function(model){
-          var retrievedModel = view.collection.get(model);
-          if (!_.isUndefined(retrievedModel)){
-              retrievedModel.set('selected', model.get('selected'));
+        view.collection.on('change', function(model){
+          console.log('collection changed', arguments);
+          if (!model.has('selected_on_server')){
+            // Block changes caused by changing the field schema with other actions 
+            // that happen before the selected_on_server flag is set
+            return;
+          }
+          //if (!(showCopyWellsControl.find('input[type="checkbox"]').prop('checked')
+          //    || showAllCopyWellsControl.find('input[type="checkbox"]').prop('checked'))){
+          //  return;
+          //}
+  
+          var current_copy_name = model.get('source_copy_name');
+          var source_well_id = model.get('source_well_id');
+          var source_copy_id = model.get('source_copy_id');
+          var selected_copy_name = model.get('selected_copy_name');
+  
+          if (model.get('selected') != model.get('selected_on_server')) {
+            if (self.model.get('number_plates') != 0){
+              if (_.isEmpty(selected_copy_name)){
+                appModel.showModalMessage({
+                  title: 'Note:',
+                  body: 'New selections can not be made unless plating '+
+                    'assignments are deallocated'
+                });
+                model.set('selected',false);
+              } else {
+                lcpSelectionUpdateCollection.add(model);
+              }
+            } else {
+              lcpSelectionUpdateCollection.add(model);
+            }
+          } else {
+            lcpSelectionUpdateCollection.remove(model);
           }
           if (model.get('selected')) {
             // unselect others in the group
-            _.each(view.collection.where({'source_well_id':model.get('source_well_id')}),
+            _.each(view.collection.where({'source_well_id':source_well_id}),
               function(collection_model){
-                if (collection_model.get('source_copy_name')!==model.get('source_copy_name')){
+                if (collection_model.get('source_copy_name')!==current_copy_name){
                   collection_model.set({'selected': false});
                 }
             });
           }
-       });
-      });
-      
-      setSelectedLcpButton.click(function(e){
-        e.preventDefault();
-        console.log('selection updates', lcpSelectionUpdateCollection);
-        if (lcpSelectionUpdateCollection.isEmpty()) {
-          appModel.showModalError('No changes to save');
-          return;
-        }
-        function processClick(formValues){
-          console.log('form values', formValues);
-          var headers = {};
-          headers[appModel.HEADER_APILOG_COMMENT] = formValues['comments'];
-          lcpSelectionUpdateCollection.url = view.collection.url;
-          lcpSelectionUpdateCollection.sync(
-            'patch', lcpSelectionUpdateCollection, { headers: headers })
-            .done(function(data, textStatus, jqXHR){
-              appModel.showConnectionResult(data, {
-                title: 'Lab Cherry Pick copy selection updates'
-              });
-              // On success, clear all the buttons
-              var originalSearchHash = _.clone(view.listModel.get(appModel.URI_PATH_SEARCH));
-              var searchHash = _.clone(view.listModel.get(appModel.URI_PATH_SEARCH));
-              delete searchHash['show_copy_wells'];
-              delete searchHash['show_available_and_retired_copy_wells'];
-              delete searchHash['show_unfulfilled'];
-              delete searchHash['show_insufficient'];
-              var includes = _.clone(view.listModel.get('includes'));
-              includes = _.without(includes, 'selected');
-              view.listModel.set({ includes: includes}, {reset: false});
-              showCopyWellsControl.find('input[type="checkbox"]').prop('checked',false);
-              showAllCopyWellsControl.find('input[type="checkbox"]').prop('checked',false);
-              
-              showUnfulfilledWellsControl.find('input[type="checkbox"]').prop('checked',false);
-              showInsufficientWellsControl.find('input[type="checkbox"]').prop('checked',false);
-
-              showManuallySelectedWellsControl.find('input[type="checkbox"]').prop('checked',true);
-              searchHash['show_manual'] = 'true';
-              view.listModel.set(appModel.URI_PATH_SEARCH,searchHash);
-              //              if (_.isEqual(originalSearchHash,searchHash)){
-              //                view.collection.fetch({ reset: true });
-              //              }
-              // Note: this may trigger another a superfluous fetch after the listmodel
-              // update. Necessary to finally clear the lcpSelectionCollection
-              view.collection.fetch({ reset: true }).done(function(){
-                // have to wait for the fetch operation to reset, due to the 
-                // asynchronous event handling
-                lcpSelectionUpdateCollection.reset(null); // clear
-              });
-    
-            }).fail(function(jqXHR, textStatus, errorThrown){
-              console.log('fail', arguments);
-              appModel.jqXHRfail.apply(this,arguments); 
-            });
-        };
-        
-        appModel.showOkCommentForm({
-          ok: processClick,
-          title: 'Save Lab Cherry Pick selections?'
         });
-      });
-      
-      cancelSelectedButton.click(function(e){
-        e.preventDefault();
-        console.log('cancel selection updates', lcpSelectionUpdateCollection);
-        lcpSelectionUpdateCollection.each(function(model){
-          var retrievedModel = view.collection.get(model);
-          if (!_.isUndefined(retrievedModel)){
-              retrievedModel.set('selected', !model.get('selected'));
+        
+        lcpSelectionUpdateCollection.on('update reset', function(){
+          if (!lcpSelectionUpdateCollection.isEmpty()){
+            appModel.setPagePending(null, 'Selection updates are unsaved, continue anyway?');
+            cancelSelectedButton.show();
+            if (self.model.get('number_plates') == 0){
+              setSelectedLcpButton.show();
+            }else{
+              updateSelectedLcpButton.show();
+            }
+            reserveAndMapSelectedButton.hide();
+            deleteLcpsButton.hide();
+            cancelReservation.hide();
+          } else {
+            setSelectedLcpButton.hide();
+            updateSelectedLcpButton.hide();
+            cancelSelectedButton.hide();
+            if (self.model.get('number_plates') == 0){
+              deleteLcpsButton.show();
+              reserveAndMapSelectedButton.show();
+            } else {
+              cancelReservation.show();
+            }
+            appModel.clearPagePending();
           }
         });
-        lcpSelectionUpdateCollection.reset(null);
-        view.$el.find('td').removeClass('edited');
-        appModel.clearPagePending();
-      });
-      
-      updateSelectedLcpButton.click(function(e){
-        e.preventDefault();
-        console.log('selection updates', lcpSelectionUpdateCollection);
-        if (lcpSelectionUpdateCollection.isEmpty()) {
-          appModel.showModalError('No changes to save');
-          return;
-        }
-
-        function processClick(formValues){
-          console.log('form values', formValues);
-          var headers = {};
-          headers[appModel.HEADER_APILOG_COMMENT] = formValues['comments'];
-          lcpSelectionUpdateCollection.url = function(){
-            var url = view.collection.url;
-            // NOTE: the comment dialog implies override is confirmed
-            url += '?' + appModel.API_PARAM_OVERRIDE + '=true';
-            
-            if (formValues['set_deselected_to_zero'] === true){
-              url += '&' + appModel.API_PARAM_SET_DESELECTED_TO_ZERO +'=true'
+        // Make sure that on reset actions (page changes), selections are persisted
+        view.collection.on('reset', function(){
+          // Note: on "reset" the "add" methods aren't being called
+          view.collection.each(function(model){
+            model.set(
+              { selected_on_server: model.get('selected') },
+              { silent: true }
+            );
+          });
+          lcpSelectionUpdateCollection.each(function(model){
+            var retrievedModel = view.collection.get(model);
+            if (!_.isUndefined(retrievedModel)){
+                retrievedModel.set('selected', model.get('selected'));
             }
-            return url;
+            if (model.get('selected')) {
+              // unselect others in the group
+              _.each(view.collection.where({'source_well_id':model.get('source_well_id')}),
+                function(collection_model){
+                  if (collection_model.get('source_copy_name')!==model.get('source_copy_name')){
+                    collection_model.set({'selected': false});
+                  }
+              });
+            }
+         });
+        });
+        
+        setSelectedLcpButton.click(function(e){
+          e.preventDefault();
+          console.log('selection updates', lcpSelectionUpdateCollection);
+          if (lcpSelectionUpdateCollection.isEmpty()) {
+            appModel.showModalError('No changes to save');
+            return;
+          }
+          function processClick(formValues){
+            console.log('form values', formValues);
+            var headers = {};
+            headers[appModel.HEADER_APILOG_COMMENT] = formValues['comments'];
+            lcpSelectionUpdateCollection.url = view.collection.url;
+            lcpSelectionUpdateCollection.sync(
+              'patch', lcpSelectionUpdateCollection, { headers: headers })
+              .done(function(data, textStatus, jqXHR){
+                appModel.showConnectionResult(data, {
+                  title: 'Lab Cherry Pick copy selection updates'
+                });
+                // On success, clear all the buttons
+                var originalSearchHash = _.clone(view.listModel.get(appModel.URI_PATH_SEARCH));
+                var searchHash = _.clone(view.listModel.get(appModel.URI_PATH_SEARCH));
+                delete searchHash['show_copy_wells'];
+                delete searchHash['show_available_and_retired_copy_wells'];
+                delete searchHash['show_unfulfilled'];
+                delete searchHash['show_insufficient'];
+                var includes = _.clone(view.listModel.get('includes'));
+                includes = _.without(includes, 'selected');
+                view.listModel.set({ includes: includes}, {reset: false});
+                showCopyWellsControl.find('input[type="checkbox"]').prop('checked',false);
+                showAllCopyWellsControl.find('input[type="checkbox"]').prop('checked',false);
+                
+                showUnfulfilledWellsControl.find('input[type="checkbox"]').prop('checked',false);
+                showInsufficientWellsControl.find('input[type="checkbox"]').prop('checked',false);
+  
+                showManuallySelectedWellsControl.find('input[type="checkbox"]').prop('checked',true);
+                searchHash['show_manual'] = 'true';
+                view.listModel.set(appModel.URI_PATH_SEARCH,searchHash);
+                //              if (_.isEqual(originalSearchHash,searchHash)){
+                //                view.collection.fetch({ reset: true });
+                //              }
+                // Note: this may trigger another a superfluous fetch after the listmodel
+                // update. Necessary to finally clear the lcpSelectionCollection
+                view.collection.fetch({ reset: true }).done(function(){
+                  // have to wait for the fetch operation to reset, due to the 
+                  // asynchronous event handling
+                  lcpSelectionUpdateCollection.reset(null); // clear
+                });
+      
+              }).fail(function(jqXHR, textStatus, errorThrown){
+                console.log('fail', arguments);
+                appModel.jqXHRfail.apply(this,arguments); 
+              });
           };
           
-          lcpSelectionUpdateCollection.sync(
-            'patch', lcpSelectionUpdateCollection, { headers: headers})
-            .done(function(data, textStatus, jqXHR){
-              appModel.showConnectionResult(data, {
-                title: 'Lab Cherry Pick copy selection updates'
-              });
-
-              // On success, clear all the buttons
-              var originalSearchHash = _.clone(view.listModel.get(appModel.URI_PATH_SEARCH));
-              var searchHash = _.clone(view.listModel.get(appModel.URI_PATH_SEARCH));
-              delete searchHash['show_copy_wells'];
-              delete searchHash['show_available_and_retired_copy_wells'];
-              delete searchHash['show_unfulfilled'];
-              delete searchHash['show_insufficient'];
-              var includes = _.clone(view.listModel.get('includes'));
-              includes = _.without(includes, 'selected');
-              view.listModel.set({ includes: includes}, {reset: false});
-              
-              showCopyWellsControl.find('input[type="checkbox"]').prop('checked',false);
-              showAllCopyWellsControl.find('input[type="checkbox"]').prop('checked',false);
-
-              showUnfulfilledWellsControl.find('input[type="checkbox"]').prop('checked',false);
-              searchHash['show_manual'] = 'true';
-
-              showInsufficientWellsControl.find('input[type="checkbox"]').prop('checked',false);
-              showManuallySelectedWellsControl.find('input[type="checkbox"]').prop('checked',true);
-              view.listModel.set(appModel.URI_PATH_SEARCH,searchHash);
-              //if (_.isEqual(originalSearchHash,searchHash)){
-              //  view.collection.fetch({ reset: true });
-              //}
-              view.collection.fetch({ reset: true }).done(function(){
-                // have to wait for the fetch operation to reset, due to the 
-                // asynchronous event handling
-                lcpSelectionUpdateCollection.reset(null); // clear
-              });
-    
-            }).fail(function(jqXHR, textStatus, errorThrown){
-              console.log('fail', arguments);
-              appModel.jqXHRfail.apply(this,arguments); 
-            });
-        };
-
-        var options = {
-          okText: 'Ok',
-          cancelText: 'Cancel and return to page',
-          title: 'Update Selections?'
-        };
-        var form_template = appModel._form_template;
-        var FormFields = Backbone.Model.extend({
-          schema: {
-            comments: {
-              title: 'Comments',
-              type: 'TextArea',
-              editorClass: 'input-full',
-              validators: ['required'], 
-              template: appModel._field_template
-            },
-            set_deselected_to_zero: {
-              title: 'Set Deselected Copy-Well volumes to zero',
-              help: 'If selected, deselected Copy Well volumes will be set ' +
-                'to zero as part of this operation',
-              type: 'Checkbox',
-              template: appModel._alt_checkbox_template
-            }
-          }
-        });
-        var formFields = new FormFields();
-        var form = new Backbone.Form({
-          model: formFields,
-          template: appModel._form_template
-        });
-        var _form_el = form.render().el;
-        options.view = _form_el;
-        options.ok = function(e){
-          appModel.clearPagePending();
-          var errors = form.commit();
-          if(!_.isEmpty(errors)){
-            console.log('form errors, abort submit: ' + JSON.stringify(errors));
-            return false;
-          }else{
-            processClick(form.getValue());            
-          }
-        };        
-        appModel.showModal(options);
-      });      
-
-      deleteLcpsButton.click(function(e){
-        e.preventDefault();
-        function processClick(formValues){
-          var delete_lab_cherry_picks_url = [
-            self.model.resource.apiUri,self.model.key, 
-            'delete_lab_cherry_picks'].join('/');
-          var headers = {}; // can be used to send a comment
-          headers[appModel.HEADER_APILOG_COMMENT] = formValues['comments'];
-          $.ajax({
-            url: delete_lab_cherry_picks_url,     
-            cache: false,
-            contentType: 'application/json', 
-            dataType: 'json', // what is expected back from the server
-            type: 'POST',
-            headers: headers
-          }).done(function(data, textStatus, jqXHR){
-            appModel.showConnectionResult(data, {
-              title: 'Delete Lab Cherry Picks'
-            });
-            self.model.fetch({ reset: true }).done(function(){
-              self.uriStack = ['screenercherrypicks'];
-              // Remove the child view before calling render, to prevent
-              // it from being rendered twice, and calling afterRender twice
-              self.removeView('#tab_container');
-              self.render();
-            });
-          }).fail(function(jqXHR, textStatus, errorThrown){
-            appModel.jqXHRfail.apply(this,arguments); 
-          });
-        };
-        var msg = 'Delete Lab Cherry Pick selections (return to Screener Cherry Pick View)';
-        if(appModel.isPagePending()){
-          appModel.requestPageChange({
-            ok: function(){
-              appModel.showOkCommentForm({
-                ok: processClick,
-                title: msg
-              });
-            }
-          });
-        }else{
           appModel.showOkCommentForm({
             ok: processClick,
-            title: msg
-          })
-        }
-      });
-      
-      reserveAndMapSelectedButton.click(function(e){
+            title: 'Save Lab Cherry Pick selections?'
+          });
+        });
         
-        e.preventDefault();
-        console.log('submit selections for plating');
-        var plate_lab_cherrypicks_url = [
-          self.model.resource.apiUri,self.model.key, 
-          'reserve_map_lab_cherry_picks'].join('/');
-
-        function processClick(overrideInsufficient, comments){
-          
-          var data = new FormData();
-          // send API_PARAM_VOLUME_OVERRIDE = 'volume_override'
-          data.append(appModel.API_PARAM_VOLUME_OVERRIDE, overrideInsufficient);
-          var headers = {}; // can be used to send a comment
-          headers[appModel.HEADER_APILOG_COMMENT] = comments;
-          $.ajax({
-            url: plate_lab_cherrypicks_url,     
-            cache: false,
-            contentType: false,
-            processData: false,
-            dataType: 'json', // what is expected back from the server
-            data: data,
-            type: 'POST',
-            headers: headers
-          }).done(function(data, textStatus, jqXHR){
-            appModel.showConnectionResult(data, {
-              title: 'Lab Cherry Pick Plating result'
-            });
-            self.model.fetch({ reset: true }).done(function(){
-              self.uriStack = ['labcherrypicks'];
-              // Remove the child view before calling render, to prevent
-              // it from being rendered twice, and calling afterRender twice
-              self.removeView('#tab_container');
-              self.render();
-            });
-          }).fail(function(jqXHR, textStatus, errorThrown){
-            console.log('errors', arguments);
+        cancelSelectedButton.click(function(e){
+          e.preventDefault();
+          console.log('cancel selection updates', lcpSelectionUpdateCollection);
+          lcpSelectionUpdateCollection.each(function(model){
+            var retrievedModel = view.collection.get(model);
+            if (!_.isUndefined(retrievedModel)){
+                retrievedModel.set('selected', !model.get('selected'));
+            }
+          });
+          lcpSelectionUpdateCollection.reset(null);
+          view.$el.find('td').removeClass('edited');
+          appModel.clearPagePending();
+        });
+        
+        updateSelectedLcpButton.click(function(e){
+          e.preventDefault();
+          console.log('selection updates', lcpSelectionUpdateCollection);
+          if (lcpSelectionUpdateCollection.isEmpty()) {
+            appModel.showModalError('No changes to save');
+            return;
+          }
+  
+          function processClick(formValues){
+            console.log('form values', formValues);
+            var headers = {};
+            headers[appModel.HEADER_APILOG_COMMENT] = formValues['comments'];
+            lcpSelectionUpdateCollection.url = function(){
+              var url = view.collection.url;
+              // NOTE: the comment dialog implies override is confirmed
+              url += '?' + appModel.API_PARAM_OVERRIDE + '=true';
+              
+              if (formValues['set_deselected_to_zero'] === true){
+                url += '&' + appModel.API_PARAM_SET_DESELECTED_TO_ZERO +'=true'
+              }
+              return url;
+            };
             
-            var jsonError = _.result(jqXHR, 'responseJSON');
-            if (!_.isUndefined(jsonError)){
-              var error = _.result(jsonError, 'errors');
-              var errorFlag = _.result(error,appModel.API_PARAM_VOLUME_OVERRIDE);
-              var errorWells = _.result(error, appModel.API_MSG_LCPS_INSUFFICIENT_VOLUME); 
-              if (!_.isUndefined(errorFlag )){
-                appModel.showOkCommentForm({
-                  title: 'Some Copy Wells have insufficient volume, Confirm override?',
-                  body: 'Copy Wells: ' + errorWells.join(', '),
-                  okText: 'Override',
-                  ok: function(formValues) {
-                    var overrideInsufficient = true;
-                    processClick(overrideInsufficient, formValues['comments']);
-                  }
+            lcpSelectionUpdateCollection.sync(
+              'patch', lcpSelectionUpdateCollection, { headers: headers})
+              .done(function(data, textStatus, jqXHR){
+                appModel.showConnectionResult(data, {
+                  title: 'Lab Cherry Pick copy selection updates'
                 });
+  
+                // On success, clear all the buttons
+                var originalSearchHash = _.clone(view.listModel.get(appModel.URI_PATH_SEARCH));
+                var searchHash = _.clone(view.listModel.get(appModel.URI_PATH_SEARCH));
+                delete searchHash['show_copy_wells'];
+                delete searchHash['show_available_and_retired_copy_wells'];
+                delete searchHash['show_unfulfilled'];
+                delete searchHash['show_insufficient'];
+                var includes = _.clone(view.listModel.get('includes'));
+                includes = _.without(includes, 'selected');
+                view.listModel.set({ includes: includes}, {reset: false});
+                
+                showCopyWellsControl.find('input[type="checkbox"]').prop('checked',false);
+                showAllCopyWellsControl.find('input[type="checkbox"]').prop('checked',false);
+  
+                showUnfulfilledWellsControl.find('input[type="checkbox"]').prop('checked',false);
+                searchHash['show_manual'] = 'true';
+  
+                showInsufficientWellsControl.find('input[type="checkbox"]').prop('checked',false);
+                showManuallySelectedWellsControl.find('input[type="checkbox"]').prop('checked',true);
+                view.listModel.set(appModel.URI_PATH_SEARCH,searchHash);
+                //if (_.isEqual(originalSearchHash,searchHash)){
+                //  view.collection.fetch({ reset: true });
+                //}
+                view.collection.fetch({ reset: true }).done(function(){
+                  // have to wait for the fetch operation to reset, due to the 
+                  // asynchronous event handling
+                  lcpSelectionUpdateCollection.reset(null); // clear
+                });
+      
+              }).fail(function(jqXHR, textStatus, errorThrown){
+                console.log('fail', arguments);
+                appModel.jqXHRfail.apply(this,arguments); 
+              });
+          };
+  
+          var options = {
+            okText: 'Ok',
+            cancelText: 'Cancel and return to page',
+            title: 'Update Selections?'
+          };
+          var form_template = appModel._form_template;
+          var FormFields = Backbone.Model.extend({
+            schema: {
+              comments: {
+                title: 'Comments',
+                type: 'TextArea',
+                editorClass: 'input-full',
+                validators: ['required'], 
+                template: appModel._field_template
+              },
+              set_deselected_to_zero: {
+                title: 'Set Deselected Copy-Well volumes to zero',
+                help: 'If selected, deselected Copy Well volumes will be set ' +
+                  'to zero as part of this operation',
+                type: 'Checkbox',
+                template: appModel._alt_checkbox_template
+              }
+            }
+          });
+          var formFields = new FormFields();
+          var form = new Backbone.Form({
+            model: formFields,
+            template: appModel._form_template
+          });
+          var _form_el = form.render().el;
+          options.view = _form_el;
+          options.ok = function(e){
+            appModel.clearPagePending();
+            var errors = form.commit();
+            if(!_.isEmpty(errors)){
+              console.log('form errors, abort submit: ' + JSON.stringify(errors));
+              return false;
+            }else{
+              processClick(form.getValue());            
+            }
+          };        
+          appModel.showModal(options);
+        });      
+  
+        deleteLcpsButton.click(function(e){
+          e.preventDefault();
+          function processClick(formValues){
+            var delete_lab_cherry_picks_url = [
+              self.model.resource.apiUri,self.model.key, 
+              'delete_lab_cherry_picks'].join('/');
+            var headers = {}; // can be used to send a comment
+            headers[appModel.HEADER_APILOG_COMMENT] = formValues['comments'];
+            $.ajax({
+              url: delete_lab_cherry_picks_url,     
+              cache: false,
+              contentType: 'application/json', 
+              dataType: 'json', // what is expected back from the server
+              type: 'POST',
+              headers: headers
+            }).done(function(data, textStatus, jqXHR){
+              appModel.showConnectionResult(data, {
+                title: 'Delete Lab Cherry Picks'
+              });
+              self.model.fetch({ reset: true }).done(function(){
+                self.uriStack = ['screenercherrypicks'];
+                // Remove the child view before calling render, to prevent
+                // it from being rendered twice, and calling afterRender twice
+                self.removeView('#tab_container');
+                self.render();
+              });
+            }).fail(function(jqXHR, textStatus, errorThrown){
+              appModel.jqXHRfail.apply(this,arguments); 
+            });
+          };
+          var msg = 'Delete Lab Cherry Pick selections (return to Screener Cherry Pick View)';
+          if(appModel.isPagePending()){
+            appModel.requestPageChange({
+              ok: function(){
+                appModel.showOkCommentForm({
+                  ok: processClick,
+                  title: msg
+                });
+              }
+            });
+          }else{
+            appModel.showOkCommentForm({
+              ok: processClick,
+              title: msg
+            })
+          }
+        });
+        
+        reserveAndMapSelectedButton.click(function(e){
+          
+          e.preventDefault();
+          console.log('submit selections for plating');
+          var plate_lab_cherrypicks_url = [
+            self.model.resource.apiUri,self.model.key, 
+            'reserve_map_lab_cherry_picks'].join('/');
+  
+          function processClick(overrideInsufficient, comments){
+            
+            var data = new FormData();
+            // send API_PARAM_VOLUME_OVERRIDE = 'volume_override'
+            data.append(appModel.API_PARAM_VOLUME_OVERRIDE, overrideInsufficient);
+            var headers = {}; // can be used to send a comment
+            headers[appModel.HEADER_APILOG_COMMENT] = comments;
+            $.ajax({
+              url: plate_lab_cherrypicks_url,     
+              cache: false,
+              contentType: false,
+              processData: false,
+              dataType: 'json', // what is expected back from the server
+              data: data,
+              type: 'POST',
+              headers: headers
+            }).done(function(data, textStatus, jqXHR){
+              appModel.showConnectionResult(data, {
+                title: 'Lab Cherry Pick Plating result'
+              });
+              self.model.fetch({ reset: true }).done(function(){
+                self.uriStack = ['labcherrypicks'];
+                // Remove the child view before calling render, to prevent
+                // it from being rendered twice, and calling afterRender twice
+                self.removeView('#tab_container');
+                self.render();
+              });
+            }).fail(function(jqXHR, textStatus, errorThrown){
+              console.log('errors', arguments);
+              
+              var jsonError = _.result(jqXHR, 'responseJSON');
+              if (!_.isUndefined(jsonError)){
+                var error = _.result(jsonError, 'errors');
+                var errorFlag = _.result(error,appModel.API_PARAM_VOLUME_OVERRIDE);
+                var errorWells = _.result(error, appModel.API_MSG_LCPS_INSUFFICIENT_VOLUME); 
+                if (!_.isUndefined(errorFlag )){
+                  appModel.showOkCommentForm({
+                    title: 'Some Copy Wells have insufficient volume, Confirm override?',
+                    body: 'Copy Wells: ' + errorWells.join(', '),
+                    okText: 'Override',
+                    ok: function(formValues) {
+                      var overrideInsufficient = true;
+                      processClick(overrideInsufficient, formValues['comments']);
+                    }
+                  });
+                } else {
+                  appModel.jqXHRfail.apply(this,arguments); 
+                }
               } else {
                 appModel.jqXHRfail.apply(this,arguments); 
               }
-            } else {
-              appModel.jqXHRfail.apply(this,arguments); 
-            }
-          });
-        };
-        if(appModel.isPagePending()){
-          appModel.requestPageChange({
-            ok: processClick
-          });
-        }else{
-          processClick();
-        }
-      });
-
-      cancelReservation.click(function(e){
-        e.preventDefault();
-        
-        function processClick(formValues){
-          var cancel_reservation_url = [
-            self.model.resource.apiUri,self.model.key, 
-            'cancel_reservation'].join('/');
-          var headers = {}; 
-          headers[appModel.HEADER_APILOG_COMMENT] = formValues['comments'];
-          $.ajax({
-            url: cancel_reservation_url,     
-            cache: false,
-            contentType: 'application/json', 
-            dataType: 'json', // what is expected back from the server
-            type: 'POST',
-            headers: headers
-          }).done(function(data, textStatus, jqXHR){
-            appModel.showConnectionResult(data, {
-              title: 'Cancel Reservation and Remove Plating'
             });
-            self.model.fetch({ reset: true }).done(function(){
-              self.uriStack = ['labcherrypicks'];
-              // Remove the child view before calling render, to prevent
-              // it from being rendered twice, and calling afterRender twice
-              self.removeView('#tab_container');
-              self.render();
+          };
+          if(appModel.isPagePending()){
+            appModel.requestPageChange({
+              ok: processClick
             });
-          }).fail(function(jqXHR, textStatus, errorThrown){
-            appModel.jqXHRfail.apply(this,arguments); 
-          });
-        };
-        var cancelMsg = 'Cancel reserved, allocated copy well volumes and ' +
-          'remove plating assignments?';
-        if(appModel.isPagePending()){
-          appModel.requestPageChange({
-            ok: function(){
-              appModel.showOkCommentForm({
-                ok: processClick,
-                title: cancelMsg,
-                cancelText: 'No',
-                okText: 'Yes'
-              });
-            }
-          });
-        }else{
-          appModel.showOkCommentForm({
-            ok: processClick,
-            title: cancelMsg,
-            cancelText: 'No',
-            okText: 'Yes'
-          });
-        }
-      });
-      
-      showUnfulfilledWellsControl.find('input[type="checkbox"]').change(function(e){
-        function processClick(){
-          if (e.target.checked) {
-            var searchHash = _.clone(view.listModel.get(appModel.URI_PATH_SEARCH));
-            showInsufficientWellsControl.find('input[type="checkbox"]').prop('checked',false);
-            showManuallySelectedWellsControl.find('input[type="checkbox"]').prop('checked',false);
-            delete searchHash['show_manual'];
-            delete searchHash['show_insufficient'];
-            searchHash['show_unfulfilled'] = 'true';
-            view.listModel.set(appModel.URI_PATH_SEARCH,searchHash);
-            
-          } else {
-            var searchHash = _.clone(view.listModel.get(appModel.URI_PATH_SEARCH));
-            delete searchHash['show_unfulfilled'];
-            view.listModel.set(appModel.URI_PATH_SEARCH,searchHash);
+          }else{
+            processClick();
           }
-          view.$('th').removeClass('selected');
-          view.$('tr').removeClass('selected');
-        };
-        if(appModel.isPagePending()){
-          appModel.requestPageChange({
-            ok: processClick
-          });
-        }else{
-          processClick();
-        }
-      });
-      showInsufficientWellsControl.find('input[type="checkbox"]').change(function(e){
-        function processClick(){
-          if (e.target.checked) {
-            var searchHash = _.clone(view.listModel.get(appModel.URI_PATH_SEARCH));
-            showUnfulfilledWellsControl.find('input[type="checkbox"]').prop('checked',false);
-            delete searchHash['show_unfulfilled'];
-            searchHash['show_insufficient'] = 'true';
-            view.listModel.set(appModel.URI_PATH_SEARCH,searchHash);
-          } else {
-            var searchHash = _.clone(view.listModel.get(appModel.URI_PATH_SEARCH));
-            delete searchHash['show_insufficient'];
-            view.listModel.set(appModel.URI_PATH_SEARCH,searchHash);
-          }
-          view.$('th').removeClass('selected');
-          view.$('tr').removeClass('selected');
-        };
-        if(appModel.isPagePending()){
-          appModel.requestPageChange({
-            ok: processClick
-          });
-        }else{
-          processClick();
-        }
-      });
-      showManuallySelectedWellsControl.find('input[type="checkbox"]').change(function(e){
-        function processClick(){
-          if (e.target.checked) {
-            var searchHash = _.clone(view.listModel.get(appModel.URI_PATH_SEARCH));
-            showUnfulfilledWellsControl.find('input[type="checkbox"]').prop('checked',false);
-            delete searchHash['show_unfulfilled'];
-            searchHash['show_manual'] = 'true';
-            view.listModel.set(appModel.URI_PATH_SEARCH,searchHash);
-          } else {
-            var searchHash = _.clone(view.listModel.get(appModel.URI_PATH_SEARCH));
-            delete searchHash['show_manual'];
-            view.listModel.set(appModel.URI_PATH_SEARCH,searchHash);
-          }
-          view.$('th').removeClass('selected');
-          view.$('tr').removeClass('selected');
+        });
+  
+        cancelReservation.click(function(e){
+          e.preventDefault();
           
-        };
-        if(appModel.isPagePending()){
-          appModel.requestPageChange({
-            ok: processClick
-          });
-        }else{
-          processClick();
-        }
-      });
-      var extra_columns_for_selection = [
-        'selected', 'source_copy_well_volume','volume_approved',
-        'source_copy_usage_type','source_plate_status',
-        'source_plate_date_retired', 'source_plate_screening_count',
-        'source_plate_cp_screening_count'];
-     showCopyWellsControl.click(function(e) {
-        function processClick(){
-          var searchHash = _.clone(view.listModel.get(appModel.URI_PATH_SEARCH));
-          if (e.target.checked) {
-            var includes = _.clone(view.listModel.get('includes'));
-            includes = _.union(extra_columns_for_selection,includes);
-            view.listModel.set({ includes: includes}, {reset: false});
-            searchHash['show_copy_wells'] = 'true';
-
-            showAllCopyWellsControl.find('input[type="checkbox"]').prop('checked',false);
-            delete searchHash['show_available_and_retired_copy_wells'];
-            view.listModel.set(appModel.URI_PATH_SEARCH,searchHash);
-          } else {
-            // make sure unset
-            if (!_.has(searchHash,'show_copy_wells')) {
-              return;
-            }
-            var includes = _.clone(view.listModel.get('includes'));
-            includes = _.difference(includes, extra_columns_for_selection);
-            view.listModel.set({ includes: includes}, {reset: false});
-            if (_.has(searchHash,'show_copy_wells')) {
-              delete searchHash['show_copy_wells'];
+          function processClick(formValues){
+            var cancel_reservation_url = [
+              self.model.resource.apiUri,self.model.key, 
+              'cancel_reservation'].join('/');
+            var headers = {}; 
+            headers[appModel.HEADER_APILOG_COMMENT] = formValues['comments'];
+            $.ajax({
+              url: cancel_reservation_url,     
+              cache: false,
+              contentType: 'application/json', 
+              dataType: 'json', // what is expected back from the server
+              type: 'POST',
+              headers: headers
+            }).done(function(data, textStatus, jqXHR){
+              appModel.showConnectionResult(data, {
+                title: 'Cancel Reservation and Remove Plating'
+              });
+              self.model.fetch({ reset: true }).done(function(){
+                self.uriStack = ['labcherrypicks'];
+                // Remove the child view before calling render, to prevent
+                // it from being rendered twice, and calling afterRender twice
+                self.removeView('#tab_container');
+                self.render();
+              });
+            }).fail(function(jqXHR, textStatus, errorThrown){
+              appModel.jqXHRfail.apply(this,arguments); 
+            });
+          };
+          var cancelMsg = 'Cancel reserved, allocated copy well volumes and ' +
+            'remove plating assignments?';
+          if(appModel.isPagePending()){
+            appModel.requestPageChange({
+              ok: function(){
+                appModel.showOkCommentForm({
+                  ok: processClick,
+                  title: cancelMsg,
+                  cancelText: 'No',
+                  okText: 'Yes'
+                });
+              }
+            });
+          }else{
+            appModel.showOkCommentForm({
+              ok: processClick,
+              title: cancelMsg,
+              cancelText: 'No',
+              okText: 'Yes'
+            });
+          }
+        });
+        
+        showUnfulfilledWellsControl.find('input[type="checkbox"]').change(function(e){
+          function processClick(){
+            if (e.target.checked) {
+              var searchHash = _.clone(view.listModel.get(appModel.URI_PATH_SEARCH));
+              showInsufficientWellsControl.find('input[type="checkbox"]').prop('checked',false);
+              showManuallySelectedWellsControl.find('input[type="checkbox"]').prop('checked',false);
+              delete searchHash['show_manual'];
+              delete searchHash['show_insufficient'];
+              searchHash['show_unfulfilled'] = 'true';
+              view.listModel.set(appModel.URI_PATH_SEARCH,searchHash);
+              
+            } else {
+              var searchHash = _.clone(view.listModel.get(appModel.URI_PATH_SEARCH));
+              delete searchHash['show_unfulfilled'];
               view.listModel.set(appModel.URI_PATH_SEARCH,searchHash);
             }
+            view.$('th').removeClass('selected');
+            view.$('tr').removeClass('selected');
+          };
+          if(appModel.isPagePending()){
+            appModel.requestPageChange({
+              ok: processClick
+            });
+          }else{
+            processClick();
           }
-          // See note above about removing the 'selected' backgrid th class
-          view.$('th').removeClass('selected');
-          view.$('tr').removeClass('selected');
-          view.collection.trigger('show_copy_wells');
-        };
-        if(appModel.isPagePending()){
-          appModel.requestPageChange({
-            ok: processClick
-          });
-        }else{
-          processClick();
-        }
-      });
-
-      showAllCopyWellsControl.find('input[type="checkbox"]').change(function(e) {
-        function processClick(){
-          if (e.target.checked) {
-            var includes = _.clone(view.listModel.get('includes'));
-            includes = _.union(extra_columns_for_selection,includes);
-            view.listModel.set({ includes: includes}, {reset: false});
-            var searchHash = _.clone(view.listModel.get(appModel.URI_PATH_SEARCH));
-            searchHash['show_available_and_retired_copy_wells'] = 'true';
-            
-            showCopyWellsControl.find('input[type="checkbox"]').prop('checked',false);
-            delete searchHash['show_copy_wells'];
-            view.listModel.set(appModel.URI_PATH_SEARCH,searchHash);
-          } else {
-            var searchHash = _.clone(view.listModel.get(appModel.URI_PATH_SEARCH));
-            if (!_.has(searchHash,'show_available_and_retired_copy_wells')) {
-              return;
+        });
+        showInsufficientWellsControl.find('input[type="checkbox"]').change(function(e){
+          function processClick(){
+            if (e.target.checked) {
+              var searchHash = _.clone(view.listModel.get(appModel.URI_PATH_SEARCH));
+              showUnfulfilledWellsControl.find('input[type="checkbox"]').prop('checked',false);
+              delete searchHash['show_unfulfilled'];
+              searchHash['show_insufficient'] = 'true';
+              view.listModel.set(appModel.URI_PATH_SEARCH,searchHash);
+            } else {
+              var searchHash = _.clone(view.listModel.get(appModel.URI_PATH_SEARCH));
+              delete searchHash['show_insufficient'];
+              view.listModel.set(appModel.URI_PATH_SEARCH,searchHash);
             }
-            // Make sure unset
-            var includes = _.clone(view.listModel.get('includes'));
-            includes = _.difference(includes,extra_columns_for_selection);
-            view.listModel.set({ includes: includes}, {reset: false});
-            if (_.has(searchHash,'show_available_and_retired_copy_wells')) {
+            view.$('th').removeClass('selected');
+            view.$('tr').removeClass('selected');
+          };
+          if(appModel.isPagePending()){
+            appModel.requestPageChange({
+              ok: processClick
+            });
+          }else{
+            processClick();
+          }
+        });
+        showManuallySelectedWellsControl.find('input[type="checkbox"]').change(function(e){
+          function processClick(){
+            if (e.target.checked) {
+              var searchHash = _.clone(view.listModel.get(appModel.URI_PATH_SEARCH));
+              showUnfulfilledWellsControl.find('input[type="checkbox"]').prop('checked',false);
+              delete searchHash['show_unfulfilled'];
+              searchHash['show_manual'] = 'true';
+              view.listModel.set(appModel.URI_PATH_SEARCH,searchHash);
+            } else {
+              var searchHash = _.clone(view.listModel.get(appModel.URI_PATH_SEARCH));
+              delete searchHash['show_manual'];
+              view.listModel.set(appModel.URI_PATH_SEARCH,searchHash);
+            }
+            view.$('th').removeClass('selected');
+            view.$('tr').removeClass('selected');
+            
+          };
+          if(appModel.isPagePending()){
+            appModel.requestPageChange({
+              ok: processClick
+            });
+          }else{
+            processClick();
+          }
+        });
+        var extra_columns_for_selection = [
+          'selected', 'source_copy_well_volume','volume_approved',
+          'source_copy_usage_type','source_plate_status',
+          'source_plate_date_retired', 'source_plate_screening_count',
+          'source_plate_cp_screening_count'];
+       showCopyWellsControl.click(function(e) {
+          function processClick(){
+            var searchHash = _.clone(view.listModel.get(appModel.URI_PATH_SEARCH));
+            if (e.target.checked) {
+              var includes = _.clone(view.listModel.get('includes'));
+              includes = _.union(extra_columns_for_selection,includes);
+              view.listModel.set({ includes: includes}, {reset: false});
+              searchHash['show_copy_wells'] = 'true';
+  
+              showAllCopyWellsControl.find('input[type="checkbox"]').prop('checked',false);
               delete searchHash['show_available_and_retired_copy_wells'];
               view.listModel.set(appModel.URI_PATH_SEARCH,searchHash);
+            } else {
+              // make sure unset
+              if (!_.has(searchHash,'show_copy_wells')) {
+                return;
+              }
+              var includes = _.clone(view.listModel.get('includes'));
+              includes = _.difference(includes, extra_columns_for_selection);
+              view.listModel.set({ includes: includes}, {reset: false});
+              if (_.has(searchHash,'show_copy_wells')) {
+                delete searchHash['show_copy_wells'];
+                view.listModel.set(appModel.URI_PATH_SEARCH,searchHash);
+              }
             }
+            // See note above about removing the 'selected' backgrid th class
+            view.$('th').removeClass('selected');
+            view.$('tr').removeClass('selected');
+            view.collection.trigger('show_copy_wells');
+          };
+          if(appModel.isPagePending()){
+            appModel.requestPageChange({
+              ok: processClick
+            });
+          }else{
+            processClick();
           }
-          // See note above about removing the 'selected' backgrid th class
-          view.$('th').removeClass('selected');
-          view.$('tr').removeClass('selected');
-          view.collection.trigger('show_available_and_retired_copy_wells');
-          
-        };
-        if(appModel.isPagePending()){
-          appModel.requestPageChange({
-            ok: processClick
-          });
-        }else{
-          processClick();
-        }
-      });
-
+        });
+  
+        showAllCopyWellsControl.find('input[type="checkbox"]').change(function(e) {
+          function processClick(){
+            if (e.target.checked) {
+              var includes = _.clone(view.listModel.get('includes'));
+              includes = _.union(extra_columns_for_selection,includes);
+              view.listModel.set({ includes: includes}, {reset: false});
+              var searchHash = _.clone(view.listModel.get(appModel.URI_PATH_SEARCH));
+              searchHash['show_available_and_retired_copy_wells'] = 'true';
+              
+              showCopyWellsControl.find('input[type="checkbox"]').prop('checked',false);
+              delete searchHash['show_copy_wells'];
+              view.listModel.set(appModel.URI_PATH_SEARCH,searchHash);
+            } else {
+              var searchHash = _.clone(view.listModel.get(appModel.URI_PATH_SEARCH));
+              if (!_.has(searchHash,'show_available_and_retired_copy_wells')) {
+                return;
+              }
+              // Make sure unset
+              var includes = _.clone(view.listModel.get('includes'));
+              includes = _.difference(includes,extra_columns_for_selection);
+              view.listModel.set({ includes: includes}, {reset: false});
+              if (_.has(searchHash,'show_available_and_retired_copy_wells')) {
+                delete searchHash['show_available_and_retired_copy_wells'];
+                view.listModel.set(appModel.URI_PATH_SEARCH,searchHash);
+              }
+            }
+            // See note above about removing the 'selected' backgrid th class
+            view.$('th').removeClass('selected');
+            view.$('tr').removeClass('selected');
+            view.collection.trigger('show_available_and_retired_copy_wells');
+            
+          };
+          if(appModel.isPagePending()){
+            appModel.requestPageChange({
+              ok: processClick
+            });
+          }else{
+            processClick();
+          }
+        });
+      } // END Admin-functions
+      
+      
       return view;
     }, // createLcpView
     
@@ -2380,9 +2389,6 @@ define([
                  'screener_cherry_pick'].join('/');
       
       var extraControls = [];
-      var checkboxDiv = $([
-          '<div id="show_input_group" class="input-group pull-down pull-left"></div>'
-        ].join(''));
       var showOtherReagentsControl = $([
           '<label class="checkbox-inline" ',
           ' style="margin-left: 10px;" ',
@@ -2390,7 +2396,6 @@ define([
           '  <input type="checkbox">Other Reagents',
           '</label>'
         ].join(''));
-      checkboxDiv.append(showOtherReagentsControl);
       var showAlternateSelectionsControl = $([
           '<label class="checkbox-inline" ',
           ' style="margin-left: 10px;" ',
@@ -2398,18 +2403,12 @@ define([
           '  <input type="checkbox">Alternate Selections',
           '</label>'
         ].join(''));
-      checkboxDiv.append(showAlternateSelectionsControl);
-      checkboxDiv.prepend('<label for="show_input_group">show</label>');
-      extraControls.push(checkboxDiv);
-
       var deleteScpsButton = $([
           '<a class="btn btn-default btn-sm" ',
           'style="display: none; " ',
           'role="button" id="deleteScpsButton" href="#">',
           'Delete screener cherry picks</a>'
         ].join(''));
-      extraControls.push(deleteScpsButton);
-
       var setLcpsButtonTitle = 'Set lab cherry picks';
       if(self.model.get('has_pool_screener_cherry_picks') === true){
         setLcpsButtonTitle = 'Set pool lab cherry picks';
@@ -2420,14 +2419,12 @@ define([
           'role="button" id="setLcpsButton" href="#">',
           setLcpsButtonTitle + '</a>'
         ].join(''));
-      extraControls.push(setLcpsButton);
       var setDuplexLcpsButton = $([
         '<a class="btn btn-default btn-sm" ',
           'style="display: none; " ',
           'role="button" id="setDuplexLcpsButton" href="#">',
           'Set duplex lab cherry picks</a>'
         ].join(''));
-      extraControls.push(setDuplexLcpsButton);
       // Set up the grid to record edits of the "selected" column
       var setSelectedButton = $([
         '<a class="btn btn-default btn-sm" ',
@@ -2435,14 +2432,28 @@ define([
           'role="button" id="save_button_selected" href="#">',
           'Save selections</a>'
         ].join(''));
-      extraControls.push(setSelectedButton);
       var cancelSelectedButton = $([
         '<a class="btn btn-default btn-sm" ',
           'style="display: none; " ',
           'role="button" id="cancel_selected_button" href="#">',
           'Cancel selections</a>'
         ].join(''));
-      extraControls.push(cancelSelectedButton);
+
+      if (appModel.hasGroup('readEverythingAdmin')){
+        var checkboxDiv = $([
+            '<div id="show_input_group" class="input-group pull-down pull-left"></div>'
+          ].join(''));
+        checkboxDiv.append(showOtherReagentsControl);
+        checkboxDiv.append(showAlternateSelectionsControl);
+        checkboxDiv.prepend('<label for="show_input_group">show</label>');
+        extraControls.push(checkboxDiv);
+        extraControls.push(deleteScpsButton);
+        extraControls.push(setLcpsButton);
+        extraControls.push(setDuplexLcpsButton);
+        extraControls.push(setSelectedButton);
+        extraControls.push(cancelSelectedButton);
+      }
+
       
       if(self.model.get('total_number_lcps') == 0){
         deleteScpsButton.show();

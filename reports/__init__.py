@@ -100,6 +100,9 @@ class ParseError(ValidationError):
 class BadRequestError(ValidationError):
     pass
 
+class ConfigurationError(ValidationError):
+    pass
+
 class MissingParam(ValidationError):
     
     def __init__(self, param_name):

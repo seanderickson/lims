@@ -1188,9 +1188,12 @@ define([
       var includes = self.listModel.get('includes') || [];
       var _fields = this._options.resource.fields;
       
+      var is_admin = appModel.hasGroup('readEverythingAdmin');
+      var adminKeys = this.adminKeys = this._options.resource.adminKeys();
       _fields = _.omit(_fields, function(value, key, object) {
         return (   _.contains(value.visibility, 'api') 
-                || _.contains(value.visibility, 'none'));
+                || _.contains(value.visibility, 'none')
+                || (!is_admin && _.contains(adminKeys, key)) );
       });
       
       var screenModel = _.result(self._options,'screen');
@@ -1270,6 +1273,11 @@ define([
         if (_visible == true){
           model.set('checked', true);
         }
+        
+        if (_.contains(adminKeys, model.get('key'))){
+          model.set('treeselector_display_class', 'bg-danger');
+        }
+        
         columnCollection.add(model);
       });
       if (appModel.DEBUG) console.log('columnCollection', columnCollection);
@@ -1294,31 +1302,36 @@ define([
       };
       
       // 2. initialize the tree selector
-       var dcView = new TreeSelector({
+      var dcView = new TreeSelector({
         collection: columnCollection,
         treeAttributes: ['resource', 'title'],
         extraControls: [],
         startExpanded: true
-       });
-       Backbone.Layout.setupView(dcView);
-  
-        var el = dcView.render().el;
-        var dialog = appModel.showModal({
-          buttons_on_top: true,
-          css: { 
-              display: 'table',
-              height: '500px',
-              width: '80%'
-            },
-          css_modal_content: {
-            overflow: 'hidden'
+      });
+      Backbone.Layout.setupView(dcView);
+      var el = dcView.render().el;
+      var title = 'Select Columns to display';
+      if (is_admin && !_.isEmpty(adminKeys)){
+        title += '<br><span class="small">'
+          + 'Note: <label class="bg-danger">Admin fields</label>'
+          + ' are indicated by color</span>';
+      }
+      var dialog = appModel.showModal({
+        buttons_on_top: true,
+        css: { 
+            display: 'table',
+            height: '500px',
+            width: '80%'
           },
-          ok: function(){
-            showColumns(columnCollection);
-          },
-          view: el,
-          title: 'Select Columns to display'
-        });
+        css_modal_content: {
+          overflow: 'hidden'
+        },
+        ok: function(){
+          showColumns(columnCollection);
+        },
+        view: el,
+        title: title
+      });
     }
     
   });

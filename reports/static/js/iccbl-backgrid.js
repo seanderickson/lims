@@ -51,6 +51,10 @@ var PLATE_RANGE_KEY_PATTERN =
   Iccbl.PLATE_RANGE_KEY_PATTERN = /^(([^:]*):)?(([^:]+):)?([\d\-]+)$/;
 var SHORT_PLATE_RANGE_KEY_PATTERN = Iccbl.SHORT_PLATE_RANGE_KEY_PATTERN
   = /^(([^:]+):)?([\d\-]+)$/;
+var COPY_PLATE_RANGE_KEY_PATTERN =
+  Iccbl.COPY_PLATE_RANGE_KEY_PATTERN = /^(([^\/]*)\/)?(([^\/]+)\/)?([\d\-]+)$/;
+
+
 var URI_REPLICATE_VOLUME_PATTERN = /((\d+)x)?(([\d\.]+)(\w|\xB5|\x{03BC})L)/i;
 /**
  * COPY_NAME_PATTERN:
@@ -1344,6 +1348,13 @@ var parseRawPlateSearch = Iccbl.parseRawPlateSearch = function(rawData, errors){
         plate_ranges: [],
         copies: []
       };
+      
+      // FIXME: support for commas in the line:
+      // If parts consist of copy, or plate, or plate_range, use AND
+      // If parts consist of copyplate specifiers, use OR
+      //var parts = line.split(/[\s,]+/);
+      
+      
       _.each(parts, function(part){
         if (PLATE_PATTERN.test(part)){
           final_search_line.plates.push(part);
@@ -1352,6 +1363,17 @@ var parseRawPlateSearch = Iccbl.parseRawPlateSearch = function(rawData, errors){
           final_search_line.plate_ranges.push(rangeParts[1]+'-'+rangeParts[2]);
         }else if (COPY_NAME_PATTERN.test(part)){
           final_search_line.copies.push(part);
+//        } else if (COPY_PLATE_RANGE_KEY_PATTERN.test(part)){
+//          //TODO 20181114 - NOT TESTED
+//          var rangeParts = COPY_PLATE_RANGE_KEY_PATTERN.exec(part);
+//          final_search_line.copies.push(rangeParts[4]); // todo test
+//          var platePart = rangeParts[5];
+//          if (PLATE_RANGE_PATTERN.test(platePart)){
+//            var rangeParts = PLATE_RANGE_PATTERN.exec(platePart);
+//            final_search_line.plate_ranges.push(rangeParts[1]+'-'+rangeParts[2]);
+//          } else {
+//            final_search_line.plates.push(platePart);
+//          }
         } else {
           errors.push(
             'Copy names must begin with a letter, and may only contain '
@@ -1941,7 +1963,7 @@ var CollectionOnClient = Iccbl.CollectionOnClient = Backbone.Collection.extend({
 
 
 var getCollectionOnClient = Iccbl.getCollectionOnClient =
-  function(url, callback, options){
+  function(url, callback, options, failCallback){
 
     var options = options || {};
     var data_for_get = options.data_for_get || {};
@@ -1957,7 +1979,10 @@ var getCollectionOnClient = Iccbl.getCollectionOnClient =
       },
       always: function(){
       }
-    }).fail(function(){ Iccbl.appModel.jqXHRfail.apply(this,arguments); });
+    }).fail(function(){ 
+      if (failCallback) failCallback.apply(this,arguments);
+      Iccbl.appModel.jqXHRfail.apply(this,arguments); 
+    });
 };
 
 var getCollection = Iccbl.getCollection =
@@ -3673,6 +3698,15 @@ var MyCollection = Iccbl.MyCollection = Backbone.PageableCollection.extend({
 
 //// Header Cell Definitions /////
 
+//var HeaderCell = Backgrid.HeaderCell.extend({
+//  render: function() {
+//    if (this.fieldinformation.is_admin){
+//      this.$el.addClass('admin-field');
+//    }
+//  }
+//});
+
+
 var SortableHeaderCell = Iccbl.SortableHeaderCell = Backgrid.HeaderCell.extend({
   ___klass: 'SortableHeaderCell',
 
@@ -3705,7 +3739,14 @@ var SortableHeaderCell = Iccbl.SortableHeaderCell = Backgrid.HeaderCell.extend({
       mouseover = column.get('mouseover');
     }
     this.$el.prop('title', mouseover);
-
+    
+    if (this.fieldinformation.is_admin){
+      this.$el.append(
+        "<span style='margin-bottom: 2px;' "
+        + "class='label label-danger label-as-badge pull-right strong' "
+        + "title='admin field'>A</span>")
+//      this.$el.addClass('admin-field');
+    }
     return this;
   }
 });
@@ -3853,7 +3894,9 @@ var MultiSortHeaderCell = Iccbl.MultiSortHeaderCell = SortableHeaderCell.extend(
   setCellDirection: function (column, direction) {
     var self = this;
     var name = column.get('name');
-
+    if (_.result(this.fieldinformation,'filtering') !== true){
+      return;
+    }
     if(_.isUndefined(direction) || _.isNull(direction)){
       // this.$el.removeClass("ascending").removeClass("descending");
       // this.$el.find("#sorter").empty();
@@ -4041,6 +4084,17 @@ var FilterHeaderCell = Iccbl.FilterHeaderCell = Iccbl.MultiSortHeaderCell.extend
   render : function() {
     var self = this;
     FilterHeaderCell.__super__.render.apply(this);
+    // 20181115 - this breaks layout for custom tables with no sorting at all:
+    // because no headers are two rows
+//    if (_.result(this.fieldinformation,'filtering') !== true){
+//      // If not filtering, adjust so that title lines up with other header cells
+//      console.log('non-filtering cell', this.column.get('name'));
+//      this.$el.find('a').css({
+//        'position': 'relative',
+//        'bottom': '1em'
+//      });
+//      return this;
+//    }
     if (_.result(this.fieldinformation,'filtering') !== true){
       return this;
     }
@@ -5679,6 +5733,12 @@ var createBackgridColumn = Iccbl.createBackgridColumn =
     'visible': visible,
     'fieldinformation': prop
   });
+  
+  if (prop.is_admin){
+    column['description'] += ' (Admin field)';
+    column['mouseover'] += ' (Admin field)';
+  }
+  
   if(_.has(prop,'editability') && _.contains(prop['editability'],'l')){
     column['editable'] = true;
   }
@@ -5694,9 +5754,36 @@ var createBackgridColumn = Iccbl.createBackgridColumn =
     'serverSideFilter': TextFormFilter
   };
   if (optionalHeaderCell) {
-    column['headerCell'] = optionalHeaderCell.extend(headerCellDefaults);
+    
+    column['headerCell'] = optionalHeaderCell.extend(headerCellDefaults, {
+      render : function() {
+        var self = this;
+        optionalHeaderCell.__super__.render.apply(this);
+        if (this.fieldinformation.is_admin){
+//          this.$el.addClass('admin-field');
+          this.$el.append(
+            "<span style='margin-bottom: 2px;' "
+            + "class='label label-danger label-as-badge pull-right strong' "
+            + "title='admin field'>A</span>")
+        }
+        return this;
+      }      
+    });
   }else if (_.has(prop, 'headerCell')){
-    column['headerCell'] = prop.headerCell.extend(headerCellDefaults);
+    column['headerCell'] = prop.headerCell.extend(headerCellDefaults, {
+      render : function() {
+        var self = this;
+        prop.headerCell.__super__.render.apply(this);
+        if (this.fieldinformation.is_admin){
+          this.$el.append(
+            "<span style='margin-bottom: 2px;' "
+            + "class='label label-danger label-as-badge pull-right strong' "
+            + "title='admin field'>A</span>")
+//          this.$el.addClass('admin-field');
+        }
+        return this;
+      }      
+    });
   }
   else{
     // Set up a more specific header cell, with filter

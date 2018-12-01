@@ -3193,7 +3193,7 @@ class ScreenAuthorization(UserGroupAuthorization):
         return set(my_screens)
     
     def get_user_data_sharing_level(self, screensaver_user, user_agreement_type):
-        logger.info('get user data sharing agreements for %r, %r', 
+        logger.debug('get user data sharing agreements for %r, %r', 
             screensaver_user, user_agreement_type)
         active_agreements = \
             screensaver_user.useragreement_set.all()\
@@ -3204,7 +3204,7 @@ class ScreenAuthorization(UserGroupAuthorization):
         if active_agreements.exists():
             current_dsl = active_agreements[0].data_sharing_level
         else:
-            logger.info('no active %r user agreements for user: %r', 
+            logger.debug('no active %r user agreements for user: %r', 
                         user_agreement_type, screensaver_user)
         logger.debug('user dsl: %r, %r, %r', 
             screensaver_user, user_agreement_type, current_dsl)
@@ -5152,7 +5152,6 @@ class ScreenResultResource(DbApiResource):
         # self.clear_cache(by_uri='/screenresult/%s' % screen_facility_id)
         self.clear_cache(request, all=True)
         
-#         id_attribute = schema['id_attribute']
         meta = { 'columns': len(columns) }
         
         try:
@@ -5498,7 +5497,7 @@ class ScreenResultResource(DbApiResource):
                                 key=well.well_id,
                                 msg='control wells must be one of %r, found: %r'
                                  % (allowed_control_well_types, well.library_well_type))
-
+                    
                     for colname, val in result_row.items():
                         if DEBUG_RV_CREATE:
                             logger.info('result value to create: %r, %r', colname, val)
@@ -5528,7 +5527,8 @@ class ScreenResultResource(DbApiResource):
                             # else:
                             #     logger.debug(('not counted for replicate: well: %r, '
                             #         'type: %r, initializer: %r'), 
-                            #         well.well_id, well.library_well_type, rv_initializer)   
+                            #         well.well_id, well.library_well_type, rv_initializer) 
+                            
                             writer.writerow(rv_initializer)
                             rvs_to_create += 1
                         except ValidationError,e1:
@@ -10960,51 +10960,42 @@ class LabCherryPickResource(DbApiResource):
                 except:
                     logger.exception('Note: building generic lab cherry pick schema'
                         '(no cherry_pick_request_id provided)')
-        try:
-            schema = deepcopy(
-                super(LabCherryPickResource, self).build_schema(user=user, **kwargs))
-            original_fields = schema['fields']
-            # 20170516 - keep the well_id field; required for the structure_image field
-            # omit_redundant_fields = [
-            #     'well_id','plate_number','well_name','library_well_type',
-            #     'library_short_name','library_name']
-            omit_redundant_fields = [
-                'plate_number','well_name','library_well_type',
-                'library_short_name','library_name']
-            if library_classification:
-                # Add in reagent fields
-                sub_data = self.get_reagent_resource(library_classification)\
-                    .build_schema(user, **kwargs)
-                newfields = {}
-                sub_fields = {key:field for key,field 
-                    in sub_data['fields'].items() 
-                        if key not in omit_redundant_fields}
-                newfields.update(sub_fields)
-                schema['fields'] = newfields
-            
-            # Add in well fields    
-            well_schema = WellResource().build_schema(user, **kwargs)
+        schema = deepcopy(
+            super(LabCherryPickResource, self).build_schema(user=user, **kwargs))
+        original_fields = schema['fields']
+        # 20170516 - keep the well_id field; required for the structure_image field
+        omit_redundant_fields = [
+            'plate_number','well_name','library_well_type',
+            'library_short_name','library_name','mg_ml_concentration', 'molar_concentration']
+        if library_classification:
+            # Add in reagent fields
+            sub_data = self.get_reagent_resource(library_classification)\
+                .build_schema(user, **kwargs)
+            newfields = {}
             sub_fields = {key:field for key,field 
-                in well_schema['fields'].items() 
+                in sub_data['fields'].items() 
                     if key not in omit_redundant_fields}
-            schema['fields'].update(sub_fields)
-            
-            # Turn off the visibility of all inherited fields
-            for key,field in schema['fields'].items():
-                if not set(VOCAB.field.visibility.hidden_fields) & set(field['visibility']):
-                    field['visibility'] = []
-            
-            # Overlay the original lcp fields on the top
-            schema['fields'].update(original_fields)
-            
-            
-            logger.debug('new lcp fields: %r',
-                [(field['key'],field['scope']) 
-                    for field in schema['fields'].values()])
-            return schema
-        except Exception, e:
-            logger.exception('xxx: %r', e)
-            raise
+            newfields.update(sub_fields)
+            schema['fields'] = newfields
+        
+        # Add in well fields    
+        well_schema = WellResource().build_schema(user, **kwargs)
+        sub_fields = {key:field for key,field 
+            in well_schema['fields'].items() 
+                if key not in omit_redundant_fields}
+        schema['fields'].update(sub_fields)
+        
+        # Turn off the visibility of all inherited fields
+        for key,field in schema['fields'].items():
+            if not set(VOCAB.field.visibility.hidden_fields) & set(field['visibility']):
+                field['visibility'] = []
+        
+        # Overlay the original lcp fields on the top
+        schema['fields'].update(original_fields)
+        logger.debug('new lcp fields: %r',
+            [(field['key'],field['scope']) 
+                for field in schema['fields'].values()])
+        return schema
 
     @read_authorization
     def get_lab_cherry_pick_plating_schema(self, request, **kwargs):
@@ -11045,7 +11036,9 @@ class LabCherryPickResource(DbApiResource):
             'source_plate_status',
             'source_copy_usage_type',
             'source_plate_type',
-            'location',               
+            'location',
+            'mg_ml_concentration',
+            'molar_concentration'             
            ]
         fields = schema['fields']
         for key,field in fields.items():
@@ -11057,13 +11050,19 @@ class LabCherryPickResource(DbApiResource):
             else:
                 if 'l' in field['visibility']:
                     field['visibility'].remove('l')
-        fields['cherry_pick_plate_number']['ordinal'] = -10
-        fields['destination_well']['ordinal'] = -9
-        fields['source_copy_well_volume']['title'] = \
-            'Source CopyWell Volume (after transfer)'
-        fields['source_copy_well_volume']['description'] = \
-            'Source CopyWell Volume (after transfer of '\
-            'cherry pick volume to the destination well)'
+        
+        field_updates = {
+            'cherry_pick_plate_number': { 'ordinal': -10 },
+            'destination_well': { 'ordinal': -9 },
+            'source_copy_well_volume': { 
+                'title': 'Source CopyWell Volume (after transfer)'},
+                'description': 
+                    'Source CopyWell Volume (after transfer of '\
+                    'cherry pick volume to the destination well)',
+            }
+        for key, field_update in field_updates.items():
+            if key in fields:
+                fields[key].update(field_update)
             
         logger.debug('plate mapping visible fields: %r', 
             {k:{'key': v['key'], 'scope':v['scope'], 'title':v['title']}

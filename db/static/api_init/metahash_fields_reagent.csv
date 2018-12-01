@@ -1,5 +1,5 @@
-key,alias,scope,ordinal,comment,filtering,description,title,ordering,json_field_type,vocabulary_scope_ref,visibility,editability,is_restricted,data_type,display_type,display_options,edit_type,required
-vendor_name,vendor,fields.reagent,20,,TRUE,"The vendor of the reagent of this well",Vendor,TRUE,,,[l;d],[c;u],,string,,,,
-vendor_identifier,vendor_reagent_id,fields.reagent,21,,TRUE,"The vendor-assigned identifier for the reagent in this well","Vendor Reagent ID",TRUE,,,[l;d],[c;u],,string,,,,
-vendor_batch_id,,fields.reagent,22,,TRUE,"The vendor-assigned batch identifier for the reagent in this well","Vendor Batch ID",TRUE,,,[d],[c;u],,string,,"{ 'hideIfEmpty': true }",,
-comment,,fields.reagent,23,,TRUE,Comment,Comment,TRUE,,,[d],[c;u],,string,,"{ 'hideIfEmpty': true }",,
+key,alias,scope,table,field,ordinal,comment,filtering,description,title,ordering,vocabulary_scope_ref,visibility,editability,data_type,display_options,edit_type,is_admin,view_groups
+vendor_name,vendor,fields.reagent,,,20,,TRUE,"The vendor of the reagent of this well",Vendor,TRUE,,[l;d],[c;u],string,,,,
+vendor_identifier,vendor_reagent_id,fields.reagent,,,21,,TRUE,"The vendor-assigned identifier for the reagent in this well","Vendor Reagent ID",TRUE,,[l;d],[c;u],string,,,,
+vendor_batch_id,,fields.reagent,,,22,,TRUE,"The vendor-assigned batch identifier for the reagent in this well","Vendor Batch ID",TRUE,,[d],[c;u],string,"{ 'hideIfEmpty': true }",,,
+reagent_comment,,fields.reagent,reagent,comment,23,,TRUE,"Reagent comment","Reagent Comment",TRUE,,[d],[c;u],string,"{ 'hideIfEmpty': true }",,TRUE,[readEverythingAdmin]

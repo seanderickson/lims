@@ -1,18 +1,18 @@
-key,scope,table,field,ordinal,category,comment,filtering,description,title,ordering,json_field_type,vocabulary_scope_ref,visibility,editability,data_type,display_type,display_options,edit_type,is_restricted,nested_resource,default,required,min,max,regex,validation_message
-well_id,fields.well,,,0,,,TRUE,"Well ID [plate number]:[well_name]","Well ID",TRUE,,,,,string,link,"{ 'hrefTemplate': '#library/{library_short_name}/well/{well_id}' }",,,,,,,,,
-plate_number,fields.well,,,1,,,TRUE,"Plate number",Plate,TRUE,,,[l;d;report],,integer,link,"{ 'hrefTemplate': '#library/{library_short_name}/plate/search/plate_number__eq={plate_number}',  'orderSeparator': ''  }",,,,,,,,,
-well_name,fields.well,,,2,,,TRUE,"Well name [row-letter][column number]",Well,TRUE,,,[l;d;report],,string,link,"{ 'hrefTemplate': '#library/{library_short_name}/well/{well_id}' }",,,,,,,,,
-library_short_name,fields.well,library,short_name,10,,,TRUE,"Library short name",Library,TRUE,,,[l;d;report],,string,link,"{ 'hrefTemplate': '#library/{library_short_name}' }",,,,,,,,,
-library_name,fields.well,library,library_name,11,,,TRUE,"Library name","Library Full Name",TRUE,,,[d;report],,string,link,"{ 'hrefTemplate': '#library/{library_short_name}' }",,,,,,,,,
-screen_type,fields.well,library,screen_type,12,,,TRUE,"The library screen type","Screen Type",TRUE,,screen.type,[d;report],,string,,,select,,,,,,,,
-library_well_type,fields.well,,,13,,,TRUE,"Library well type","Library Well Type",TRUE,,library.well_type,[l;d;report],[u],string,,,select,,,,TRUE,,,,
-is_deprecated,fields.well,,,14,,,TRUE,"Is deprecated",Deprecated,TRUE,,,[d;report],[u],boolean,,"{ 'hideIfEmpty': true }",,,,FALSE,,,,,
-deprecation_reason,fields.well,,,15,,,TRUE,"Deprecation reason","Deprecation Reason",TRUE,,,[d;report],[u],string,,"{ 'hideIfEmpty': true }",,,,,,,,,
-facility_id,fields.well,,,16,,,TRUE,"ID assigned by the facility","Facility ID",TRUE,,,[d],[u],string,,,,,,,,,,,
-mg_ml_concentration,fields.well,,,17,,,TRUE,"Concentration in mg/ml","Concentration (mg/ml)",TRUE,,,[l;d;report],[u],decimal,,"{ 'decimals': 2, 'hideIfEmpty': true }",,,,,,,,,
-molar_concentration,fields.well,,,18,,,TRUE,"Molar concentration","Molar Concentration",TRUE,,,[l;d;report],[u],decimal,siunit,"{ 'decimals': 3, 'multiplier': 1, 'symbol': 'M', 'defaultUnit': 1e-3, 'hideIfEmpty': true }",,,,,,,,,
-other_wells_with_reagent,fields.well,custom,,80,report,,TRUE,"Other wells with the same reagent vendor identifier","Other Wells With Reagent",TRUE,,,[d],,list,link,"{ 'hrefTemplate': '#well/{__val__}' }",,,,,,,,,
-screening_mg_ml_concentration,fields.well,custom,,100,screening,,TRUE,"Screening copy concentration (mg/ml)","Screening Copy Conc (mg/ml)",TRUE,,,[none],,decimal,,"{ 'decimals': 2, 'hideIfEmpty': true }",,,,,,,,,
-screening_molar_concentration,fields.well,custom,,101,screening,,TRUE,"Screening copy concentration (molar)","Screening Copy Conc (molar)",TRUE,,,[none],,decimal,siunit,"{ 'decimals': 3, 'multiplier': 1, 'symbol': 'M', 'defaultUnit': 1e-3, 'hideIfEmpty': true }",,,,,,,,,
-screening_mg_ml_concentrations,fields.well,custom,,102,screening,,TRUE,"Screening copy concentrations (mg/ml) (use this field if multiple copy concentrations are present)","Screening Copy Conc (mg/ml)",TRUE,,,[none],,decimal,,"{ 'decimals': 2, 'hideIfEmpty': true }",,,,,,,,,
-screening_molar_concentrations,fields.well,custom,,103,screening,,TRUE,"Screening copy concentrations (molar) (use this field if multiple copy concentrations are present)","Screening Copy Conc (molar)",TRUE,,,[none],,decimal,siunit,"{ 'decimals': 3, 'multiplier': 1, 'symbol': 'M', 'defaultUnit': 1e-3, 'hideIfEmpty': true }",,,,,,,,,
+key,scope,table,field,ordinal,category,comment,filtering,description,title,ordering,json_field_type,vocabulary_scope_ref,visibility,editability,data_type,display_type,display_options,edit_type,is_admin,nested_resource,default,required,view_groups
+well_id,fields.well,,,0,,,TRUE,"Well ID [plate number]:[well_name]","Well ID",TRUE,,,,,string,link,"{ 'hrefTemplate': '#library/{library_short_name}/well/{well_id}' }",,,,,,
+plate_number,fields.well,,,1,,,TRUE,"Plate number",Plate,TRUE,,,[l;d;report],,integer,link,"{ 'hrefTemplate': '#library/{library_short_name}/plate/search/plate_number__eq={plate_number}',  'orderSeparator': ''  }",,,,,,
+well_name,fields.well,,,2,,,TRUE,"Well name [row-letter][column number]",Well,TRUE,,,[l;d;report],,string,link,"{ 'hrefTemplate': '#library/{library_short_name}/well/{well_id}' }",,,,,,
+library_short_name,fields.well,library,short_name,10,,,TRUE,"Library short name",Library,TRUE,,,[l;d;report],,string,link,"{ 'hrefTemplate': '#library/{library_short_name}' }",,,,,,
+library_name,fields.well,library,library_name,11,,,TRUE,"Library name","Library Full Name",TRUE,,,[d;report],,string,link,"{ 'hrefTemplate': '#library/{library_short_name}' }",,,,,,
+screen_type,fields.well,library,screen_type,12,,,TRUE,"The library screen type","Screen Type",TRUE,,screen.type,[d;report],,string,,,select,,,,,
+library_well_type,fields.well,,,13,,,TRUE,"Library well type","Library Well Type",TRUE,,library.well_type,[l;d;report],[u],string,,,select,,,,TRUE,
+is_deprecated,fields.well,,,14,,,TRUE,"Is deprecated",Deprecated,TRUE,,,[d;report],[u],boolean,,"{ 'hideIfEmpty': true }",,,,FALSE,,
+deprecation_reason,fields.well,,,15,,,TRUE,"Deprecation reason","Deprecation Reason",TRUE,,,[d;report],[u],string,,"{ 'hideIfEmpty': true }",,,,,,
+facility_id,fields.well,,,16,,,TRUE,"ID assigned by the facility","Facility ID",TRUE,,,[d],[u],string,,,,,,,,
+mg_ml_concentration,fields.well,,,17,,,TRUE,"Concentration in mg/ml","Concentration (mg/ml)",TRUE,,,[l;d;report],[u],decimal,,"{ 'decimals': 2, 'hideIfEmpty': true }",,,,,,
+molar_concentration,fields.well,,,18,,,TRUE,"Molar concentration","Molar Concentration",TRUE,,,[l;d;report],[u],decimal,siunit,"{ 'decimals': 3, 'multiplier': 1, 'symbol': 'M', 'defaultUnit': 1e-3, 'hideIfEmpty': true }",,,,,,
+other_wells_with_reagent,fields.well,custom,,80,report,,TRUE,"Other wells with the same reagent vendor identifier","Other Wells With Reagent",TRUE,,,[d],,list,link,"{ 'hrefTemplate': '#well/{__val__}' }",,,,,,
+screening_mg_ml_concentration,fields.well,custom,,100,screening,,TRUE,"Screening copy concentration (mg/ml)","Screening Copy Conc (mg/ml)",TRUE,,,[none],,decimal,,"{ 'decimals': 2, 'hideIfEmpty': true }",,TRUE,,,,[readEverythingAdmin]
+screening_molar_concentration,fields.well,custom,,101,screening,,TRUE,"Screening copy concentration (molar)","Screening Copy Conc (molar)",TRUE,,,[none],,decimal,siunit,"{ 'decimals': 3, 'multiplier': 1, 'symbol': 'M', 'defaultUnit': 1e-3, 'hideIfEmpty': true }",,TRUE,,,,[readEverythingAdmin]
+screening_mg_ml_concentrations,fields.well,custom,,102,screening,,TRUE,"Screening copy concentrations (mg/ml) (use this field if multiple copy concentrations are present)","Screening Copy Conc (mg/ml)",TRUE,,,[none],,decimal,,"{ 'decimals': 2, 'hideIfEmpty': true }",,TRUE,,,,[readEverythingAdmin]
+screening_molar_concentrations,fields.well,custom,,103,screening,,TRUE,"Screening copy concentrations (molar) (use this field if multiple copy concentrations are present)","Screening Copy Conc (molar)",TRUE,,,[none],,decimal,siunit,"{ 'decimals': 3, 'multiplier': 1, 'symbol': 'M', 'defaultUnit': 1e-3, 'hideIfEmpty': true }",,TRUE,,,,[readEverythingAdmin]

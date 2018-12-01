@@ -30,7 +30,7 @@ define([
             TabbedController, detailTemplate, detailOneColTemplate) {
 
   var ScreenView = TabbedController.extend({
-    isAdmin: false,
+    showAdmin: false,
     OK_STATUSES: ['accepted','ongoing'],
     COMPLETED_STATUSES: ['completed','completed_duplicate_with_ongoing' ],
     
@@ -206,7 +206,10 @@ define([
       });
       var detailKeys = model.resource.detailKeys();
       var adminKeys = model.resource.adminKeys();
-      if (!self.isAdmin){
+      var adminVisibilityOverrides = [
+        'screened_experimental_well_count','assay_readout_types','comments'];
+      adminKeys = _.difference(adminKeys, adminVisibilityOverrides);
+      if (!self.showAdmin){
         detailKeys = _.difference(detailKeys, adminKeys);
       }
       
@@ -429,7 +432,7 @@ define([
           if (_.isEmpty(self.model.get('study_type'))
               && appModel.hasGroup('readEverythingAdmin')) {
             var adminControl = $('<a id="admin-control"></a>');
-            if (self.isAdmin){
+            if (self.showAdmin){
               adminControl.append('&nbsp;admin&nbsp;&lt;&lt;&nbsp;')
             }else{
               adminControl.append('&nbsp;admin&nbsp;&gt;&gt;&nbsp;')
@@ -437,7 +440,7 @@ define([
             $('#generic-detail-buttonpanel-left').append(adminControl);
             adminControl.click(function(e){
               e.preventDefault();
-              outerSelf.isAdmin = !outerSelf.isAdmin;
+              outerSelf.showAdmin = !outerSelf.showAdmin;
               outerSelf.setDetail(delegateStack);
             });
           }
@@ -489,16 +492,16 @@ define([
             '<div id="" class="col-xs-12" >',
             '<table id="activity_summary_table" class="table-condensed data-list">',
             '<tr>',
-            '<td class="dl-title small">Activities</td>', 
-            '<td class="dl-data small">',
+            '<td class="dl-title ">Activities</td>', 
+            '<td class="dl-data ">',
             Iccbl.formatString(
               '<a href="#screen/{facility_id}/activities">{activity_count}</a>', 
               self.model),
             '</td>', 
             '</tr>',
             '<tr>',
-            '<td class="dl-title small">Last Activity</td>', 
-            '<td class="dl-data small">',
+            '<td class="dl-title ">Last Activity</td>', 
+            '<td class="dl-data ">',
             '<table id="last_activity" class="table-condensed data-list">',
             '<tr>',
             '<td class="dl-title ">Date</td>', 

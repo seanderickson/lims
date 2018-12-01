@@ -29,13 +29,14 @@ from django.views.decorators.csrf import csrf_exempt
 from reports.utils import default_converter
 from reports import ValidationError, InformationError, BadRequestError, \
     ApiNotImplemented, BackgroundJobImmediateResponse, LoginFailedException, \
-    API_RESULT_ERROR
+    ConfigurationError, API_RESULT_ERROR
 from reports.auth import DEBUG_AUTHENTICATION
 from reports.serialize import XLSX_MIMETYPE, SDF_MIMETYPE, XLS_MIMETYPE, \
     CSV_MIMETYPE, JSON_MIMETYPE
 from reports.serializers import BaseSerializer, LimsSerializer
 from reports.utils.django_requests import convert_request_method_to_put
 from django.utils.http import is_same_domain
+from django.utils.html import escape
 
 
 # from django.utils.http import same_origin
@@ -521,6 +522,17 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
                 logger.info('BackgroundJobImmediateResponse returned: %r', 
                     e.httpresponse)
                 response = e.httpresponse
+            except ConfigurationError as e:
+                logger.info('ConfigurationError ex: %r', e)
+                if hasattr(e, 'error_dict'):
+                    data = { API_RESULT_ERROR: e.message_dict }
+                else:
+                    data = { 'ConfigurationError': str(e) }
+                logger.info('data: %r', data)
+                response = self.build_error_response(
+                    request, data, response_class=HttpResponseServerError,
+                    **kwargs)
+                logger.info('response: %r', response)
             except ValidationError as e:
                 logger.exception('Validation error: %r', e.errors)
                 response = self.build_error_response(
@@ -574,13 +586,13 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
                 else:
                     logger.exception('Unhandled exception: %r', e)
     
-                    # A real, non-expected exception.
-                    # Handle the case where the full traceback is more helpful
-                    # than the serialized error.
-                    if settings.DEBUG:
-                        
-                        logger.warn('raise full exception for %r', e)
-                        raise
+#                     # A real, non-expected exception.
+#                     # Handle the case where the full traceback is more helpful
+#                     # than the serialized error.
+#                     if settings.DEBUG:
+#                         
+#                         logger.warn('raise full exception for %r', e)
+#                         raise
     
                     # Rather than re-raising, we're going to things similar to
                     # what Django does. The difference is returning a serialized
@@ -778,9 +790,8 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
                 data, e)
             return HttpResponseBadRequest(content=data, content_type='text/plain')
 
-    def _print_exception_message(text):
-        # from tastypie.resources.sanitize
-        return escape(six.text_type(exception))\
+    def _print_exception_message(self, text):
+        return escape(six.text_type(text))\
             .replace('&#39;', "'").replace('&quot;', '"')
 
     def _handle_500(self, request, exception):
@@ -792,26 +803,24 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
         response_class = HttpResponseServerError
         response_code = 500
 
-        if settings.DEBUG:
+        # Send the signal so other apps are aware of the exception.
+        got_request_exception.send(self.__class__, request=request)
+        logger.info('handle 500: user: %r, %r, %r, %r', 
+            request.user, request.user.username, request.user.is_staff, request.user.is_superuser)
+        if settings.DEBUG or request.user.is_staff or request.user.is_superuser:
             data = {
-                'error_message': _print_exception_message(exception),
+                'error_message': self._print_exception_message(exception),
                 'traceback': the_trace,
             }
             return self.build_error_response(
                 request, data, response_class=response_class)
-        
-        # TODO: configure logging email on errors
-
-        # Send the signal so other apps are aware of the exception.
-        got_request_exception.send(self.__class__, request=request)
-
-        data = {
-            'SERVER_ERROR': 
-                'Sorry, this request could not be processed. Please try again later.',
-        }
-        return self.build_error_response(
-            request, data, response_class=response_class)
-        
+        else:
+            data = {
+                'SERVER_ERROR': 
+                    'Sorry, this request could not be processed. Please try again later.',
+            }
+            return self.build_error_response(
+                request, data, response_class=response_class)
 
 
 class Api(object):

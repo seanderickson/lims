@@ -86,6 +86,11 @@ function($, _, Backgrid, Backbone, Iccbl, appModel,
             if (model.has('description')){
               node.description = model.get('description');
             }
+            
+            if (model.has('treeselector_display_class')){
+              node.display_class = model.get('treeselector_display_class');
+            }
+            
           } else {
             makeNodes(node.nodes, attrs, i+1, model)
           }
@@ -107,6 +112,9 @@ function($, _, Backgrid, Backbone, Iccbl, appModel,
             }
             if (node.checked===true){
               html += ' data-checked=true ';
+            }
+            if (node.display_class){
+              html += 'class="' + node.display_class + '" ';
             }
             
             html += ' >&nbsp;' + node.text;

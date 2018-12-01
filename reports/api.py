@@ -47,7 +47,7 @@ from reports import LIST_DELIMITER_SQL_ARRAY, LIST_DELIMITER_URL_PARAM, \
     HTTP_PARAM_USE_TITLES, HTTP_PARAM_USE_VOCAB, HEADER_APILOG_COMMENT, \
     HTTP_PARAM_DATA_INTERCHANGE, InformationError, API_RESULT_ERROR
 from reports import ValidationError, BadRequestError, ApiNotImplemented, \
-    MissingParam, BackgroundJobImmediateResponse, _now
+    MissingParam, ConfigurationError, BackgroundJobImmediateResponse, _now
 from reports.api_base import IccblBaseResource, un_cache, Authorization, \
     MultiAuthentication, IccblSessionAuthentication, IccblBasicAuthentication, \
     TRAILING_SLASH
@@ -313,12 +313,12 @@ class AllAuthenticatedReadAuthorization(UserGroupAuthorization):
 
     def _is_resource_authorized(
         self, user, permission_type, **kwargs):
-        logger.debug('user: %r, %r, p: %r', user, self.resource_name, permission_type)
+        logger.debug('user: %r, %r, p: %r', user.username, self.resource_name, permission_type)
         if permission_type == 'read':
             if user is None:
                 return False
             if DEBUG_AUTHORIZATION:
-                logger.info('grant read access: %r: %r', user, self.resource_name)
+                logger.info('grant read access: %r: %r', user.username, self.resource_name)
             return True
         return super(AllAuthenticatedReadAuthorization,self)\
             ._is_resource_authorized(user, permission_type)
@@ -382,8 +382,8 @@ def background_job(_func):
     Wrapper function to defer request to offline background job processor:
     
     - if SCHEMA.JOB.JOB_PROCESSING_FLAG is set as a request parameter, 
-    service the job_id indicated,
-    - else create a new [pending, submitted] Job
+    service the job_id indicated (background client request),
+    - else create a new [pending, submitted] Job (client request)
     
     @see reports.api.JobResource
     
@@ -2869,7 +2869,7 @@ class FieldResource(ApiResource):
         filtering = {} 
         serializer = LimsSerializer()
         excludes = [] 
-        always_return_data = True 
+        always_return_data = False 
 
     def __init__(self, **kwargs):
         super(FieldResource,self).__init__(**kwargs)
@@ -3158,18 +3158,13 @@ class FieldResource(ApiResource):
             
         recursion_test = list()
         def fill_field_refs(key):
-            if DEBUG_RESOURCES:
-                logger.info('fill ref field for %r', key)
             
             if key not in fields:
                 logger.debug('key: %r not found in %r', key, fields.keys())
-            
             else:
                 field = fields[key]
                 
                 ref_field_key = field.get('ref')
-                if DEBUG_RESOURCES: 
-                    logger.info('field: %r, ref: %r', key, ref_field_key)
                 if ref_field_key:
                     if key not in recursion_test:
                         recursion_test.append(key)
@@ -3300,10 +3295,23 @@ class FieldResource(ApiResource):
                 id_kwargs, field)
         field.save()
                 
+        # Validation: check that id_attributes are not restricted
+        resource_name = field.scope.split('.')[1]
+        try:
+            raw_resource = MetaHash.objects.get(scope='resource', key=resource_name)
+            id_attribute = raw_resource.get_field('id_attribute')
+            if id_attribute and field.get_field('view_groups'):
+                if field.key in id_attribute:
+                    raise ValidationError(
+                        key=field.key,
+                        msg='"view_groups" is not allowed for an id_attribute: %r' 
+                            % id_attribute)
+        except ObjectDoesNotExist:
+            logger.debug('resource not found, bootstrap case: %r', resource_name)
+            
         logger.debug('patch_obj done')
         return { API_RESULT_OBJ: field }
             
-
 class ResourceResource(ApiResource):
     
     class Meta:
@@ -3476,7 +3484,9 @@ class ResourceResource(ApiResource):
         '''
         Filter resource based on user authorization
         '''
-        logger.debug('filter resource %r: %r', schema['key'], user)
+        resource_name = schema['key']
+        if DEBUG_AUTHORIZATION:
+            logger.info('filter resource %r: %r', resource_name, user)
         usergroups = set()
         is_superuser = user is not None and user.is_superuser
             
@@ -3492,20 +3502,25 @@ class ResourceResource(ApiResource):
         disallowed_fields = {}
         for key, field in fields.items():
             include = True
-            if key not in schema['id_attribute']:
-                view_groups = field.get('view_groups',[])
-                if view_groups:
-                    if not set(view_groups) & usergroups:
+            view_groups = field.get('view_groups',[])
+            if view_groups:
+                if not set(view_groups) & usergroups:
+                    if key in schema['id_attribute']:
+                        raise ConfigurationError({
+                            'SCHEMA ERROR': 
+                            'Can not filter field: %r, it is an id_attribute: %r' 
+                            %(key, schema['id_attribute'])})
+                    else:
                         include = False
                         if DEBUG_AUTHORIZATION:
                             logger.info(
                                 'disallowed field: %r with view_groups: %r', 
                                 key, view_groups)
-                    else:
-                        if DEBUG_AUTHORIZATION:
-                            logger.info(
-                                'allowed field: %r with view_groups: %r', 
-                                key, view_groups)
+                else:
+                    if DEBUG_AUTHORIZATION:
+                        logger.info(
+                            'allowed field: %r with view_groups: %r', 
+                            key, view_groups)
             if include is True:
                 filtered_fields[key] = field
             else:
@@ -3513,7 +3528,7 @@ class ResourceResource(ApiResource):
         if disallowed_fields:
             if DEBUG_AUTHORIZATION:
                 logger.info('user: %r, resource: %r, disallowed fields: %r', 
-                    user, schema['key'], disallowed_fields.keys())
+                    user, resource_name, disallowed_fields.keys())
         schema[RESOURCE.FIELDS] = filtered_fields
         
         return schema
@@ -3533,10 +3548,12 @@ class ResourceResource(ApiResource):
             user_cache_key = 'resources_%s' % user.username
             user_resources = resource_cache.get(user_cache_key)
         if user_resources:
-            logger.debug(
-                'user resource retrieved from cache: %r', user_resources.keys())
+            if DEBUG_RESOURCES:
+                logger.info(
+                    'user resource retrieved from cache: %r', user_resources.keys())
         else:    
-            logger.debug('user resources not cached, building')
+            if DEBUG_RESOURCES:
+                logger.info('user resources not cached, building')
             if use_cache is True and self.use_cache is True:
                 resources = resource_cache.get('resources')
                 
@@ -3626,6 +3643,8 @@ class ResourceResource(ApiResource):
                     logger.info('all unfiltered resources: %r', 
                         resources.keys())
             if user and user.is_superuser is True:
+                if DEBUG_AUTHORIZATION:
+                    logger.info('Superuser; no filter of resource fields: %r', user.username)
                 user_resources = resources
             else:
                 if DEBUG_RESOURCES:

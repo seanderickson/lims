@@ -25739,11 +25739,13 @@ class LibraryResource(DbApiResource):
                 '    from plate p join copy c using(copy_id)'
                 '    where c.library_id=library.library_id)'
                 ).label('plate_count'),
-            'plate_count': literal_column(
-                '(select count(distinct(w.plate_number))'
-                '    from well w'
-                '    where w.library_id=library.library_id)'
-                ).label('plate_count'),
+            # 20181202 - not performant:
+            # 'plate_count': literal_column(
+            #     '(select count(distinct(w.plate_number))'
+            #     '    from well w'
+            #     '    where w.library_id=library.library_id)'
+            #     ).label('plate_count'),
+            'plate_count': _l.c.end_plate-_l.c.start_plate+1,
             'copies': literal_column(
                 "(select array_to_string(array_agg(c1.name),'%s') "
                 '    from ( select c.name from copy c '

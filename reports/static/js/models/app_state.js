@@ -118,11 +118,6 @@ define([
     
     defaults: {
 
-//      // TODO: deprecate these variables
-//      // use the REPORTS_API_URI, and DB_API_URI defined below
-//      root_url: '/',  // used for the backbone history
-//      api_root_url: '/reports/api/v1',
-
       path: '',
       actualStack: [],
       
@@ -230,7 +225,6 @@ define([
           Iccbl.appModel.jqXHRfail.apply(this,arguments); 
         });
       }
-
     },
     
     readCookie: function(name) {
@@ -725,11 +719,13 @@ define([
     },
     
     getUserIdsInGroupOptions: function(usergroup, callBack){
-      return this.getUserInGroupOptions(usergroup, 'screensaver_user_id', '{name} ({screensaver_user_id})', callBack );
+      return this.getUserInGroupOptions(
+        usergroup, 'screensaver_user_id', '{name} ({screensaver_user_id})', callBack );
     },
     
     getUsernamesInGroupOptions: function(usergroup, callBack){
-      return this.getUserInGroupOptions(usergroup, 'username', '{name} ({username})', callBack );
+      return this.getUserInGroupOptions(
+        usergroup, 'username', '{name} ({username})', callBack );
     },
     
     getUserInGroupOptions: function(usergroup, val_prop, label_prop, callBack){
@@ -740,7 +736,9 @@ define([
         this.getUsersInGroup(usergroup, function(users){
           var options = [{ val:'',label:'' }];
           users.each(function(user){
-            options.push({ val: user.get(val_prop), label: Iccbl.formatString(label_prop, user) });
+            options.push({ 
+              val: user.get(val_prop), 
+              label: Iccbl.formatString(label_prop, user) });
           });
           self.set(prop,options);
           self.userProps[prop] = new Date();
@@ -894,7 +892,8 @@ define([
         'users', 
         this.dbApiUri + '/screensaveruser', 
         { 
-          exact_fields: ['username','name','email','sm_data_sharing_level','rnai_data_sharing_level'], 
+          exact_fields: ['username','name','email',
+            'sm_data_sharing_level','rnai_data_sharing_level'], 
           order_by: ['name']
         }, 
         callback );
@@ -1200,6 +1199,14 @@ define([
         
         
         if(callBack) callBack();                
+      }, null, function(jqXHR, textStatus, errorThrown){
+        // pass a special error handler, because getResources runs before 
+        // layout is rendered
+        var msg = self.parseJqXHRfail.apply(this, arguments);
+        if (jqXHR && _.has(jqXHR,'responseJSON') && !_.isEmpty(jqXHR.responseJSON) ) {
+          msg += '\n\n' + self.print_json(jqXHR.responseJSON);
+        }
+        window.alert(msg);
       });
       
       console.log('finished getResources')
@@ -1638,11 +1645,8 @@ define([
         }
       }).fail(function(){ Iccbl.appModel.jqXHRfail.apply(this,arguments); });      
     },
-    
-    /**
-     * Process a jQuery.jqXHR.fail callback for the ajax() call.
-     */
-    jqXHRfail: function(jqXHR, textStatus, errorThrown){
+
+    parseJqXHRfail: function(jqXHR, textStatus, errorThrown){
       console.log('jqXHRfail', textStatus, errorThrown);
       var msg = textStatus || 'Error';
       msg = msg.charAt(0).toUpperCase() + msg.slice(1);
@@ -1651,13 +1655,22 @@ define([
       }
       if (this.url){
         // * url will be set for most backbone objects doing the fetching
-        msg += ':\n ' + this.url;
+        if(_.isFunction(this.url)) msg += ':\n ' + this.url();
+        else msg += ':\n ' + this.url;
       }
       if (jqXHR){
         if (jqXHR.status){
           msg += ':\n status:' + jqXHR.status;
         }
       }
+      return msg;
+    },
+    
+    /**
+     * Process a jQuery.jqXHR.fail callback for the ajax() call.
+     */
+    jqXHRfail: function(jqXHR, textStatus, errorThrown){
+      var msg = Iccbl.appModel.parseJqXHRfail.apply(this, arguments);
       $(document).trigger('ajaxComplete');
       if (jqXHR && _.has(jqXHR,'responseJSON') && !_.isEmpty(jqXHR.responseJSON) ) {
         Iccbl.appModel.showJsonMessages(jqXHR.responseJSON);
@@ -1702,6 +1715,8 @@ define([
         str = str.replace(/^\s*,\s*$/gm,'')
         // remove empty lines
         str = str.replace(/^\s*$\n+/gm,'');
+        // convert escaped lines
+        str = str.replace(/\\n+/gm,'<br/>');
       }catch(e){
         console.log('print_json', e, obj);
         str = '' + obj;
@@ -2032,7 +2047,7 @@ define([
             return kv.join('=');
           }).join(Iccbl.appModel.SEARCH_DELIMITER);        
         var search_link = $('<a>',{
-            text: 'Comments',
+            text: 'Comments (Admins only)',
             target: '_blank',
             title: '',
             href: '#apilog/order/-date_time/' + search_ui_url
@@ -2091,7 +2106,9 @@ define([
           'searchable': false,
           'editable' : false,
           'visible': true,
-          'headerCell': Backgrid.HeaderCell
+          'headerCell': Backgrid.HeaderCell.extend({
+            className: 'admin-field'
+          })
         };
         var columns = [
           _.extend({},colTemplate,{

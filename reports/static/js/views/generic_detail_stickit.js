@@ -121,14 +121,24 @@ define([
           updateMethod: 'html',
           onGet: function(value) {
             if (value){
-              return create_title(value);
+              var label = create_title(value);
+              // 20181203 - no badge
+              //var admin_label = "<span style='' "
+              //  + "class='label label-warning label-as-badge pull-left strong' "
+              //  + "title='admin field'>A</span>&nbsp;";
+              // if (_.contains(self.adminKeys, key)) label = admin_label + label;
+              return label;
             }
-            else return 'Title for ' + key;
+            else return 'Label for ' + key;
           },
           attributes: [{
             name: 'title', observe: key,
             onGet: function(value) {
-              if (value) return value.description;
+              if (value) {
+                var tooltip = value.description;
+                if (_.contains(self.adminKeys, key)) tooltip = tooltip + ' (Admin field)';
+                return tooltip;
+              }
             }
           }]
         };

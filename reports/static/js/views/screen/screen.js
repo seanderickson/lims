@@ -1615,7 +1615,7 @@ define([
           showEdit: function(){
             var pSelf = this;
             appModel.getAdminUserOptions(function(options){
-              pSelf.model.resource.fields['publishable_protocol_entered_by'].choiceHash = options;
+              self.model.resource.fields['publishable_protocol_entered_by'].choiceHash = options;
               return DetailLayout.prototype.showEdit.apply(pSelf, arguments);
             });
           }

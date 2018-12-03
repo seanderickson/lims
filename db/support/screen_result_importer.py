@@ -442,6 +442,7 @@ def create_output_data(screen_facility_id, fields, result_values ):
     data_column_keys = []
     non_data_column_keys = []
     keys = sorted(fields.keys())
+    
     for i,key in enumerate(keys):
         field = fields[key]
         if 'ordinal' not in field:
@@ -511,16 +512,9 @@ def create_output_data(screen_facility_id, fields, result_values ):
                 elif field_key == 'derived_from_columns':
                     logger.info('derived_from_columns: %r', val)
                     if field.get('screen_facility_id') == screen_facility_id:
-                        logger.info('Translate derived_from_columns: %r', val)
-                        if not set(data_column_names_to_col_letter.keys())\
-                                .issuperset(set(val)):
-                            raise ValidationError(
-                                key='derived_from_columns', 
-                                msg=('col: %r, values: %r are not in %r'
-                                    %(key,val,
-                                        data_column_names_to_col_letter.keys())))
+                        # If the column is not available, just use the text as given
                         val = ', '.join([
-                            data_column_names_to_col_letter[dc_name] 
+                            data_column_names_to_col_letter.get(dc_name, dc_name)
                                 for dc_name in val])
                         logger.info('Translated derived_from_columns: %r', val)
                     else:

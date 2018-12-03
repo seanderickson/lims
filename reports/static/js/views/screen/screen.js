@@ -488,7 +488,7 @@ define([
           var activity = collection.at(0);
           
           $target_el.append($([
-            '<div class="col-xs-12 admin-field"><strong>Activity Summary</strong></div>',
+            '<div class="col-xs-12 "><strong>Activity Summary</strong></div>',
             '<div id="" class="col-xs-12" >',
             '<table id="activity_summary_table" class="table-condensed data-list">',
             '<tr>',
@@ -1080,7 +1080,7 @@ define([
         colModel.sort();
 
         $target_el.append($([
-          '<div class="col-xs-12 admin-field"><strong>',
+          '<div class="col-xs-12 "><strong>',
           'Recent Cherry Pick Requests ',
           '<a href="#screen/' + self.model.get('facility_id'),
           '/cherrypickrequest">(Total: ' + originalLength + ')</a></strong></div>',

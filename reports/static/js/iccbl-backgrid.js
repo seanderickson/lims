@@ -180,7 +180,9 @@ var formatString = Iccbl.formatString = function(
           newVal = match;
         }
       }
-      if (clientFilter && clientFilter(match, newVal)) clientFilterHit = true;
+      if (clientFilter && clientFilter(match, newVal)===true){
+        clientFilterHit = true;
+      }
       return newVal;
     });
   
@@ -2275,43 +2277,51 @@ var LinkCell = Iccbl.LinkCell = Iccbl.BaseCell.extend({
 
   get_href: function(){
     var self = this;
-    
+    var columnKey = self.column.get('name');
     // Limit link generation to "allowed" resources for screeners.
     // TODO: (Case 1) Filter based on permission to view the target resource
     // entity. (This will require filtering on server).
     // TODO: (Case 2) Filter based on permission to read from resource; need to 
     // store the link target resource in the metadata.
     
+    var restrictedResourceFields = [
+      'source_copy_name','library_plate','plate_count','plate_number'
+    ];
+    var restrictedUserFields = [
+          'screensaver_user_id', 'lab_head_id', 'lead_screener_id',
+          'serviced_user_id','performed_by_user_id'];
     if (!Iccbl.appModel.hasGroup('readEverythingAdmin')){
       var linkIsFiltered = false;
-      function linkPermissionFilter(fieldKey, value){
-    
-        // Case 1: filter links based on allowed visibility of instance values 
-        // (screensaver_user_id must be "viewable"; follows is an arbitrary 
-        // list that must be updated as needed).
-        if (_.contains([
-          'screensaver_user_id', 'lab_head_id', 'lead_screener_id',
-          'serviced_user_id','performed_by_user_id'], fieldKey)){
-          var userOptions = Iccbl.appModel.getUserOptions();
-          if (_.find(userOptions, function(useroption){
-            return useroption.val == value;
-          })){
-            return true;
-          } else {
-            linkIsFiltered = true;
-            return false;
+      var formattedString;
+      if (_.contains(restrictedResourceFields, columnKey)){
+        linkIsFiltered = true;
+      } else {
+        function linkPermissionFilter(fieldKey, value){
+      
+          // Case 1: filter links based on allowed visibility of instance values 
+          // (screensaver_user_id must be "viewable"; follows is an arbitrary 
+          // list that must be updated as needed).
+          if (_.contains(restrictedUserFields, fieldKey)){
+            var userOptions = Iccbl.appModel.getUserOptions();
+            if (_.find(userOptions, function(useroption){
+              return useroption.val == value;
+            })){
+              return false;
+            } else {
+              linkIsFiltered = true;
+              return true;
+            }
+          
+          // Case 2: filter link based on permission to view resource. (follows 
+          // is an arbitrary list of known link field ids for restricted resources).
+          }else if (_.contains(restrictedResourceFields, fieldKey)){
+              linkIsFiltered = true;
+              return true;
           }
-        
-        // Case 2: filter link based on permission to view resource. (follows 
-        // is an arbitrary list of known link field ids for restricted resources).
-        }else if (_.contains([
-          'source_copy_name','library_plate','plate_count','plate_number'], 
-          fieldKey)){
-            linkIsFiltered = true;
         }
+        formattedString = Iccbl.formatString(
+          self.hrefTemplate,self.model, null, linkPermissionFilter);
       }
-      var formattedString = Iccbl.formatString(
-        self.hrefTemplate,self.model, null, linkPermissionFilter);
       if (linkIsFiltered === true){
         return null;
       } else {

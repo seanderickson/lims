@@ -163,12 +163,23 @@ function($, _, Backbone, Iccbl, appModel, AppView, AppRouter,
   };
   
   appModel.start(function(){
-    console.log('Render application')
-    appView.$el.appendTo("#application_div")
-    appView.render();
-        
-    Backbone.history = Backbone.history || new Backbone.History({});
-    Backbone.history.start({ pushState: false, root: '/' });
+    console.log('initial fetch...');
+    // pre-fetch; delay rendering to pre-fetch:
+    // needed for permission checks on links (20181203)
+    // used in search_box
+    $(this).queue([
+        appModel.getScreenOptions,
+        appModel.getUserOptions,
+        appModel.getLibraryOptions,
+        startFunction]);
+    function startFunction(){
+      console.log('Render application')
+      appView.$el.appendTo("#application_div")
+      appView.render();
+          
+      Backbone.history = Backbone.history || new Backbone.History({});
+      Backbone.history.start({ pushState: false, root: '/' });
+    };
   });
   
 //  // Set the document title
@@ -281,6 +292,7 @@ function($, _, Backbone, Iccbl, appModel, AppView, AppRouter,
     });
   }
   function startIdleTimer() {
+    console.log('startIdleTimer...');
     idleTimer = setTimeout(warnIdle, idleTimeout);
     localStorage.setItem(timerKey, Date.now());
   }

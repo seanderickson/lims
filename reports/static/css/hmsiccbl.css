@@ -188,10 +188,6 @@ padding: 3px 15px;
   white-space: normal;
 /*   vertical-align: top; */
 }
-.backgrid thead th.admin-field
-{
-  background-color: #f2dede;
-}
 
 .label-as-badge {
     border-radius: 10px;
@@ -518,9 +514,8 @@ td.text-wrap-cell-extra-narrow {
   font-family: sans-serif;
 }
 
-td.admin-field, th.admin-field,
-td.admin-field a, th.admin-field a 
-{
+.admin-field, th.admin-field, td.admin-field,
+td.admin-field a, th.admin-field a  {
  color: maroon;
 }
 

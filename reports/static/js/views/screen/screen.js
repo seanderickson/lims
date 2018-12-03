@@ -488,7 +488,7 @@ define([
           var activity = collection.at(0);
           
           $target_el.append($([
-            '<div class="col-xs-12"><strong>Activity Summary</strong></div>',
+            '<div class="col-xs-12 admin-field"><strong>Activity Summary</strong></div>',
             '<div id="" class="col-xs-12" >',
             '<table id="activity_summary_table" class="table-condensed data-list">',
             '<tr>',
@@ -1080,7 +1080,7 @@ define([
         colModel.sort();
 
         $target_el.append($([
-          '<div class="col-xs-12"><strong>',
+          '<div class="col-xs-12 admin-field"><strong>',
           'Recent Cherry Pick Requests ',
           '<a href="#screen/' + self.model.get('facility_id'),
           '/cherrypickrequest">(Total: ' + originalLength + ')</a></strong></div>',
@@ -1149,7 +1149,9 @@ define([
           'searchable': false,
           'editable' : false,
           'visible': true,
-          'headerCell': Backgrid.HeaderCell
+          'headerCell': Backgrid.HeaderCell.extend({
+            className: 'admin-field'
+          })
         };
         var columns = [
             _.extend({},colTemplate,{
@@ -1175,7 +1177,7 @@ define([
         $('#status').closest('tr').remove();
         $('#status_date').closest('tr').remove();
         $target_el.append($([
-          '<div class="col-xs-12"><strong>Status Items</strong></div>',
+          '<div class="col-xs-12 admin-field"><strong>Status Items</strong></div>',
           '<div class="col-xs-12" id="status_items"/>'].join('')));
         
         var status_grid = new Backgrid.Grid({

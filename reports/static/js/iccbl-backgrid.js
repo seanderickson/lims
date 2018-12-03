@@ -148,11 +148,14 @@ function lpad(str, length, padstr) {
  * @param defaul_val value to use if the matched token is not found in the model
  * - this can be used to replace any token with a given default value
  * - if default_val is not provided, the replacement_field is left in the string.
+ * @param clientFilter if provided provides a method for the client function to
+ *  wipe the link. This is a temporary hack to clear links for items that the user
+ *  does not have access to. 
  */
 var formatString = Iccbl.formatString = function(
     stringWithTokens,
     object,
-    default_val)
+    default_val, clientFilter)
   {
   var isBackboneModel = object instanceof Backbone.Model;
   if (!isBackboneModel){
@@ -160,22 +163,29 @@ var formatString = Iccbl.formatString = function(
       isBackboneModel = true;
     }
   }
+  var clientFilterHit = false;
   var interpolatedString = stringWithTokens.replace(/{([^}]+)}/g,
     function (match)
     {
       match = match.replace(/[{}]/g,'');
+      var newVal;
       if(isBackboneModel && !_.isUndefined(object.get(match))){
-        return object.get(match);
+        newVal = object.get(match);
       }else if(_.has(object, match)){
-        return object[match];
+        newVal =  object[match];
       }else{
         if(!_.isUndefined(default_val)){
-          return default_val;
+          newVal = default_val;
         }else{
-          return match;
+          newVal = match;
         }
       }
+      if (clientFilter && clientFilter(match, newVal)) clientFilterHit = true;
+      return newVal;
     });
+  
+  if (clientFilterHit===true) return '#'; 
+  
   return interpolatedString;
 };
 
@@ -2265,19 +2275,72 @@ var LinkCell = Iccbl.LinkCell = Iccbl.BaseCell.extend({
 
   get_href: function(){
     var self = this;
-    return Iccbl.formatString(self.hrefTemplate,self.model);
+    
+    // Limit link generation to "allowed" resources for screeners.
+    // TODO: (Case 1) Filter based on permission to view the target resource
+    // entity. (This will require filtering on server).
+    // TODO: (Case 2) Filter based on permission to read from resource; need to 
+    // store the link target resource in the metadata.
+    
+    if (!Iccbl.appModel.hasGroup('readEverythingAdmin')){
+      var linkIsFiltered = false;
+      function linkPermissionFilter(fieldKey, value){
+    
+        // Case 1: filter links based on allowed visibility of instance values 
+        // (screensaver_user_id must be "viewable"; follows is an arbitrary 
+        // list that must be updated as needed).
+        if (_.contains([
+          'screensaver_user_id', 'lab_head_id', 'lead_screener_id',
+          'serviced_user_id','performed_by_user_id'], fieldKey)){
+          var userOptions = Iccbl.appModel.getUserOptions();
+          if (_.find(userOptions, function(useroption){
+            return useroption.val == value;
+          })){
+            return true;
+          } else {
+            linkIsFiltered = true;
+            return false;
+          }
+        
+        // Case 2: filter link based on permission to view resource. (follows 
+        // is an arbitrary list of known link field ids for restricted resources).
+        }else if (_.contains([
+          'source_copy_name','library_plate','plate_count','plate_number'], 
+          fieldKey)){
+            linkIsFiltered = true;
+        }
+      }
+      var formattedString = Iccbl.formatString(
+        self.hrefTemplate,self.model, null, linkPermissionFilter);
+      if (linkIsFiltered === true){
+        return null;
+      } else {
+        return formattedString;
+      }
+    } else {
+      return Iccbl.formatString(self.hrefTemplate,self.model);
+    }
   },
 
   render : function() {
     var self = this;
     this.$el.empty();
-    var formattedValue = this.formatter.fromRaw(this.model.get(this.column.get("name")));
-    self.$el.append($('<a>', {
-      tabIndex : -1,
-      href : self.get_href(),
-      target : self.target,
-      title: self.title
-    }).text(formattedValue));
+    var columnKey = this.column.get("name");
+    var rawValue = this.model.get(columnKey);
+    var formattedValue = this.formatter.fromRaw(rawValue);
+    var href = self.get_href();
+    
+    
+    if (href){
+      self.$el.append($('<a>', {
+        tabIndex : -1,
+        href : self.get_href(),
+        target : self.target,
+        title: self.title
+      }).text(formattedValue));
+    } else { 
+      self.$el.append(formattedValue);
+    }
     return this;
   },
 });
@@ -5760,11 +5823,10 @@ var createBackgridColumn = Iccbl.createBackgridColumn =
         var self = this;
         optionalHeaderCell.__super__.render.apply(this);
         if (this.fieldinformation.is_admin){
-//          this.$el.addClass('admin-field');
           this.$el.append(
             "<span style='margin-bottom: 2px;' "
             + "class='label label-danger label-as-badge pull-right strong' "
-            + "title='admin field'>A</span>")
+            + "title='admin field'>A</span>");
         }
         return this;
       }      
@@ -5778,8 +5840,7 @@ var createBackgridColumn = Iccbl.createBackgridColumn =
           this.$el.append(
             "<span style='margin-bottom: 2px;' "
             + "class='label label-danger label-as-badge pull-right strong' "
-            + "title='admin field'>A</span>")
-//          this.$el.addClass('admin-field');
+            + "title='admin field'>A</span>");
         }
         return this;
       }      

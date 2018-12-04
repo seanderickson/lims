@@ -538,7 +538,7 @@ define([
       if (this.screening_inq_form_data){
         this.screeningInquiryForm.setValue('searchVal', this.screening_inq_form_data);
       }
-    },
+    }, // buildDynamicForms
     
     afterRender: function() {
       var self=this;

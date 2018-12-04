@@ -6,6 +6,7 @@ import re
 
 from reports.serialize import to_simple
 from django.utils.encoding import smart_text, force_text
+import numbers
 
 
 logger = logging.getLogger(__name__)
@@ -175,7 +176,10 @@ def convert_list_vals(val, delimiter=LIST_DELIMITER_CSV, list_brackets='[]'):
             else:
                 return 'FALSE'
         else:
-            return force_text(to_simple(val))
+            if isinstance(val, numbers.Number):
+                return val
+            else:
+                return force_text(to_simple(val))
     else:
         return None
 

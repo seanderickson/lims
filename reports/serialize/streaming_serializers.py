@@ -35,6 +35,7 @@ import reports.serialize.csvutils as csvutils
 import reports.serialize.sdfutils as sdfutils
 from reports.serialize.xlsutils import generic_xls_write_workbook, \
     xls_write_workbook, write_xls_image, LIST_DELIMITER_XLS
+import numbers
 
 
 logger = logging.getLogger(__name__)
@@ -391,9 +392,6 @@ def get_xls_response(
                             val, delimiter=LIST_DELIMITER_XLS,
                             list_brackets=list_brackets)
                         if val is not None:
-                            if len(val) > 32767: 
-                                logger.error('warn, row too long, %d, key: %r, len: %d', 
-                                    row,key,len(val) )
                             if image_keys and key in image_keys:
                                 max_rows_per_sheet = MAX_IMAGE_ROWS_PER_XLS_FILE
                                 if not request:
@@ -406,7 +404,13 @@ def get_xls_response(
                                     continue
                                 write_xls_image(sheet, filerow, i, val, request)
                             else:
-                                sheet.write_string(filerow,i,val)
+                                if isinstance(val, numbers.Number):
+                                    sheet.write_number(filerow, i, val)
+                                else:
+                                    if len(val) > 32767: 
+                                        logger.error('warn, row too long, %d, key: %r, len: %d', 
+                                            filerow,key,len(val) )
+                                    sheet.write_string(filerow,i,val)
                     filerow += 1
                     if row % 10000 == 0:
                         logger.info('wrote %d rows to temp file', row)

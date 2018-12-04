@@ -3814,6 +3814,7 @@ var SortableHeaderCell = Iccbl.SortableHeaderCell = Backgrid.HeaderCell.extend({
     this.$el.prop('title', mouseover);
     
     if (this.fieldinformation.is_admin){
+      // TODO: create an admin-field class that mixes in label-warning
       this.$el.append(
         "<span style='margin-bottom: 2px;' "
         + "class='label label-warning label-as-badge pull-right strong' "

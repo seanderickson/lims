@@ -1640,7 +1640,7 @@ class LibraryCopyPlateResource(DbApiResource):
             rowproxy_generator = \
                 DbApiResource.create_vocabulary_rowproxy_generator(field_hash)
             # use "use_vocab" as a proxy to also adjust siunits for viewing
-            rowproxy_generator = DbApiResource.create_siunit_rowproxy_generator(
+            rowproxy_generator = DbApiResource.create_number_format_generator(
                 field_hash, rowproxy_generator)
         rowproxy_generator = \
             self._meta.authorization.get_row_property_generator(
@@ -2018,7 +2018,7 @@ class LibraryCopyPlateResource(DbApiResource):
             rowproxy_generator = \
                 DbApiResource.create_vocabulary_rowproxy_generator(field_hash)
             # use "use_vocab" as a proxy to also adjust siunits for viewing
-            rowproxy_generator = DbApiResource.create_siunit_rowproxy_generator(
+            rowproxy_generator = DbApiResource.create_number_format_generator(
                 field_hash, rowproxy_generator)
         rowproxy_generator = \
             self._meta.authorization.get_row_property_generator(
@@ -6805,7 +6805,7 @@ class CopyWellResource(DbApiResource):
             rowproxy_generator = \
                 DbApiResource.create_vocabulary_rowproxy_generator(field_hash)
             # use "use_vocab" as a proxy to also adjust siunits for viewing
-            rowproxy_generator = DbApiResource.create_siunit_rowproxy_generator(
+            rowproxy_generator = DbApiResource.create_number_format_generator(
                 field_hash, rowproxy_generator)
         rowproxy_generator = \
             self._meta.authorization.get_row_property_generator(
@@ -8259,7 +8259,7 @@ class CherryPickRequestResource(DbApiResource):
             rowproxy_generator = \
                 DbApiResource.create_vocabulary_rowproxy_generator(field_hash)
             # use "use_vocab" as a proxy to also adjust siunits for viewing
-            rowproxy_generator = DbApiResource.create_siunit_rowproxy_generator(
+            rowproxy_generator = DbApiResource.create_number_format_generator(
                 field_hash, rowproxy_generator)
 
         rowproxy_generator = \
@@ -11222,7 +11222,7 @@ class LabCherryPickResource(DbApiResource):
                 rowproxy_generator = \
                     DbApiResource.create_vocabulary_rowproxy_generator(field_hash)
                 # use "use_vocab" as a proxy to also adjust siunits for viewing
-                rowproxy_generator = DbApiResource.create_siunit_rowproxy_generator(
+                rowproxy_generator = DbApiResource.create_number_format_generator(
                     field_hash, rowproxy_generator)
             rowproxy_generator = \
                 self._meta.authorization.get_row_property_generator(
@@ -12210,7 +12210,7 @@ class LibraryCopyResource(DbApiResource):
                 rowproxy_generator = \
                     DbApiResource.create_vocabulary_rowproxy_generator(field_hash)
                 # use "use_vocab" as a proxy to also adjust siunits for viewing
-                rowproxy_generator = DbApiResource.create_siunit_rowproxy_generator(
+                rowproxy_generator = DbApiResource.create_number_format_generator(
                     field_hash, rowproxy_generator)
             rowproxy_generator = \
                self._meta.authorization.get_row_property_generator(
@@ -13702,7 +13702,7 @@ class ActivityResource(DbApiResource):
             rowproxy_generator = \
                 DbApiResource.create_vocabulary_rowproxy_generator(field_hash)
             # use "use_vocab" as a proxy to also adjust siunits for viewing
-            rowproxy_generator = DbApiResource.create_siunit_rowproxy_generator(
+            rowproxy_generator = DbApiResource.create_number_format_generator(
                 field_hash, rowproxy_generator)
         rowproxy_generator = \
            self._meta.authorization.get_row_property_generator(
@@ -14454,7 +14454,7 @@ class ActivityResource(DbApiResource):
 #             rowproxy_generator = \
 #                 DbApiResource.create_vocabulary_rowproxy_generator(field_hash)
 #             # use "use_vocab" as a proxy to also adjust siunits for viewing
-#             rowproxy_generator = DbApiResource.create_siunit_rowproxy_generator(
+#             rowproxy_generator = DbApiResource.create_number_format_generator(
 #                 field_hash, rowproxy_generator)
 #         rowproxy_generator = \
 #            self._meta.authorization.get_row_property_generator(
@@ -15630,7 +15630,7 @@ class LibraryScreeningResource(ActivityResource):
             rowproxy_generator = \
                 DbApiResource.create_vocabulary_rowproxy_generator(field_hash)
             # use "use_vocab" as a proxy to also adjust siunits for viewing
-            rowproxy_generator = DbApiResource.create_siunit_rowproxy_generator(
+            rowproxy_generator = DbApiResource.create_number_format_generator(
                 field_hash, rowproxy_generator)
         
         # create a generator to wrap the cursor and expand the library_plates_screened
@@ -18846,7 +18846,7 @@ class ScreenResource(DbApiResource):
             rowproxy_generator = \
                 DbApiResource.create_vocabulary_rowproxy_generator(field_hash)
             # use "use_vocab" as a proxy to also adjust siunits for viewing
-            rowproxy_generator = DbApiResource.create_siunit_rowproxy_generator(
+            rowproxy_generator = DbApiResource.create_number_format_generator(
                 field_hash, rowproxy_generator)
         
         rowproxy_generator = \
@@ -23333,8 +23333,9 @@ class ReagentResource(DbApiResource):
                 DbApiResource.create_vocabulary_rowproxy_generator(
                     field_hash, rowproxy_generator)
             # use "use_vocab" as a proxy to also adjust siunits for viewing
-            rowproxy_generator = DbApiResource.create_siunit_rowproxy_generator(
+            rowproxy_generator = DbApiResource.create_number_format_generator(
                 field_hash, rowproxy_generator)
+            
         # FIXME: this applies the auth row generator before the value_template,
         # and other generators have been applied; the auth gen should be applied
         # last (ok, because build_sqlalchemy_columns is being used to restrict 

@@ -36,12 +36,49 @@ def get_siunit(test_value):
 
     return None
 
+def remove_exponent(d):
+    '''Remove exponent and trailing zeros (see python decimal doc)
+    '''
+    return d.quantize(Decimal(1)) if d == d.to_integral() else d.normalize()
+
+
+def round_decimal(raw_val, decimals=1, track_significance=False):
+    '''
+    Round to the specified decimals
+    
+    @param track_significance if True then remove trailing zeros
+    
+    @return Decimal representing the rounded raw_val as a decimal
+    '''
+    assert decimals >= 0, 'decimals must be >= 0'
+    
+    if raw_val is None: 
+        return None
+    
+    val = Decimal(raw_val)
+
+    logger.debug('convert_decimal: %r, %r, %r, %r',
+        raw_val, decimals, track_significance)
+    
+    # Convert the decimal argument to a Decimal value
+    decimals = Decimal('1e-%d'%int(decimals))
+    # Quantize: Return a value equal to the first operand after rounding and 
+    # having the exponent of the second operand. (see python doc)
+    val = val.quantize(decimals, decimal.ROUND_HALF_UP)
+        
+    if track_significance is False:
+        val = remove_exponent(val)
+
+    return val
+
 def convert_decimal(
     raw_val, default_unit='1e-6', decimals=1, multiplier=None, 
     track_significance=False):
     '''
-    Convert a decimal by scaling to the default unit and rounding to the 
-    given decimals (decimal digits), optionally multiplying by a multiplier.
+    Convert raw_val as a Decimal by:
+    - scaling to the default unit (e.g. 1e-6, convert 0.0000015 to 1.5)
+    - rounding to the given decimals (decimal digits), 
+    - optionally multiplying by a multiplier.
     
     @param default_unit adjust raw_val to the "default_unit" 
     (as defined in the "display_options")
@@ -51,31 +88,48 @@ def convert_decimal(
         adjust the raw_val = raw_val.scaleb(-6)
     
     @param decimals digits of precision to apply, rounding using ROUND_HALF_UP
+
     @param multiplier (Note: only the exponent of the multiplier is used, so
     only powers of 10 may be used)
+
     @param track_significance if False, then trailing zeros (after rounding
-    specified by "decimals") are dropped 
+    specified by "decimals") are dropped
+    
+    @return a Decimal representation of the raw_val
     '''
     assert decimals >= 0, 'decimals must be >= 0'
+    
+    if raw_val is None:
+        return None
+    
     logger.debug('convert_decimal: %r, %r, %r, %r, %r',
         raw_val, default_unit, decimals, multiplier, track_significance)
-    # get the scale (exponent) of the default unit
-    # negate the scale for use with Decimal.scaleb()
+
+    val = Decimal(raw_val)
+
+    # - Get the scale (exponent) of the default unit
+    #     DOC: "the adjusted exponent after shifting out the coefficient’s 
+    #           rightmost digits until only the lead digit remain"
+    # - Negate the scale for use with Decimal.scaleb()
     scale = -Decimal(str(default_unit)).adjusted()
     if multiplier is not None:
         # get the scale (exponent) of the multiplier
         multiplier = Decimal(str(multiplier)).adjusted()
         if multiplier != 0:
             scale = scale+multiplier
-    val = Decimal(raw_val)
+
+    # Convert the value using the determined scaling factor:
     if scale != 0:
         val = val.scaleb(scale)
-    decimals = Decimal('1e-%d'%int(decimals))
-    val = val.quantize(decimals, decimal.ROUND_HALF_UP)
-        
-    def remove_exponent(d):
-        return d.quantize(Decimal(1)) if d == d.to_integral() else d.normalize()
-    if track_significance is False:
-        val = remove_exponent(val)
+
+    val = round_decimal(val, decimals=decimals, track_significance=track_significance)    
+    
+#     decimals = Decimal('1e-%d'%int(decimals))
+#     val = val.quantize(decimals, decimal.ROUND_HALF_UP)
+#         
+#     def remove_exponent(d):
+#         return d.quantize(Decimal(1)) if d == d.to_integral() else d.normalize()
+#     if track_significance is False:
+#         val = remove_exponent(val)
     
     return val

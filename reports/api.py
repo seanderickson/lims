@@ -5,7 +5,7 @@ from collections import defaultdict
 from copy import deepcopy
 from decimal import Decimal
 import decimal
-from functools import wraps
+from functools import wraps, partial
 import importlib
 import json
 import logging
@@ -53,16 +53,17 @@ from reports.api_base import IccblBaseResource, un_cache, Authorization, \
     TRAILING_SLASH
 from reports.models import MetaHash, Vocabulary, ApiLog, LogDiff, Permission, \
                            UserGroup, UserProfile, Job
-from reports.utils import default_converter
 import reports.schema as SCHEMA
 from reports.serialize import parse_val, parse_json_field, XLSX_MIMETYPE, \
     SDF_MIMETYPE, XLS_MIMETYPE, JSON_MIMETYPE, MULTIPART_MIMETYPE, \
     LimsJSONEncoder
 from reports.serializers import LimsSerializer, DJANGO_ACCEPT_PARAM
 from reports.sqlalchemy_resource import SqlAlchemyResource, _concat
+from reports.utils import default_converter
 import reports.utils.background_client_util as background_client_util
 import reports.utils.background_processor as background_processor
 import reports.utils.si_unit as si_unit
+
 
 logger = logging.getLogger(__name__)
 
@@ -2023,11 +2024,14 @@ class ApiResource(SqlAlchemyResource):
         return vocabularies
 
     @staticmethod
-    def create_siunit_rowproxy_generator(field_hash, extant_generator):
+    def create_number_format_generator(field_hash, extant_generator):
         '''
-        Use schema information to convert raw decimal values to SI Unit values.
+        Use schema information to convert raw decimal values to displayed 
+        decimal or SI Unit values.
         
-        e.g. convert ".010" (L) to "10 mL"
+        e.g. 
+        - convert ".010" (L) to "10 mL"
+        - convert "1.22300000" "1.223"
         
         Schema data found in the "display_options" of the field.
         Parameters:
@@ -2037,60 +2041,95 @@ class ApiResource(SqlAlchemyResource):
         multiplier: (decimal value) values are scaled by the multiplier, if given
         decimals: (integer) precision is limited to decimals, if given
         '''
-        DEFAULT_PRECISION = Decimal('1e-%d'%9)
+
+        formatters = {}
         
-        siunit_default_units = {}
         for key, field in field_hash.iteritems():
-            if field.get('display_type', None) == 'siunit':
-                display_options = field.get('display_options', None)
-                if display_options is not None:
-                    # TODO: move display option parsing to the Field resource
-                    try:
-                        display_options = display_options.replace(r"'", '"')
-                        display_options = json.loads(display_options)
-                        logger.debug('key: %r, decoded display_options: %r', 
-                            key, display_options)
-                        
-                        default_unit = display_options.get('defaultUnit')
-                        if not default_unit:
-                            logger.error(
-                                'SIUNIT Field configuration error, '
-                                'no "defaultUnit" in display options: '
-                                'key: %r, scope: %r, %r', 
-                                key, field['scope'], display_options)
-                            continue
-                        symbol = display_options.get('symbol')
-                        if symbol is None:
-                            logger.error(
-                                'SIUNIT Field configuration error, '
-                                'no "symbol" in display options: '
-                                'key: %r, scope: %r, %r', 
-                                key, field['scope'], display_options)
-                            continue
-                        # NOTE: convert to string to avoid float numeric errors
-                        _dict = { 
-                            'default_unit': Decimal(str(default_unit)),
-                            'symbol': symbol 
-                        }
-                        multiplier = display_options.get('multiplier', None)
-                        if multiplier:
-                            _dict['multiplier'] = Decimal(str(multiplier))
-                        decimals = display_options.get('decimals', None)
-                        if decimals:
-                            _dict['decimals'] = int(decimals)
-                        
-                        siunit_default_units[key] = _dict
-                            
-                    except Exception, e:
-                        logger.exception(
-                            'key: %r, scope: %r, error in display options: %r - %r', 
-                            key, field['scope'], display_options, e)
-                else:
+            data_type = field.get('data_type', None)
+            display_type = field.get('display_type', None)
+            
+            # TODO: move display option parsing to the Field resource
+            display_options = SCHEMA.parse_display_options(field)
+
+            if display_type == SCHEMA.VOCAB.field.display_type.SIUNIT:
+                if display_options is None:
                     logger.error(
                         'SIUNIT Field configuration error, no display options: '
                         'key: %r, scope: %r', key, field['scope'])
-        logger.debug('siunit_default_units: %r', siunit_default_units)
-        def siunit_rowproxy_generator(cursor):
+                else:
+                    
+                    default_unit = display_options.get('defaultUnit')
+                    if not default_unit:
+                        logger.error(
+                            'SIUNIT Field configuration error, '
+                            'no "defaultUnit" in display options: '
+                            'key: %r, scope: %r, %r', 
+                            key, field['scope'], display_options)
+                        continue
+                    # NOTE: convert to string to avoid float numeric errors
+                    default_unit = Decimal(str(default_unit))
+
+                    symbol = display_options.get('symbol')
+                    if symbol is None:
+                        logger.error(
+                            'SIUNIT Field configuration error, '
+                            'no "symbol" in display options: '
+                            'key: %r, scope: %r, %r', 
+                            key, field['scope'], display_options)
+                        continue
+                    
+                    multiplier = display_options.get('multiplier', None)
+                    if multiplier:
+                        multiplier = Decimal(str(multiplier))
+                    decimals = display_options.get('decimals', None)
+                    if decimals:
+                        decimals = int(decimals)
+                    
+                    def si_converter(key, default_unit, decimals, multiplier, symbol, raw_val):
+                        logger.debug('convert %r:%r, using: %r, %r, %r, %r',
+                            key, raw_val, default_unit, decimals, multiplier, symbol)
+                        val = Decimal(raw_val)
+                                    
+                        if val >= default_unit:
+                            return '{} {}{}'.format(
+                                si_unit.convert_decimal(
+                                    val,default_unit, decimals),
+                                si_unit.get_siunit_symbol(default_unit), symbol)
+                        else:
+                            (symbol,default_unit) = si_unit.get_siunit(val)
+                            
+                            return '{} {}{}'.format(
+                                si_unit.convert_decimal(
+                                    val,default_unit, decimals),
+                                symbol, symbol)
+                    
+                    formatters[key] = { 
+                        'type': 'si_unit', 
+                        'converter': partial(
+                            si_converter, key, default_unit, decimals, 
+                            multiplier, symbol) }
+            
+            elif data_type in [SCHEMA.VOCAB.field.data_type.DECIMAL, 
+                               SCHEMA.VOCAB.field.data_type.FLOAT]:
+                
+                formatters[key] = {
+                    'type': 'decimal',
+                    'converter': lambda x: si_unit.remove_exponent(x) }
+                
+                if display_options:
+                    
+                    decimals = display_options.get('decimals', None)
+                    multiplier = display_options.get('multiplier', None)
+                    if multiplier:
+                        multiplier = Decimal(str(multiplier))
+                    if decimals:
+                        formatters[key] = {
+                            'type': 'decimal',
+                            'converter': lambda x: 
+                                si_unit.convert_decimal(x, 1, int(decimals), multiplier)}
+           
+        logger.info('output number formatters: %r', formatters)
+        def number_formatter_rowproxy_generator(cursor):
             if extant_generator is not None:
                 cursor = extant_generator(cursor)
             class Row:
@@ -2103,35 +2142,18 @@ class ApiResource(SqlAlchemyResource):
                 def __getitem__(self, key):
                     if not row[key]:
                         return row[key]
-                    if key in siunit_default_units:
-
-                        options = siunit_default_units[key]
-
-                        raw_val = row[key]
-                        val = Decimal(raw_val)
-                        
-                        if val and 'multiplier' in options:
-                            val *= options['multiplier']
-                        
-                        default_unit = options['default_unit']
-                        if val >= default_unit:
-                            return '{} {}{}'.format(
-                                si_unit.convert_decimal(
-                                    val,default_unit, options.get('decimals',3)),
-                                si_unit.get_siunit_symbol(default_unit), options['symbol'])
-                        else:
-                            (symbol,default_unit) = si_unit.get_siunit(val)
-                            
-                            return '{} {}{}'.format(
-                                si_unit.convert_decimal(
-                                    val,default_unit, options.get('decimals',3)),
-                                symbol, options['symbol'])
+                    if key in formatters:
+                        raw_val = self.row[key]
+                        new_val = formatters[key]['converter'](raw_val)
+                        logger.debug('converted: %r to %r', raw_val, new_val)
+                        return new_val
                     else:
                         
                         return self.row[key]
             for row in cursor:
                 yield Row(row)
-        return siunit_rowproxy_generator
+        return number_formatter_rowproxy_generator
+ 
 
     @staticmethod    
     def create_vocabulary_rowproxy_generator(field_hash, extant_generator=None):

@@ -3816,7 +3816,7 @@ var SortableHeaderCell = Iccbl.SortableHeaderCell = Backgrid.HeaderCell.extend({
     if (this.fieldinformation.is_admin){
       this.$el.append(
         "<span style='margin-bottom: 2px;' "
-        + "class='label label-danger label-as-badge pull-right strong' "
+        + "class='label label-warning label-as-badge pull-right strong' "
         + "title='admin field'>A</span>")
 //      this.$el.addClass('admin-field');
     }
@@ -5835,7 +5835,7 @@ var createBackgridColumn = Iccbl.createBackgridColumn =
         if (this.fieldinformation.is_admin){
           this.$el.append(
             "<span style='margin-bottom: 2px;' "
-            + "class='label label-danger label-as-badge pull-right strong' "
+            + "class='label label-warning label-as-badge pull-right strong' "
             + "title='admin field'>A</span>");
         }
         return this;
@@ -5849,7 +5849,7 @@ var createBackgridColumn = Iccbl.createBackgridColumn =
         if (this.fieldinformation.is_admin){
           this.$el.append(
             "<span style='margin-bottom: 2px;' "
-            + "class='label label-danger label-as-badge pull-right strong' "
+            + "class='label label-warning label-as-badge pull-right strong' "
             + "title='admin field'>A</span>");
         }
         return this;

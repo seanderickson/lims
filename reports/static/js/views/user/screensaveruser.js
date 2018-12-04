@@ -191,7 +191,12 @@ define([
       } else {
         resource.fields['lab_member_ids']['editability'] = [];
       }
-
+      if(!appModel.hasPermission('screensaveruser', 'read')){
+        // FIXME: 20181203; hide urls for screeners for
+        // lab_member_ids that they are not allowed to view:
+        // Requires override of generic_detail_stickit.link_list_getter
+        resource.fields['lab_member_ids']['display_options']['hrefTemplate'] = '#';
+      }
       this.model.validate = function(attrs) {
         var errs = {};
         if ( attrs.classification == appModel.VOCAB_USER_CLASSIFICATION_PI &&
@@ -357,6 +362,12 @@ define([
                 self.addLabMember();
               });
             }
+          } else {
+            // FIXME: 20181203; hide urls for screeners for
+            // lab_member_ids that they are not allowed to view:
+            // Requires override of generic_detail_stickit.link_list_getter
+            
+            
           }
           self.showUserAgreements();
         }

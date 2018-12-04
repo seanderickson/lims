@@ -97,8 +97,6 @@ class BaseSerializer(object):
         return desired_format
     
     def get_accept_content_type(self, request, format=None):
-        '''
-        '''
         
         DEBUG_ACCEPT_CONTENT_TYPE = False or logger.isEnabledFor(logging.DEBUG)
         
@@ -130,8 +128,7 @@ class BaseSerializer(object):
                     content_type = mimeparse.best_match(
                         self.content_types.values(), http_accept)
                     if content_type == 'text/javascript':
-                        # NOTE - 
-                        # if the HTTP ACCEPT header contains multiple entries 
+                        # NOTE: If the HTTP_ACCEPT header contains multiple entries 
                         # with equal weighting, mimeparse.best_match returns
                         # the last match. This results in the request header:
                         # "application/json, text/javascript, */*; q=0.01"
@@ -193,8 +190,7 @@ class BaseSerializer(object):
             content_type = mimeparse.best_match(
                 self.content_types.values(), http_accept)
             if content_type == 'text/javascript':
-                # NOTE - 
-                # if the HTTP_ACCEPT header contains multiple entries 
+                # NOTE: If the HTTP_ACCEPT header contains multiple entries 
                 # with equal weighting, mimeparse.best_match returns
                 # the last match. This results in the request header:
                 # "application/json, text/javascript, */*; q=0.01"
@@ -260,7 +256,6 @@ class BaseSerializer(object):
         """
         if isinstance(content, six.binary_type):
             content = force_text(content)
-#         content = content.decode('utf-8').replace(r'(\w+):', r'"\1" :')
         content = content.replace(r'(\w+):', r'"\1" :')
         if content:
             result = json.loads(content)
@@ -324,9 +319,8 @@ class XLSSerializer(BaseSerializer):
     
     def to_xlsx(self, data, options=None):
 
-        logger.info('Non-streamed xlsx data using generic serialization, options: %r', options)
+        logger.info('Non-streamed xlsx data using generic serialization: %r', options)
         def sheet_rows(list_of_objects):
-            ''' write a header row using the object keys '''
             for i,item in enumerate(list_of_objects):
                 if i == 0:
                     yield item.keys()
@@ -343,7 +337,8 @@ class XLSSerializer(BaseSerializer):
 
         return self.from_xls(content, root=root, **kwargs)
 
-    def from_xls(self, content, root='objects', list_keys=None, list_delimiters=None, **kwargs):
+    def from_xls(self, content, root='objects', list_keys=None, 
+            list_delimiters=None, **kwargs):
         
         logger.info('deserialize from_xls...')
         if isinstance(content, six.string_types):
@@ -364,9 +359,7 @@ class XLSSerializer(BaseSerializer):
              
         list_delimiters = list_delimiters or [LIST_DELIMITER_XLS,]
         
-        # because workbooks are treated like sets of csv sheets, now convert
-        # as if this were a csv sheet
-        
+        # Workbooks are treated like sets of csv sheets
         data = csvutils.input_spreadsheet_reader(
             xlsutils.sheet_rows(sheet), 
             list_delimiters=list_delimiters, 
@@ -398,7 +391,7 @@ class CSVSerializer(BaseSerializer):
         Note: csv.py doesn't do Unicode; encode values as UTF-8 byte strings
         '''
 
-        # Can use cStringIO here because csv writer will write only bytes
+        # Note: cStringIO ok because csv writer will write only bytes
         raw_data = cStringIO.StringIO()
         # raw_data = StringIO.StringIO()
         writer = unicodecsv.writer(raw_data) 
@@ -414,9 +407,6 @@ class CSVSerializer(BaseSerializer):
         if 'objects' in data:
             data = data['objects']
 
-#         if len(data) == 0:
-#             return data
-        
         if isinstance(data, dict):
             # usually, this happens when the data is actually an error message;
             # but also, it could be just one item being returned
@@ -441,7 +431,8 @@ class CSVSerializer(BaseSerializer):
 
         return raw_data.getvalue()
 
-    def from_csv(self, content, root='objects', list_keys=None, list_delimiters=None, **kwargs):
+    def from_csv(self, content, root='objects', list_keys=None, 
+            list_delimiters=None, **kwargs):
         '''
         @param root - property to nest the return object iterable in for the 
             response (None if no nesting, and return object will be an iterable)
@@ -452,7 +443,7 @@ class CSVSerializer(BaseSerializer):
 
         data = csvutils.from_csv(
             StringIO.StringIO(content),
-            # Can not use cStringIO here, because Unicode data will be read
+            # Note: do not use cStringIO here, because Unicode data will be read
             # cStringIO.StringIO(content),
             list_keys=list_keys, list_delimiters=list_delimiters)
         if root:

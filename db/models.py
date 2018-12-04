@@ -12,7 +12,6 @@ from django.utils.encoding import python_2_unicode_compatible
 
 from db.support import lims_utils
 from reports import ValidationError
-#from reports.utils.gray_codes import create_substance_id
 
 
 logger = logging.getLogger(__name__)

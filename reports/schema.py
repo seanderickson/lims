@@ -228,7 +228,7 @@ class VOCAB(schema_obj):
         class data_type(schema_obj):
             STRING = 'string'
             BOOLEAN = 'boolean'
-            DATe = 'date'
+            DATE = 'date'
             DATETIME = 'datetime'
             LIST = 'list'
             FLOAT = 'float'
@@ -287,22 +287,31 @@ class VOCAB(schema_obj):
             PATCH = 'PATCH'
             DELETE = 'DELETE'
             
+
+def parse_display_options(field):
+    display_options = field.get('display_options',None)
+    if display_options:
+        try:
+            display_options = json.loads(display_options.replace("'",'"'))
+            field['display_options'] = display_options
             
+        except Exception,e:
+            logger.exception('schema error for field: %r, display_options: %r',
+                key, display_options)
+            display_options = None
+            del field['display_options']
+    return display_options
+
 def parse_schema(schema):
+    '''
+    This is a tool for parsing the display_options fields on the client side.
+    '''
 
     fields = schema[RESOURCE.FIELDS]
     
     # Parse the display options
     for key,field in fields.items():
-        display_options = field.get('display_options',None)
-        if display_options:
-            try:
-                display_options = json.loads(display_options.replace("'",'"'))
-                field['display_options'] = display_options
-            except Exception,e:
-                logger.exception('schema error for field: %r, display_options: %r',
-                    key, display_options)
-                del field['display_options']
+        parse_display_options(field)
     logger.info('retrieved schema with fields: %r', fields.keys())
     return schema
 

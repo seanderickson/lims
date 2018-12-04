@@ -3,15 +3,16 @@ from __future__ import unicode_literals
 from collections import OrderedDict
 import io
 import logging
+import numbers
 
+import six
 import xlrd
 import xlsxwriter
 
-from reports.utils import default_converter
 from reports import MAX_IMAGE_ROWS_PER_XLS_FILE
 from reports.serialize import csvutils
 import reports.serialize
-import six
+from reports.utils import default_converter
 
 
 logger = logging.getLogger(__name__)

@@ -151,7 +151,7 @@ def dict_to_rows(_dict):
                     values.append([key,None])
                 else:
                     keyrow = [key]
-                    if isinstance(row, basestring):
+                    if isinstance(row, (basestring, numbers.Number)):
                         keyrow.append(row)
                     else:
                         keyrow.extend(row)

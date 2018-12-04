@@ -767,7 +767,7 @@ class DBResourceTestCase(IResourceTestCase):
                 'description': 'Non-positive field',
                 'replicate_ordinal': 2,
                 'is_follow_up_data': True,
-                'assay_readout_type': 'flourescence_intensity',
+                'assay_readout_type': 'fluorescence_intensity',
             },
             'F': {
                 'name': 'Field2_positive_indicator',
@@ -4278,7 +4278,7 @@ class ScreenResultResource(DBResourceTestCase):
                 'description': 'field 3 description',
                 'replicate_ordinal': 2,
                 'is_follow_up_data': True,
-                'assay_readout_type': 'flourescence_intensity',
+                'assay_readout_type': 'fluorescence_intensity',
             },
             'H': {
                 'ordinal': 3,
@@ -4474,7 +4474,7 @@ class ScreenResultResource(DBResourceTestCase):
         #         'returned value',screen[key]))
 
         key = 'assay_readout_types'
-        expected_value = ['luminescence', 'flourescence_intensity']
+        expected_value = ['luminescence', 'fluorescence_intensity']
         self.assertTrue(set(screen[key]) <= set(expected_value),
             (key,'expected_value',expected_value,
                 'returned value',screen[key]))
@@ -4824,7 +4824,7 @@ class ScreenResultResource(DBResourceTestCase):
                 'description': 'field 3 description',
                 'replicate_ordinal': 2,
                 'is_follow_up_data': True,
-                'assay_readout_type': 'flourescence_intensity',
+                'assay_readout_type': 'fluorescence_intensity',
             },
             'H': {
                 'ordinal': 3,
@@ -4947,7 +4947,7 @@ class ScreenResultResource(DBResourceTestCase):
                 'description': 'field 3 description',
                 'replicate_ordinal': 2,
                 'is_follow_up_data': True,
-                'assay_readout_type': 'flourescence_intensity',
+                'assay_readout_type': 'fluorescence_intensity',
             },
             'H': {
                 'ordinal': 3,
@@ -5129,7 +5129,7 @@ class ScreenResultResource(DBResourceTestCase):
                 'description': 'field 3 description',
                 'replicate_ordinal': 2,
                 'is_follow_up_data': True,
-                'assay_readout_type': 'flourescence_intensity',
+                'assay_readout_type': 'fluorescence_intensity',
             },
             'H': {
                 'ordinal': 3,

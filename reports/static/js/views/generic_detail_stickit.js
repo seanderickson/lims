@@ -321,11 +321,11 @@ define([
       function linkGetter(value){
         var _options = _.extend(
           { hrefTemplate: '#', target: '_self' }, cell_options );                
-        // use the display options if needed for backward compatibility
-        if( _.has(fi,'display_options') && _options.hrefTemplate == '#' ) {
-          _options.hrefTemplate = window.location.pathname + '#' + fi['display_options'];
-          _options.target = '_self';
-        } 
+//        // use the display options if needed for backward compatibility
+//        if( _.has(fi,'display_options') && _options.hrefTemplate == '#' ) {
+//          _options.hrefTemplate = window.location.pathname + '#' + fi['display_options'];
+//          _options.target = '_self';
+//        } 
 
         if(value && !_.isNull(value) && value != '-' ){
           var interpolatedVal = Iccbl.formatString(_options.hrefTemplate,self.model, value);

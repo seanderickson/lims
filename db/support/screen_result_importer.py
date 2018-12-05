@@ -169,6 +169,8 @@ def result_value_field_mapper(header_row, parsed_columns):
     mapped_row = []
     header_row = [x for x in header_row]
     for i,value in enumerate(header_row):
+        if not value:
+            break
         if value.lower() in RESULT_VALUE_FIELD_MAP:
             mapped_row.append(RESULT_VALUE_FIELD_MAP[value.lower()])
         elif value.lower() in RESULT_VALUE_FIELD_MAP_ALTERNATES:

@@ -172,6 +172,10 @@ if IS_PRODUCTION_READY is True:
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
 
+# 20191206: TODO: verify with Jen
+RESTRICT_ALL_SEQUENCES=True
+
+
 # ICCBL-Setting: For use when authenticating
 # @see reports.api_base
 BASIC_AUTH_REALM='screensaver'

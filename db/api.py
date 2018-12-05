@@ -23622,13 +23622,22 @@ class SilencingReagentResource(ReagentResource):
         rna_restricted_fields = ['sequence','anti_sense_sequence']
         fields_to_restrict = set(rna_restricted_fields)&set(
             [field['key'] for field in fields])
-        if ( show_preview is not True 
-                and self._meta.authorization.is_restricted_view(user) 
-                    or show_restricted is not True):
-            if fields_to_restrict:
-                logger.info('RNAi fields to restrict: %r', fields_to_restrict)
-                for field in fields_to_restrict:
-                    if field == 'sequence':
+        
+                
+        restrict = self._meta.authorization.is_restricted_view(user)
+        if restrict is not True:
+            if show_preview is not True and show_restricted is not True:
+                restrict = True
+        logger.info('restrict: %r, show_preview: %r, show_restricted: %r', 
+            restrict, show_preview, show_restricted)
+        
+        if restrict:
+            logger.info('RNAi fields to restrict: %r', fields_to_restrict)
+            for field in fields_to_restrict:
+                if field == 'sequence':
+                    if settings.RESTRICT_ALL_SEQUENCES is True:
+                        custom_columns['sequence'] = literal_column("'%s'" % SCHEMA.API_MSG_RESTRICTED_DATA)
+                    else:
                         custom_columns['sequence'] = (
                             select([
                                 case([
@@ -23639,17 +23648,20 @@ class SilencingReagentResource(ReagentResource):
                             .where(sirna_table.c.reagent_id
                                 == literal_column('reagent.reagent_id'))
                             )
-                    if field == 'anti_sense_sequence':
+                if field == 'anti_sense_sequence':
+                    if settings.RESTRICT_ALL_SEQUENCES is True:
+                        custom_columns['anti_sense_sequence'] = literal_column("'%s'" % SCHEMA.API_MSG_RESTRICTED_DATA)
+                    else:
                         custom_columns['anti_sense_sequence'] = (
-                            select([
-                                case([
-                                    (sirna_table.c.is_restricted_sequence,
-                                        SCHEMA.API_MSG_RESTRICTED_DATA)],
-                                    else_=sirna_table.c.anti_sense_sequence)])
-                            .select_from(sirna_table)
-                            .where(sirna_table.c.reagent_id
-                                == literal_column('reagent.reagent_id'))
-                            )
+                        select([
+                            case([
+                                (sirna_table.c.is_restricted_sequence,
+                                    SCHEMA.API_MSG_RESTRICTED_DATA)],
+                                else_=sirna_table.c.anti_sense_sequence)])
+                        .select_from(sirna_table)
+                        .where(sirna_table.c.reagent_id
+                            == literal_column('reagent.reagent_id'))
+                        )
         
         if DEBUG_BUILD_COLS: 
             logger.info('sirna custom_columns: %r', custom_columns.keys())
@@ -23858,13 +23870,15 @@ class SmallMoleculeReagentResource(ReagentResource):
             'molecular_weight','molecular_mass','molfile','structure_image']
         fields_to_restrict = \
             set(smr_restricted_fields)&set([field[FIELD.KEY] for field in fields])
-        
-        logger.info('fields to restrict: %r, %r, %r, %r, %r', 
-            fields_to_restrict, user, self._meta.authorization.is_restricted_view(user),
-            show_preview, show_restricted)
-        if ( show_preview is not True
-                and (self._meta.authorization.is_restricted_view(user) 
-                    or show_restricted is not True)):
+
+        restrict = self._meta.authorization.is_restricted_view(user)
+        if restrict is not True:
+            if show_preview is not True and show_restricted is not True:
+                restrict = True
+        logger.info('restrict: %r, show_preview: %r, show_restricted: %r', 
+            restrict, show_preview, show_restricted)
+
+        if restrict:
             if fields_to_restrict:
                 
                 logger.info('SM fields to restrict: %r', fields_to_restrict)

@@ -1,11 +1,5 @@
 BEGIN;
 
-INSERT INTO schema_history (screensaver_revision, date_updated, comment)
-SELECT
-20140003,
-current_timestamp,
-'migrate different controlled vocabularies';
-
 /**
   Purpose: convert the old controlled vocabulary types to newer names 
   * newer names have no spaces, and only alphanumeric and "_","." chars

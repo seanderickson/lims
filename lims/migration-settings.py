@@ -13,7 +13,12 @@ import os.path
 
 print 'PROJECT_ROOT: ', PROJECT_ROOT
 
+# Turn off these settings so bootstrapping to a local non-HTTPS server will work
 BACKGROUND_PROCESSING = False
+IS_PRODUCTION_READY = False
+SECURE_SSL_REDIRECT = False
+SESSION_COOKIE_SECURE = False
+CSRF_COOKIE_SECURE = False
 
 LOGGING = {
     'version': 1,

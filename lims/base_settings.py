@@ -160,9 +160,17 @@ MAX_ROWS_FOR_CACHE_RESULTPROXY=1e4
 # @see db.api.ScreenResultResource
 MIN_WELLS_TO_CLEAR_INDEXES = 3e5
 
-# ICCBL-Setting: If not True, then only staff may log in to the system
-# @see reports.auth.py
+# If not True, then only staff may log in to the system
+# see reports/auth.py
 IS_PRODUCTION_READY = False
+
+# NOTE: SSL may only be enforced on the production server
+# NOTE: do not use with the migration app, as it uses insecure HTTP to initialize, 
+# TODO: enable these settings when in production
+if IS_PRODUCTION_READY is True:
+    SECURE_SSL_REDIRECT = True
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
 
 # ICCBL-Setting: For use when authenticating
 # @see reports.api_base

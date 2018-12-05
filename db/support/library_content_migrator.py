@@ -24,17 +24,12 @@ class Migrator:
     '''
 
 
-    # FIXME: 20181019: missing columns:
-    # - library_well_type
-    # - molar_concentration
-    # - mg_ml_concentration
-
-
     rnai_keys = [
                 'library_well_type', 'molar_concentration', 'mg_ml_concentration',
                 'well_id', 'vendor_identifier', 'vendor_name', 'vendor_batch_id',
                 'vendor_name_synonym', #'substance_id',
                 'sequence', 'silencing_reagent_type',
+                'anti_sense_sequence','is_restricted_sequence',
 
                 'vendor_entrezgene_id',
                 'vendor_entrezgene_symbols',
@@ -55,7 +50,7 @@ class Migrator:
 library_well_type, molar_concentration, mg_ml_concentration, 
 w.well_id, vendor_identifier, vendor_name, vendor_batch_id, vendor_name_synonym,
 sequence, silencing_reagent_type,
-
+anti_sense_sequence, is_restricted_sequence,
 vg.entrezgene_id as vendor_entrezgene_id,
 (select '["' || array_to_string(array_agg(entrezgene_symbol), '","') || '"]'
     from (select entrezgene_symbol from gene_symbol gs 
@@ -94,6 +89,7 @@ where r.library_contents_version_id=%s order by well_id;
                 'vendor_name_synonym',# 'substance_id',
                 'inchi', 'smiles', 
                 'molecular_formula', 'molecular_mass', 'molecular_weight',
+                'is_restricted_structure',
                 'compound_name', 'pubchem_cid', 'chembl_id', 'chembank_id',
                 ]
             
@@ -102,6 +98,7 @@ library_well_type, molar_concentration, mg_ml_concentration,
 well_id, vendor_identifier, vendor_name, vendor_batch_id, vendor_name_synonym,
 inchi, smiles, 
 molecular_formula, molecular_mass, molecular_weight,
+is_restricted_structure,
 (select '["' || array_to_string(array_agg(compound_name), '","') || '"]' 
     from (select compound_name from small_molecule_compound_name smr 
     where smr.reagent_id=r.reagent_id order by ordinal) a) as compound_name,

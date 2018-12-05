@@ -58,6 +58,10 @@ define([
       if (access_level >= 2 && self.model.get('has_screen_result') == 1){
         this.tabbed_resources['data'] = this.screen_tabbed_resources['data'];
       }
+      if (!_.isEmpty(self.model.get('study_type'))){
+        this.showAdmin = true;
+      }
+      
       _.bindAll(this, 'addLibraryScreening','addServiceActivity');
       
     },

@@ -5727,7 +5727,7 @@ class ScreenResultResource(DbApiResource):
                 .scalar() or 0)
             if screen_result.channel_count == 0:
                 screen_result.channels_count = 1
-                
+        screen_result.date_loaded = _now().date()
         screen_result.save()
             
 

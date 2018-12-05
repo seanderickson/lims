@@ -17,13 +17,6 @@ if [[ $# -eq 1 ]]; then
 fi
 
 
-### MODIFY AS NEEDED ###
-
-credential_file=${credential_file:-"$SUPPORTDIR/production_data/sde_credentials.txt"}
-BOOTSTRAP_PORT=53999
-
-########################
-
 REALPATH=${REALPATH:-"$(which realpath 2>/dev/null)"}
 if [[ -z $REALPATH ]]; then
   PROG=$( basename $0 )
@@ -53,6 +46,13 @@ source ${SCRIPTPATH}/utils.sh
 
 DJANGO_CMD=$BASEDIR/manage.py
 export DJANGO_SETTINGS_MODULE=lims.settings-server-commandline
+
+### MODIFY AS NEEDED ###
+
+credential_file=${credential_file:-"$SUPPORTDIR/production_data/sde_credentials.txt"}
+BOOTSTRAP_PORT=53999
+
+########################
 
 cd $BASEDIR
 

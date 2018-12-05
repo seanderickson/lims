@@ -6975,7 +6975,7 @@ class ScreenResource(DBResourceTestCase):
                     rv[col_map['confirmed_4']], 0 )
             elif rv['well_id'] == '%05d:A05' % self.pool_library1[START_PLATE]:
                 self.assertEqual(
-                    rv[col_map['Weighted Average']], '1.0' )
+                    rv[col_map['Weighted Average']], '1' )
                 self.assertEqual(
                     rv[col_map['Number of Screens']], 1 )
                 self.assertEqual(

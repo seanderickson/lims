@@ -211,7 +211,13 @@ define([
         }
         
         if (attrs.username && attrs.ecommons_id){
-          errs.username = errs.ecommons_id = 'Either Ecommons or Username must be entered, not both';
+          
+          if (self.model.has('username') && self.model.has('ecommons_id')){
+            console.log('ok for username and ecommons to be present, if already set');
+          }else{
+            errs.username = errs.ecommons_id = 
+              'Either Ecommons or Username must be entered, not both';
+          }
         }
         
         if (!_.isEmpty(errs)) return errs;

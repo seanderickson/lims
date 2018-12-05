@@ -139,6 +139,7 @@ function gitpull {
   # Forgo the heavy-handed approach  
   #  git reset --hard $REMOTE/$BRANCH >> "$LOGFILE" 2>&1 || error "git hard reset failed: $?"
   git checkout $REMOTE/$BRANCH ./db/static/api_init/*.csv
+  git checkout $REMOTE/$BRANCH ./db/migrations_new_install
   git pull --ff-only $REMOTE $BRANCH >>"$LOGFILE" 2>&1 || error "git-pull failed: $?"
 
   _debug 'done'
@@ -184,6 +185,7 @@ function django_migrate {
     error "demo server creation requires db/migrations_new_install directory"
   else
     echo "back up the existing migrations directory..."
+    rm -rf db/migrations_bak
     mv db/migrations db/migrations_bak
     mv db/migrations_new_install db/migrations
   fi

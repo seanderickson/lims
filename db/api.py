@@ -19831,6 +19831,8 @@ class StudyResource(ScreenResource):
             }
         
         # SQL report: all pool reagents -> duplex reagents -> screen -> confirmed_positive_value
+        # SS2 NOTE: this study now only shows reagents with confirmed positives,
+        # so there will fewer entries than for the SS1 study.
         sql = '''
             with pool_reagents as (
             select r.well_id, pr.* from silencing_reagent pr

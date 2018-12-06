@@ -23635,7 +23635,16 @@ class SilencingReagentResource(ReagentResource):
             for field in fields_to_restrict:
                 if field == 'sequence':
                     if settings.RESTRICT_ALL_SEQUENCES is True:
-                        custom_columns['sequence'] = literal_column("'%s'" % SCHEMA.API_MSG_RESTRICTED_DATA)
+                        custom_columns['sequence'] = (
+                            select([
+                                case([
+                                    (sirna_table.c.reagent_id!=None,
+                                        SCHEMA.API_MSG_RESTRICTED_DATA)],
+                                    else_=sirna_table.c.sequence)])
+                            .select_from(sirna_table)
+                            .where(sirna_table.c.reagent_id
+                                == literal_column('reagent.reagent_id'))
+                            )
                     else:
                         custom_columns['sequence'] = (
                             select([
@@ -23649,7 +23658,16 @@ class SilencingReagentResource(ReagentResource):
                             )
                 if field == 'anti_sense_sequence':
                     if settings.RESTRICT_ALL_SEQUENCES is True:
-                        custom_columns['anti_sense_sequence'] = literal_column("'%s'" % SCHEMA.API_MSG_RESTRICTED_DATA)
+                        custom_columns['anti_sense_sequence'] = (
+                        select([
+                            case([
+                                (sirna_table.c.reagent_id!=None,
+                                    SCHEMA.API_MSG_RESTRICTED_DATA)],
+                                else_=sirna_table.c.anti_sense_sequence)])
+                        .select_from(sirna_table)
+                        .where(sirna_table.c.reagent_id
+                            == literal_column('reagent.reagent_id'))
+                        )
                     else:
                         custom_columns['anti_sense_sequence'] = (
                         select([

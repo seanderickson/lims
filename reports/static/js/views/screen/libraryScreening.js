@@ -62,6 +62,8 @@ define([
         }
       }
       
+      console.log('libraryScreening initialized');
+      
       _.bindAll(this, 'setDetail');
       
     },
@@ -440,6 +442,7 @@ define([
 
           EditView.prototype.afterRender.apply(this,arguments);
 
+          console.log('libraryScreening.editView afterRender...');
           var self_editform = this;
 
           var screenResource = appModel.getResource('screen')
@@ -577,11 +580,11 @@ define([
             };
             
             var FormFields = Backbone.Model.extend({
-              schema: formSchema,
-              validate: function(attrs) {
-                var errs = {};
-                if (!_.isEmpty(errs)) return errs;
-              }
+              schema: formSchema
+//              validate: function(attrs) {
+//                var errs = {};
+//                if (!_.isEmpty(errs)) return errs;
+//              }
             });
             var formFields = new FormFields();
             var form = new Backbone.Form({
@@ -739,13 +742,22 @@ define([
             // attach listener volume calculator
             function calculateVolFromLibraryPlates(){
               var errors = self_editform.commit({ validate: true }); 
-              
               var num_replicates = self_editform.getValue('number_of_replicates');
               var vol_to_assayplates  = self_editform.getValue(
                 'volume_transferred_per_well_to_assay_plates');
-              if(_.isEmpty(errors['number_of_replicates']) 
-                  && _.isNumber(num_replicates) && _.isNumber(vol_to_assayplates)
-                  && (num_replicates > 0 && vol_to_assayplates > 0)){
+              console.log('calculateVolFromLibraryPlates', 
+                num_replicates, vol_to_assayplates, errors);
+              if(errors && !_.isEmpty(errors['number_of_replicates']) 
+                  || vol_to_assayplates <= 0){
+                console.log('cannot calculate volume until form values are entered');
+                self_editform.setValue(
+                  'volume_transferred_per_well_from_library_plates',null);
+                self.model.unset(
+                  'volume_transferred_per_well_from_library_plates');
+                self_editform.fields
+                  .volume_transferred_per_well_from_library_plates.editor.render();
+              } else {
+
                 var calculated = num_replicates * vol_to_assayplates;
                 self_editform.setValue(
                   'volume_transferred_per_well_from_library_plates',calculated);
@@ -754,14 +766,7 @@ define([
                   calculated);
                 self_editform.fields
                   .volume_transferred_per_well_from_library_plates.editor.render();
-              } else {
-                console.log('cannot calculate volume until form values are entered');
-                self_editform.setValue(
-                    'volume_transferred_per_well_from_library_plates',null);
-                self.model.unset(
-                    'volume_transferred_per_well_from_library_plates');
-                  self_editform.fields
-                    .volume_transferred_per_well_from_library_plates.editor.render();
+              
               }
             };
             //var calcVolButton = $([
@@ -792,7 +797,6 @@ define([
         showEdit: function() {
           var self = this;
           appModel.initializeAdminMode(function(){
-            console.log('showedit...');
             var fields = self.model.resource.fields;
             fields['performed_by_user_id'].choiceHash = 
               appModel._get_screen_member_choices(self.screen);

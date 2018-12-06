@@ -433,6 +433,13 @@ todo: these selectors should be redone
  border-top: 0px;
 }
 
+td.text-wrap-cell-wide {
+  text-overflow: inherit;
+  white-space: inherit;
+  vertical-align: middle;
+  min-width: 400px;
+}
+
 td.text-wrap-cell {
   text-overflow: inherit;
   white-space: inherit;

@@ -267,7 +267,7 @@ function($, _, Backgrid, Iccbl, appModel, EditView) {
                 return '';
               }
             }),
-            'cell': Iccbl.StringCell
+            'cell': Iccbl.TextWrapCell.extend({ className: 'text-wrap-cell-wide' })
           })
         );
       }

@@ -63,6 +63,10 @@ class CustomAuthenticationBackend():
                             if not s_user.is_superuser:
                                 raise PermissionDenied(
                                     '"login as" may not be used to access a superuser account')
+                        if user.is_staff:
+                            if not s_user.is_superuser:
+                                raise PermissionDenied(
+                                    '"login as" may only be used by super users to access another staff account')
                         return user
                     except User.DoesNotExist, e:
                         msg = 'no such user with the id: %r' % logged_in_as
@@ -101,7 +105,7 @@ class CustomAuthenticationBackend():
                     msg = 'User password authentication failed: "%s"' % username
                     logger.info(msg)
                     raise LoginFailedException(msg)
-            if(reports.hms.auth.authenticate(username, password)):
+            elif reports.hms.auth.authenticate(username, password):
                 logger.info(
                     'user %r authenticated with the ecommons server', username)
                 if(user.is_active):

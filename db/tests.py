@@ -129,7 +129,8 @@ class DBResourceTestCase(IResourceTestCase):
         self.sr_serializer = ScreenResultSerializer()
         self.test_admin_user = None
         settings.BACKGROUND_PROCESSING = False
-
+        settings.RESTRICT_ALL_SEQUENCES = False
+        
     def _bootstrap_init_files(self, reinit_pattern=None):
         logger.info( 'bootstrap reinit_pattern: %r', reinit_pattern)
         super(DBResourceTestCase, self)._bootstrap_init_files(
@@ -979,6 +980,11 @@ class LibraryResource(DBResourceTestCase):
     def setUp(self):
 
         super(LibraryResource, self).setUp()
+        
+        # NOTE: for RNAi Library tests:
+        # settings.RESTRICT_ALL_SEQUENCES = False must be set, otherwise, 
+        # sequence information will be hidden by default.
+        # (see DBResrouceTestCase init method).
 
     def tearDown(self):
         logger.info('=== tearDown...')

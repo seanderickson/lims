@@ -7781,8 +7781,10 @@ class CherryPickRequestResource(DbApiResource):
         extra_values = OrderedDict((
             ('Person Visiting', cpr['requested_by_name']),
             ('Screen Number', cpr['screen_facility_id']),
-            (u'Volume (uL)', 
-                Decimal(cpr['transfer_volume_per_well_approved']) * Decimal(1e6)),
+            (u'Volume ', 
+                si_unit.print_si_unit(cpr['transfer_volume_per_well_approved'],1e-6, 'L', 1)), 
+            # (u'Volume (uL)', 
+            #    Decimal(cpr['transfer_volume_per_well_approved']) * Decimal(1e6)),
             # NOTE: UTF-8 encodings are supported, but avoid using them because
             # Excel has poor support for reading properly opening encoded csv files
             # (u'Volume (\u00B5L)', 
@@ -14773,7 +14775,7 @@ class LibraryScreeningResource(ActivityResource):
     MSG_SCREENING_COUNT = 'Screening count > %d' % SCREENING_COUNT_THRESHOLD
     MSG_PLATES_WELLS_ADJUSTED = 'Plate well volumes have been adjusted'
     MSG_COPY_USAGE_TYPE = 'Copy usage type'
-    MSG_INSUFFICIENT_VOL = 'Insufficient vol: %s uL'
+    MSG_INSUFFICIENT_VOL = 'Insufficient vol after xfer: %s'
     MSG_NO_PLATE_VOLUME = 'No plate volume recorded'
     MSG_LIBRARY_SCREENING_STATUS = 'Library screening status'
     MSG_LIBRARY_SCREENING_TYPE = 'Library screening type'
@@ -15079,20 +15081,23 @@ class LibraryScreeningResource(ActivityResource):
                     if  _row['usage_type'] != 'library_screening_plates':
                         self.addError(LSR.MSG_COPY_USAGE_TYPE, _row['usage_type'])
                     if _row['remaining_well_volume']:
-                        vol_min = LSR.MIN_WELL_VOL_RNAI
-                        error_key = LSR.MSG_INSUFFICIENT_VOL
-                        if screen.screen_type == SCREEN_TYPE.SMALL_MOLECULE:
-                            vol_min = LSR.MIN_WELL_VOL_SMALL_MOLECULE
-                            error_key += (' (req %s)' 
-                                % si_unit.convert_decimal(vol_min,1e-6, 1))
                         if volume_required is not None:
                             vol_after_transfer = (
                                 Decimal(_row['remaining_well_volume']) 
                                     - volume_required )
+                            vol_min = LSR.MIN_WELL_VOL_RNAI
                             if vol_after_transfer < vol_min:
+                                error_key = LSR.MSG_INSUFFICIENT_VOL
+                                if screen.screen_type == SCREEN_TYPE.SMALL_MOLECULE:
+                                    vol_min = LSR.MIN_WELL_VOL_SMALL_MOLECULE
+                                    error_key += (' (req %s)' 
+                                        % si_unit.print_si_unit(vol_min,1e-6, 'L', 1))
+                                
                                 self.addPlateError(
-                                    error_key % si_unit.convert_decimal(
-                                        vol_after_transfer,1e-6, 1),
+                                    error_key % si_unit.print_si_unit(
+                                        vol_after_transfer,1e-6, 'L',1),
+                                    # error_key % si_unit.convert_decimal(
+                                    #    vol_after_transfer,1e-6, 1),
                                     plate_number)
                     else:
                         self.addPlateWarning(LSR.MSG_NO_PLATE_VOLUME,plate_number)
@@ -16418,12 +16423,16 @@ class LibraryScreeningResource(ActivityResource):
                     plate_key, remaining_well_volume)
                 plates_insufficient_volume.append(
                     (plate_key, 
-                        '(available: %s uL)' 
-                            % si_unit.convert_decimal(
-                                plate.remaining_well_volume, 1e-6, 1),
-                        '(requested: %s nL)' 
-                            % si_unit.convert_decimal(
-                                volume_to_transfer, 1e-9, 1)))
+                        '(available: %s)' 
+                            % si_unit.print_si_unit(
+                                plate.remaining_well_volume, 1e-6, 'L', 1),
+                        #    % si_unit.convert_decimal(
+                        #        plate.remaining_well_volume, 1e-6, 1),
+                        '(requested: %s)' 
+                            % si_unit.print_si_unit(
+                                volume_to_transfer, 1e-9, 'L', 1)))
+                        #    % si_unit.convert_decimal(
+                        #        volume_to_transfer, 1e-9, 1)))
             cw_check_query = (
                 plate.copywell_set.exclude(volume=F('initial_volume'))
                     .exclude(volume__isnull=True))

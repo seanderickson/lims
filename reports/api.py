@@ -2080,35 +2080,18 @@ class ApiResource(SqlAlchemyResource):
                             key, field['scope'], display_options)
                         continue
                     
-                    multiplier = display_options.get('multiplier', None)
-                    if multiplier:
-                        multiplier = Decimal(str(multiplier))
+                    multiplier = display_options.get('multiplier', 1)
+                    multiplier = Decimal(str(multiplier))
                     decimals = display_options.get('decimals', DEFAULT_DECIMALS)
-                    if decimals:
-                        decimals = int(decimals)
+                    decimals = int(decimals)
                     
                     def si_converter(key, default_unit, decimals, multiplier, symbol, raw_val):
                         logger.debug('convert %r:%r, using: %r, %r, %r, %r',
                             key, raw_val, default_unit, decimals, multiplier, symbol)
                         
                         return si_unit.print_si_unit(
-                            raw_val, default_unit, decimals, symbol,
+                            raw_val, default_unit, symbol, decimals, 
                             multiplier=multiplier, track_significance=False)
-                        
-#                         val = Decimal(raw_val)
-#                                     
-#                         if val >= default_unit:
-#                             return '{} {}{}'.format(
-#                                 si_unit.convert_decimal(
-#                                     val,default_unit, decimals),
-#                                 si_unit.get_siunit_symbol(default_unit), symbol)
-#                         else:
-#                             (symbol,default_unit) = si_unit.get_siunit(val)
-#                             
-#                             return '{} {}{}'.format(
-#                                 si_unit.convert_decimal(
-#                                     val,default_unit, decimals),
-#                                 symbol, symbol)
                     
                     formatters[key] = { 
                         'type': 'si_unit', 
@@ -2135,7 +2118,7 @@ class ApiResource(SqlAlchemyResource):
                             'converter': lambda x: 
                                 si_unit.convert_decimal(x, 1, int(decimals), multiplier)}
            
-        logger.info('output number formatters: %r', formatters)
+        logger.debug('output number formatters: %r', formatters)
         def number_formatter_rowproxy_generator(cursor):
             if extant_generator is not None:
                 cursor = extant_generator(cursor)

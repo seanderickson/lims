@@ -18215,7 +18215,6 @@ class ScreenResource(DbApiResource):
         (filter_expression, filter_hash, readable_filter_hash) = \
             SqlAlchemyResource.build_sqlalchemy_filters(
                 schema, param_hash=param_hash)
-        logger.info('filter expression: %r', filter_expression)
         filename = self._get_filename(
             readable_filter_hash, schema, **extra_params)
         

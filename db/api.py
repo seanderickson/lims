@@ -23512,6 +23512,8 @@ class SilencingReagentResource(ReagentResource):
                 logger.info('field[key]: %r, %r, %r', field['key'])
             join_stmt = None
             join_column = None
+            
+                
             if field['key'] in vendor_columns:
                 join_column = 'vendor_gene_id'
             if field['key'] in facility_columns:
@@ -23717,6 +23719,8 @@ class SilencingReagentResource(ReagentResource):
                 if well_data.get('duplex_wells', None):
                     reagent.save()
                     reagent.duplex_wells = well_data['duplex_wells']
+                else:
+                    reagent.duplex_wells = None
             else:
                 is_patch = True
                 # TODO: only works for a single reagent
@@ -23756,8 +23760,9 @@ class SilencingReagentResource(ReagentResource):
         related_fields = ['facility_%s'%field for field in related_fields] + \
             ['vendor_%s'%field for field in related_fields]
         for key, val in initializer_dict.items():
-            if key not in related_fields and hasattr(reagent, key):
-                setattr(reagent, key, val)
+            if key not in related_fields and key != 'duplex_wells': 
+                if hasattr(reagent, key):
+                    setattr(reagent, key, val)
         reagent.save()
         logger.debug('patch silencing reagent: %r', reagent)
         logger.debug('patch silencing reagent: %r: %r', reagent, initializer_dict)

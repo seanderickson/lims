@@ -2154,6 +2154,8 @@ var BooleanCell = Iccbl.BooleanCell = Backgrid.BooleanCell.extend({
         val = 'True';
       }else if (val == 'false') {
         val = 'False';
+      }else if (val == 'null') {
+        val = '';
       }
       this.$el.text(val);
     }
@@ -3813,13 +3815,13 @@ var SortableHeaderCell = Iccbl.SortableHeaderCell = Backgrid.HeaderCell.extend({
     }
     this.$el.prop('title', mouseover);
     
-    if (this.fieldinformation.is_admin){
+    if (this.fieldinformation && this.fieldinformation.is_admin){
       // TODO: create an admin-field class that mixes in label-warning
       this.$el.append(
         "<span style='margin-bottom: 2px;' "
         + "class='label label-warning label-as-badge pull-right strong' "
         + "title='admin field'>A</span>")
-//      this.$el.addClass('admin-field');
+        //      this.$el.addClass('admin-field');
     }
     return this;
   }
@@ -5833,7 +5835,7 @@ var createBackgridColumn = Iccbl.createBackgridColumn =
       render : function() {
         var self = this;
         optionalHeaderCell.__super__.render.apply(this);
-        if (this.fieldinformation.is_admin){
+        if (this.fieldinformation && this.fieldinformation.is_admin){
           this.$el.append(
             "<span style='margin-bottom: 2px;' "
             + "class='label label-warning label-as-badge pull-right strong' "
@@ -5847,7 +5849,7 @@ var createBackgridColumn = Iccbl.createBackgridColumn =
       render : function() {
         var self = this;
         prop.headerCell.__super__.render.apply(this);
-        if (this.fieldinformation.is_admin){
+        if (this.fieldinformation && this.fieldinformation.is_admin){
           this.$el.append(
             "<span style='margin-bottom: 2px;' "
             + "class='label label-warning label-as-badge pull-right strong' "

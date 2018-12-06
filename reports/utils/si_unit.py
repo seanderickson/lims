@@ -30,6 +30,8 @@ def get_siunit(test_value):
       ['n', Decimal('1e-9')],
       ['p', Decimal('1e-12')]
       ]
+    # NOTE: convert to string to avoid float numeric errors
+    test_value = Decimal(str(test_value))
     for symbol,val in siunits:
         if val <= abs(test_value):
             return (symbol,val)
@@ -124,12 +126,34 @@ def convert_decimal(
 
     val = round_decimal(val, decimals=decimals, track_significance=track_significance)    
     
-#     decimals = Decimal('1e-%d'%int(decimals))
-#     val = val.quantize(decimals, decimal.ROUND_HALF_UP)
-#         
-#     def remove_exponent(d):
-#         return d.quantize(Decimal(1)) if d == d.to_integral() else d.normalize()
-#     if track_significance is False:
-#         val = remove_exponent(val)
-    
     return val
+
+def print_si_unit(raw_val, default_unit, symbol, decimals=1, 
+    multiplier=1, track_significance=False):
+
+    if raw_val is None:
+        return None
+    
+    val = Decimal(raw_val)
+    
+    if multiplier is not None:
+        # get the scale (exponent) of the multiplier
+        multiplier = Decimal(str(multiplier)).adjusted()
+        val = val.scaleb(multiplier)
+    
+    # NOTE: convert to string to avoid float numeric errors
+    default_unit = Decimal(str(default_unit))
+    
+    if val >= default_unit:
+        return '{} {}{}'.format(
+            convert_decimal(
+                val,default_unit, decimals, track_significance=track_significance),
+            get_siunit_symbol(default_unit), symbol)
+    else:
+        (unit_symbol,default_unit) = get_siunit(val)
+        
+        return '{} {}{}'.format(
+            convert_decimal(
+                val,default_unit, decimals, track_significance=track_significance),
+            unit_symbol, symbol)
+        

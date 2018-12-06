@@ -1973,14 +1973,16 @@ class LibraryCopyPlateResource(DbApiResource):
         if raw_plate_search_data:
             logger.info('plate raw_search_data: %r', raw_plate_search_data)
             plate_search_data = self.parse_plate_copy_search(raw_plate_search_data)
-            logger.info('parsed plate search data: %r', plate_search_data)
+            logger.debug('parsed plate search data: %r', plate_search_data)
         
             if plate_search_data is not None:
                 (plates, errors) = self.find_plates(plate_search_data)
                 plate_search_errors.update(errors)
                 plate_ids = [p.plate_id for p in plates]
-                logger.info('found plates %r for search: %r', 
+                logger.debug('found plates %r for search: %r', 
                     plate_ids, plate_search_data)
+                logger.info('found plates %d for search: %r', 
+                    len(plate_ids), raw_plate_search_data)
             
         # general setup
         (filter_expression, filter_hash, readable_filter_hash) = \
@@ -7189,27 +7191,19 @@ class CopyWellResource(DbApiResource):
             # - TODO: should library name be optional for the copywell key
             key = '/'.join([copy.library.short_name, copy.name, copywell.well_id])
             logger.info('copywell: %r: vol: %r, requested: %r', 
-#            key = '/'.join([copy.name, copywell.well_id])
-#            logger.debug('copywell: %r: vol: %r, requested: %r', 
                 copywell, copywell.volume, volume)
             if copywell.volume < volume:
                 copywell_volume_warnings.append(
-                    'CopyWell: %s, '
-                    '(available: %s uL)' 
-                        % si_unit.convert_decimal(
-                            copywell.volume, 1e-6, 1),
-                    '(requested: %s uL)' 
-                        % si_unit.convert_decimal(
-                            volume, 1e-6, 1))
+                    'CopyWell: %s, (available: %s) (requested: %s)' % (
+                        key, 
+                        si_unit.print_si_unit(copywell.volume, 1e-6, 1, 'L'), 
+                        si_unit.print_si_unit(volume, 1e-6, 1, 'L')))
 
             new_volume = copywell.volume - volume
             
             log = self.make_child_log(parent_log)
             log.key = key
             log.uri = '/'.join([log.ref_resource_name,log.key])
-#            # NOTE: make the log uri more robust, with library name as well
-#            log.uri = '/'.join([
-#                log.ref_resource_name,'library',copy.library.short_name,log.key])
             log.diffs = {
                 'volume': [copywell.volume, new_volume]}
             log.parent_log = parent_log

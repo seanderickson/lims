@@ -2041,6 +2041,8 @@ class ApiResource(SqlAlchemyResource):
         multiplier: (decimal value) values are scaled by the multiplier, if given
         decimals: (integer) precision is limited to decimals, if given
         '''
+        
+        DEFAULT_DECIMALS = 2
 
         formatters = {}
         
@@ -2081,27 +2083,32 @@ class ApiResource(SqlAlchemyResource):
                     multiplier = display_options.get('multiplier', None)
                     if multiplier:
                         multiplier = Decimal(str(multiplier))
-                    decimals = display_options.get('decimals', None)
+                    decimals = display_options.get('decimals', DEFAULT_DECIMALS)
                     if decimals:
                         decimals = int(decimals)
                     
                     def si_converter(key, default_unit, decimals, multiplier, symbol, raw_val):
                         logger.debug('convert %r:%r, using: %r, %r, %r, %r',
                             key, raw_val, default_unit, decimals, multiplier, symbol)
-                        val = Decimal(raw_val)
-                                    
-                        if val >= default_unit:
-                            return '{} {}{}'.format(
-                                si_unit.convert_decimal(
-                                    val,default_unit, decimals),
-                                si_unit.get_siunit_symbol(default_unit), symbol)
-                        else:
-                            (symbol,default_unit) = si_unit.get_siunit(val)
-                            
-                            return '{} {}{}'.format(
-                                si_unit.convert_decimal(
-                                    val,default_unit, decimals),
-                                symbol, symbol)
+                        
+                        return si_unit.print_si_unit(
+                            raw_val, default_unit, decimals, symbol,
+                            multiplier=multiplier, track_significance=False)
+                        
+#                         val = Decimal(raw_val)
+#                                     
+#                         if val >= default_unit:
+#                             return '{} {}{}'.format(
+#                                 si_unit.convert_decimal(
+#                                     val,default_unit, decimals),
+#                                 si_unit.get_siunit_symbol(default_unit), symbol)
+#                         else:
+#                             (symbol,default_unit) = si_unit.get_siunit(val)
+#                             
+#                             return '{} {}{}'.format(
+#                                 si_unit.convert_decimal(
+#                                     val,default_unit, decimals),
+#                                 symbol, symbol)
                     
                     formatters[key] = { 
                         'type': 'si_unit', 

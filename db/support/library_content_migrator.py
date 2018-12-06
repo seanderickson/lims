@@ -25,8 +25,8 @@ class Migrator:
 
 
     rnai_keys = [
-                'library_well_type', 'molar_concentration', 'mg_ml_concentration',
-                'well_id', 'vendor_identifier', 'vendor_name', 'vendor_batch_id',
+                'well_id', 'library_well_type', 'molar_concentration', 'mg_ml_concentration',
+                'vendor_identifier', 'vendor_name', 'vendor_batch_id',
                 'vendor_name_synonym', #'substance_id',
                 'sequence', 'silencing_reagent_type',
                 'anti_sense_sequence','is_restricted_sequence',
@@ -47,8 +47,9 @@ class Migrator:
                 ]
             
     rnai_sql = '''select 
+w.well_id, 
 library_well_type, molar_concentration, mg_ml_concentration, 
-w.well_id, vendor_identifier, vendor_name, vendor_batch_id, vendor_name_synonym,
+vendor_identifier, vendor_name, vendor_batch_id, vendor_name_synonym,
 sequence, silencing_reagent_type,
 anti_sense_sequence, is_restricted_sequence,
 vg.entrezgene_id as vendor_entrezgene_id,
@@ -84,8 +85,8 @@ left join gene fg on(facility_gene_id=fg.gene_id)
 where r.library_contents_version_id=%s order by well_id;
 '''
     sm_keys = [
-                'library_well_type', 'molar_concentration', 'mg_ml_concentration',
-                'well_id', 'vendor_identifier', 'vendor_name', 'vendor_batch_id',
+                'well_id','library_well_type', 'molar_concentration', 'mg_ml_concentration',
+                'vendor_identifier', 'vendor_name', 'vendor_batch_id',
                 'vendor_name_synonym',# 'substance_id',
                 'inchi', 'smiles', 
                 'molecular_formula', 'molecular_mass', 'molecular_weight',
@@ -94,8 +95,9 @@ where r.library_contents_version_id=%s order by well_id;
                 ]
             
     sm_sql = '''select 
+well_id, 
 library_well_type, molar_concentration, mg_ml_concentration, 
-well_id, vendor_identifier, vendor_name, vendor_batch_id, vendor_name_synonym,
+vendor_identifier, vendor_name, vendor_batch_id, vendor_name_synonym,
 inchi, smiles, 
 molecular_formula, molecular_mass, molecular_weight,
 is_restricted_structure,
@@ -117,13 +119,14 @@ where r.library_contents_version_id=%s order by well_id;
 '''
     
     np_keys = [ 
-                'library_well_type', 'molar_concentration', 'mg_ml_concentration',
-                'well_id', 'vendor_identifier', 'vendor_name', 'vendor_batch_id',
+                'well_id','library_well_type', 'molar_concentration', 'mg_ml_concentration',
+                'vendor_identifier', 'vendor_name', 'vendor_batch_id',
                 'vendor_name_synonym',# 'substance_id',
                 ]
     np_sql = '''select 
+well_id, 
 library_well_type, molar_concentration, mg_ml_concentration, 
-well_id, vendor_identifier, vendor_name, vendor_batch_id, vendor_name_synonym
+vendor_identifier, vendor_name, vendor_batch_id, vendor_name_synonym
 from reagent r join natural_product_reagent using(reagent_id)
 join well w using(well_id) 
 where r.library_contents_version_id=%s order by well_id;
@@ -135,15 +138,15 @@ where r.library_contents_version_id=%s order by well_id;
         query = apps.get_model('db','LibraryContentsVersion').objects.all()
         if screen_type:
             query = (query.filter(library__screen_type=screen_type))
-            #.exclude(library__library_type='natural_products'))
+        # Testing...
+        # query = query.filter(library__short_name='Human2 Duplexes')
         library_ids = [x['library'] for x in (query
                 .values('library')  # actually, library id's here
                 .order_by('library') )]
-        logger.info('libraries to consider: %r', library_ids)
     
         for library in (apps.get_model('db','Library').objects.all()
                         .filter(library_id__in=library_ids)):
-            
+            logger.info('create well logs for %r', library.short_name)
             prev_version = None
             for version in (library.librarycontentsversion_set.all()
                             .order_by('version_number')):
@@ -209,8 +212,11 @@ where r.library_contents_version_id=%s order by well_id;
         screen_type = library.screen_type;
         logger.info(
             'processing library: %r, screen type: %r, versions: %r, exp wells: %d ',
-            library.short_name, library.screen_type, [version1, version2],
+            library.short_name, library.screen_type, 
+            [version1.library_contents_version_id, version2.library_contents_version_id],
             library.experimental_well_count)
+        logger.info('version a: %r, version b: %r',
+            version1.version_number, version2.version_number)
         i = 0
         keys = self.sm_keys
         sql = self.sm_sql
@@ -234,8 +240,6 @@ where r.library_contents_version_id=%s order by well_id;
                 logger.error('no wells for %r', library.short_name)
                 continue
 
-            cumulative_diff_keys = set()
-            
             well_map = dict((x[0], x) for x in _list)
             if prev_well_map:
                 for key,row in prev_well_map.items():
@@ -246,17 +250,24 @@ where r.library_contents_version_id=%s order by well_id;
                         log = self.create_well_log(
                             version, prev_well, new_well, parent_log)
                         if log:
-                            if log.diffs:
-                                cumulative_diff_keys.update(
-                                    set(log.diffs.keys()))
                             i += 1
                     else:
-                        logger.error(
-                            'no new well/reagent entry found for %r', key)
+                        logger.warn('no new well/reagent entry found for %r, %r' % (key,row))
                     if i>0 and i % 1000 == 0:
                         logger.info(
                             '===created logs for %s: %r-%r, %d', 
-                            library.short_name, version1, version2, i)
+                            library.short_name, 
+                            version1.library_contents_version_id, 
+                            version2.library_contents_version_id, i)
+                for nkey, nrow in well_map.items():
+                    if nkey not in prev_well_map:
+                        logger.info('key not found in prev well map: %r, %r', nkey, nrow)
+                        new_well = dict(zip(keys,nrow))
+                        prev_well = dict(zip(keys, [None for k in keys]))
+                        log = self.create_well_log(
+                            version, prev_well, new_well, parent_log)
+                        if log:
+                            i += 1
             else:
                 prev_well_map = well_map
             
@@ -268,7 +279,7 @@ where r.library_contents_version_id=%s order by well_id;
         
         difflog = compare_dicts(
             prev_dict, current_dict,
-            excludes=['reagent_id', 'resource_uri'])
+            excludes=['reagent_id', 'resource_uri'], log_empty_strings=True)
         if is_empty_diff(difflog):
             return None
         
@@ -295,8 +306,8 @@ where r.library_contents_version_id=%s order by well_id;
 
         log.ref_resource_name = 'well'
         log.api_action = 'PATCH'
-        log.key = prev_dict['well_id']
-        log.uri = '/db/api/v1/well/'+log.key 
+        log.key = current_dict['well_id']
+        log.uri = 'well/'+log.key 
         log.diffs = difflog
         log.json_field = json.dumps({
             'version': version.version_number })

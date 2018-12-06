@@ -726,6 +726,7 @@ define([
         appModel.showModalMessage({
           title: 'Searching',
           okText: 'Ok',
+          buttons_on_top: true,
           body: [
             '<br/><strong>Plate Well searching:</strong><br/>',
             '<b>Search for single wells:</b>',

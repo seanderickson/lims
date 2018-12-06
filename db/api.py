@@ -23719,8 +23719,8 @@ class SilencingReagentResource(ReagentResource):
                 if well_data.get('duplex_wells', None):
                     reagent.save()
                     reagent.duplex_wells = well_data['duplex_wells']
-                else:
-                    reagent.duplex_wells = None
+#                 else:
+#                     reagent.duplex_wells = None
             else:
                 is_patch = True
                 # TODO: only works for a single reagent

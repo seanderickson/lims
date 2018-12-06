@@ -990,6 +990,7 @@ var parseRawWellSearch = Iccbl.parseRawWellSearch = function(rawData,errors){
     console.log('parseRawWellSearch', rawData);
   }
   var search_array = []
+  rawData = decodeURIComponent(rawData);
   var or_list = rawData.split(SEARCH_LINE_SPLITTING_PATTERN);
 
   _.each(or_list, function(clause){

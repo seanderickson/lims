@@ -12,7 +12,6 @@ print 'PROJECT_ROOT: ', PROJECT_ROOT
     
 try:
     from app_data_iccbl import APP_PUBLIC_DATA
-    APP_PUBLIC_DATA.SESSION_COOKIE_AGE = SESSION_COOKIE_AGE
 except ImportError:
     print >>sys.stderr, '''APP_PUBLIC_DATA not defined.  Please configure a version of
     app_data.py for this site.'''
@@ -70,12 +69,12 @@ if 'SCREENSAVER_PGSQL_SERVER' in environ:
 ALLOWED_HOSTS = [
     '127.0.0.1',
     'localhost',
-    'centos-orchestraweb.med.harvard.edu', 
+    'orchestraweb.med.harvard.edu', 
     'screensaver.med.harvard.edu']
 
 TIME_ZONE = 'US/Eastern'
-APP_PUBLIC_DATA.TIME_ZONE = TIME_ZONE
-
+LANGUAGE_CODE = 'en-us'
+SITE_ID = 1
 AUTHENTICATION_BACKENDS = ('reports.auth.CustomAuthenticationBackend',)
 
 # Absolute path to the directory static files should be collected to.
@@ -99,8 +98,7 @@ STATICFILES_FINDERS = (
     'django.contrib.staticfiles.finders.AppDirectoriesFinder',
 )
 
-SECRET_KEY = 'tell_no_1_update_on_install'
-SITE_ID = 1
+SECRET_KEY = 'tell_no_1_update_on_install' 
 
 CACHES = {
     'default': {
@@ -149,7 +147,6 @@ CACHES = {
 WELL_STRUCTURE_IMAGE_DIR='/groups/screensaver/image_directory/structure-images'
 
 BACKGROUND_PROCESSING = True
-APP_PUBLIC_DATA.BACKGROUND_PROCESSING = BACKGROUND_PROCESSING
 
 # NOTE PROJECT_ROOT is abs path, so remove the first slash
 drive, path_and_file = os.path.splitdrive(PROJECT_ROOT)
@@ -183,9 +180,9 @@ BACKGROUND_PROCESSOR = {
     'job_output_directory': 
         os.path.join(O2_PROJECT_ROOT,'..','logs','background','job_output'),
     'credential_file': 
-        os.path.join(O2_PROJECT_ROOT, '..','production_data','sde_credentials.1.txt'),
+        os.path.join(O2_PROJECT_ROOT, '..','production_data','sde_credentials.txt'),
     'python_environ_script':
-        os.path.join(O2_PROJECT_ROOT, 'run_prod.webconf02.sh'),
+        os.path.join(O2_PROJECT_ROOT, 'run_prod.webconf.sh'),
     'background_process_script': 'reports.utils.background_client_util',
     # if "sbatch_settings" is set, use SLURM/sbatch to process
     'sbatch_settingsx': {
@@ -195,6 +192,11 @@ BACKGROUND_PROCESSOR = {
 	'open-mode':'append',
         },
     }
+
+# Settings that should be publicly visible
+APP_PUBLIC_DATA.BACKGROUND_PROCESSING = BACKGROUND_PROCESSING
+APP_PUBLIC_DATA.SESSION_COOKIE_AGE = SESSION_COOKIE_AGE
+APP_PUBLIC_DATA.TIME_ZONE = TIME_ZONE
 
 LOGGING = {
     'version': 1,
@@ -275,7 +277,4 @@ LOGGING = {
         },
     }
 }
-
-if DEBUG:
-    print 'app_public_data', '\n'.join(map(str,APP_PUBLIC_DATA.as_dict().items()))
 

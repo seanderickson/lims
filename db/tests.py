@@ -5276,7 +5276,11 @@ class ScreenResource(DBResourceTestCase):
             self.assertEqual(value, screen_item[key], 
                 'key %r, val: %r not expected: %r' 
                     % (key, value, screen_item[key]))
-        logger.debug('screen created: %r', screen_item)
+            
+        key = 'data_privacy_expiration_date'
+        val = screen_item.get(key)
+        self.assertIsNone(val, 
+            'should not have %r: %r' % (key, val))
         
 
     def test1a_create_screen_using_natural_keys(self):

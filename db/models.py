@@ -686,21 +686,24 @@ class Screen(models.Model):
         return users
     
     def clean(self):
-        
-        min = self.min_allowed_data_privacy_expiration_date or datetime.date.min
-        max = self.max_allowed_data_privacy_expiration_date or datetime.date.max
-        if ( min > max):
+        min = self.min_allowed_data_privacy_expiration_date
+        max = self.max_allowed_data_privacy_expiration_date
+        if min > max:
             temp = max
             max = min
             min = temp
-        if self.data_privacy_expiration_date is not None:
-            if ( self.data_privacy_expiration_date > max ):
-                self.data_privacy_expiration_date = max
-            if ( self.data_privacy_expiration_date < min ):
+            
+            self.min_allowed_data_privacy_expiration_date = min
+            self.max_allowed_data_privacy_expiration_date = max
+        
+        dped = self.data_privacy_expiration_date
+        
+        if dped:
+            if dped < min:
                 self.data_privacy_expiration_date = min
-        else:
-            self.data_privacy_expiration_date = min
-
+            if dped > max:
+                self.data_privacy_expiration_date = max
+        
     class Meta:
         db_table = 'screen'
         

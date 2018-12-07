@@ -30,27 +30,28 @@ SCRIPTPATH="$(dirname $SCRIPTPATH)"
 # strip the "scripts" directory to get the real BASEDIR
 BASEDIR=${BASEDIR:-"$(dirname $SCRIPTPATH)"}
 SUPPORTDIR=${SUPPORTDIR-"$(dirname $BASEDIR)"}
-LOGFILE=${LOGFILE:-${BASEDIR:+"$BASEDIR/run_expirations.log"}}
+LOGFILE=${LOGFILE:-${BASEDIR:+"$BASEDIR/logs/run_expirations.log"}}
 
 if $DEBUG; then
   echo "set logfile to tty"
   LOGFILE=$(tty)
+else
+  mkdir "$(dirname $LOGFILE)"
 fi
 
 VENV=${VENV:-${SUPPORTDIR:+"$SUPPORTDIR/virtualenv_o2"}}
-if [[ -z $VENV ]]; then
-  error 'no virtualenv available'
-fi
 
 source ${SCRIPTPATH}/utils.sh
 
 DJANGO_CMD=$BASEDIR/manage.py
 export DJANGO_SETTINGS_MODULE=lims.settings-server-commandline
+BOOTSTRAP_PORT=53999
 
 ### MODIFY AS NEEDED ###
+# credential_file=${credential_file:-"$SUPPORTDIR/production_data/sde_credentials.txt"}
+# ADMIN_TEST_EMAIL=sean.erickson.hms@gmail.com
 
-credential_file=${credential_file:-"$SUPPORTDIR/production_data/sde_credentials.txt"}
-BOOTSTRAP_PORT=53999
+source ${SCRIPTPATH}/create_studies.properties
 
 ########################
 
@@ -59,17 +60,45 @@ cd $BASEDIR
 function test_setup {
 
   maybe_activate_virtualenv
+
+  echo "create in_silico statistical studies using a local dev server on port $BOOTSTRAP_PORT..." >>"$LOGFILE" 2>&1
+  nohup $DJANGO_CMD runserver --settings=lims.settings-server-commandline --nothreading \
+  --noreload $BOOTSTRAP_PORT  &
   
-#  $DJANGO_CMD showmigrations db  
-  
-  echo "REAL RUN: $REAL_RUN"
-  TEST_RUN_SETTINGS=" -admin_email_only -test_only " 
-  echo "TEST_RUN_SETTINGS: $TEST_RUN_SETTINGS"
-  if [[ $REAL_RUN -eq 1 ]]; then
-    TEST_RUN_SETTINGS=""
+  server_pid=$!
+  if [[ "$?" -ne 0 ]]; then
+    runserver_status =$?
+    echo "setup test data error, dev runserver status: $runserver_status"
+    exit $runserver_status
   fi
-  echo "TEST_RUN_SETTINGS: $TEST_RUN_SETTINGS"
   
+  echo "wait for server process: $server_pid to start..." >>"$LOGFILE" 
+  sleep 10
+
+  # TODO: insert test run here
+  study_id=200003
+  study_file=docs/studies/study_${study_id}.json
+  echo "create study $study_id, $study_file ..." >>"$LOGFILE" 
+  # lead_screener=sde_edit
+  PYTHONPATH=${BASEDIR} python reports/utils/django_requests.py -c ${credential_file} \
+    -a POST http://localhost:${BOOTSTRAP_PORT}/db/api/v1/study/create_confirmed_positive_study \
+    --header "Content-type: application/json" \
+    --header "HTTP-Accept: application/json" \
+    -f ${study_file} >>"$LOGFILE" 2>&1
+
+  study_id=200003
+  PYTHONPATH=${BASEDIR} python reports/utils/django_requests.py -c ${credential_file} \
+    -a GET http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screenresult/${study_id}?limit=25 \
+    --header "HTTP-Accept: application/json" \
+    | mail -s "Study data ${study_id}" ${ADMIN_TEST_EMAIL}
+
+
+  #### stop the server
+  echo "create in_silico statistical studies finished, stop server ..." >>"$LOGFILE" 
+  final_server_pid=$(ps aux |grep runserver| grep ${BOOTSTRAP_PORT} | awk '{print $2}')
+  echo "kill $final_server_pid" >>"$LOGFILE" 
+  kill $final_server_pid || error "kill server $final_server_pid failed with $?"
+  ####
   
 
 }
@@ -81,10 +110,7 @@ function create_studies {
   echo "create in_silico statistical studies: $(ts) ..." >> "$LOGFILE"
 
   echo "create in_silico statistical studies using a local dev server on port $BOOTSTRAP_PORT..." >>"$LOGFILE" 2>&1
-  
-  # FIXME: using the local server may not be necessary as the server has been bootstrapped
-   
-  nohup $DJANGO_CMD runserver --settings=lims.migration-settings --nothreading \
+  nohup $DJANGO_CMD runserver --settings=lims.settings-server-commandline --nothreading \
   --noreload $BOOTSTRAP_PORT  &
   
   server_pid=$!
@@ -132,25 +158,25 @@ function create_studies {
   PYTHONPATH=${BASEDIR} python reports/utils/django_requests.py -c ${credential_file} \
     -a GET http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screenresult/${study_id}?limit=25 \
     --header "HTTP-Accept: application/json" \
-    | mail -s "Study data ${study_id}" sean.erickson.hms@gmail.com 
+    | mail -s "Study data ${study_id}" ${ADMIN_TEST_EMAIL} 
   study_id=200002
   PYTHONPATH=${BASEDIR} python reports/utils/django_requests.py -c ${credential_file} \
     -a GET http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screenresult/${study_id}?limit=25 \
     --header "HTTP-Accept: application/json" \
-    | mail -s "Study data ${study_id}" sean.erickson.hms@gmail.com
+    | mail -s "Study data ${study_id}" ${ADMIN_TEST_EMAIL}
   study_id=200003
   PYTHONPATH=${BASEDIR} python reports/utils/django_requests.py -c ${credential_file} \
     -a GET http://localhost:${BOOTSTRAP_PORT}/db/api/v1/screenresult/${study_id}?limit=25 \
     --header "HTTP-Accept: application/json" \
-    | mail -s "Study data ${study_id}" sean.erickson.hms@gmail.com
+    | mail -s "Study data ${study_id}" ${ADMIN_TEST_EMAIL}
 
-  ####
+  #### stop the server
   echo "create in_silico statistical studies finished, stop server ..." >>"$LOGFILE" 
   final_server_pid=$(ps aux |grep runserver| grep ${BOOTSTRAP_PORT} | awk '{print $2}')
   echo "kill $final_server_pid" >>"$LOGFILE" 
   kill $final_server_pid || error "kill server $final_server_pid failed with $?"
-  # kill $server_pid
-
+  ####
+  
   echo "create in_silico statistical studies done: $(ts)" >> "$LOGFILE"
 
 }
@@ -163,6 +189,6 @@ maybe_activate_virtualenv
 
 create_studies
 
-#test_setup
+# test_setup
   
 

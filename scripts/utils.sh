@@ -25,16 +25,25 @@ function read_auth_file() {
 }
 
 function invenv {
-  local pyex="$VENV/bin/python"
-  if [[ -z $VENV || ! -x $pyex ]]; then
-    error "VENV ($VENV) does not point to a valid virtualenv directory"
+  if [[ -z "${VIRTUAL_ENV}" ]] 
+  then
+    local pyex="$VENV/bin/python"
+    if [[ -z $VENV || ! -x $pyex ]]; then
+      error "VENV ($VENV) does not point to a valid virtualenv directory"
+    fi
+  
+    [[ $VIRTUAL_ENV == $VENV && $(which python) == $pyex ]] && \
+      python -c 'import sys; sys.real_prefix' 2>/dev/null
+  else
+    echo "Using already active virtual environment: \"${VIRTUAL_ENV}\" "
   fi
-
-  [[ $VIRTUAL_ENV == $VENV && $(which python) == $pyex ]] && \
-    python -c 'import sys; sys.real_prefix' 2>/dev/null
+      
 }
 
 function maybe_activate_virtualenv {
+
+  if invenv; then return; fi
+
   if [[ -z $VENV ]]; then
     error "no VENV environment variable set"
   fi
@@ -43,8 +52,6 @@ function maybe_activate_virtualenv {
     error "VENV: \"$VENV\" does not exist"
   fi
   VENV="$($REALPATH $VENV)"
-
-  if invenv; then return; fi
 
   if type "module" > /dev/null; then
     module load gcc/6.2.0

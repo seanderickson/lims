@@ -20,7 +20,7 @@ MAX_ARCHIVE_FILE_BACKUPS=20 # save up to 20 files in the rotating list
 logger = logging.getLogger(__name__)
 
 # If set, admin email only will be sent
-TESTING_MODE = True
+TESTING_MODE = False
 
 def create_prettytable(list_of_dicts, keys_and_titles ):
 

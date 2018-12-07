@@ -88,7 +88,7 @@ class CustomAuthenticationBackend():
                         % user)
                     logger.warn(msg)
                     raise LoginFailedException(msg)
-            logger.info('auth returns logged in user: %r', user)
+            logger.info('User logged in: %r', username)
             return user
 
     def _inner_authenticate(self, username, password):
@@ -107,7 +107,7 @@ class CustomAuthenticationBackend():
                     raise LoginFailedException(msg)
             elif reports.hms.auth.authenticate(username, password):
                 logger.info(
-                    'user %r authenticated with the ecommons server', username)
+                    'eCommons authentication succeeded: %r', username)
                 if(user.is_active):
                     return user
                 else:

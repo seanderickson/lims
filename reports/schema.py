@@ -66,6 +66,10 @@ class schema_obj(object):
         return OrderedDict((
             (k,getattr(cls,k)) for k in dir(cls) 
                 if k[0].isupper() and callable(getattr(cls, k)) is not True ))
+    
+    @classmethod
+    def get_lookup_dict(cls):
+        return { v:k for k,v in cls.get_dict().items() }
 
 class ERROR(schema_obj):
     # Note: there is no ErrorResource

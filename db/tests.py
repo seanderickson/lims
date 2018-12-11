@@ -849,6 +849,9 @@ class DBResourceTestCase(IResourceTestCase):
         output_data = self.get_screenresult(screen_facility_id)
         
         ScreenResultSerializerTest.validate(self, input_data, output_data)
+        
+        logger.debug('created a screen result for %r, %r', 
+            screen_facility_id, output_data)
 
     def get_screenresult(self,screen_facility_id, username=None, data=None):
         
@@ -11658,7 +11661,11 @@ class DataSharingLevel(DBResourceTestCase):
             screen['facility_id']: screen 
                 for screen in reference_screens}
         self.reference_screens = reference_screens
-        logger.info('reference_screens: %r', reference_screens.keys())
+        for facility_id, screen in self.reference_screens.items():
+            logger.info('screen: %r, has screen result: %r', 
+                facility_id, 
+                SCREEN_AVAILABILITY.get_lookup_dict().get(screen.get('has_screen_result')))
+
         screens_by_lead = defaultdict(set)
         for facility_id,screen in reference_screens.items():
             lead_screener = reference_users_by_id[screen['lead_screener_id']]
@@ -11808,7 +11815,7 @@ class DataSharingLevel(DBResourceTestCase):
 
     def get_screens(self, username, data=None):
         
-        data_for_get = { 'includes': '*' }
+        data_for_get = { 'includes': '*', 'limit': 0 }
         if data is not None:
             data_for_get.update(data)
         
@@ -11825,7 +11832,7 @@ class DataSharingLevel(DBResourceTestCase):
         return new_data
     
     def get_reagents(self, username=None, data=None):
-        data_for_get = { 'includes': '*' }
+        data_for_get = { 'includes': '*', 'limit': 0 }
         if data is not None:
             data_for_get.update(data)
         
@@ -11843,7 +11850,7 @@ class DataSharingLevel(DBResourceTestCase):
     
     def get_datacolumns(self, username=None, data=None):
         
-        data_for_get = { 'includes': '*' }
+        data_for_get = { 'includes': '*', 'limit': 0 }
         if data is not None:
             data_for_get.update(data)
         
@@ -12013,6 +12020,10 @@ class DataSharingLevel(DBResourceTestCase):
         reference_screens = self.get_list_resource(BASE_URI + '/screen') 
         reference_screens = { screen['facility_id']: screen 
             for screen in reference_screens}
+        for facility_id, screen in self.reference_screens.items():
+            logger.info('screen: %r, has screen result: %r', 
+                facility_id, 
+                SCREEN_AVAILABILITY.get_lookup_dict().get(screen.get('has_screen_result')))
 
         # Retrieve screens as the user        
         reported_screens = self.get_screens(user[SU.USERNAME])
@@ -12129,11 +12140,16 @@ class DataSharingLevel(DBResourceTestCase):
         reference_screens = self.get_list_resource(BASE_URI + '/screen') 
         reference_screens = { screen['facility_id']: screen 
             for screen in reference_screens}
+        for facility_id, screen in self.reference_screens.items():
+            logger.info('screen: %r, has screen result: %r', 
+                facility_id, 
+                SCREEN_AVAILABILITY.get_lookup_dict().get(screen.get('has_screen_result')))
 
         reference_data_columns = self.get_datacolumns()
         logger.info('reference datacolumns: %r', 
             [(dc['screen_facility_id'],dc['name'],dc['user_access_level_granted'])
                 for dc in reference_data_columns])
+        logger.info('expected_screens_access_levels: %r', expected_screens_access_levels)
         reference_data_columns_by_title = { dc['title']:dc for dc in reference_data_columns }
         if expected_positive_count_by_col_title:
             for title, count in expected_positive_count_by_col_title.items():
@@ -12163,7 +12179,8 @@ class DataSharingLevel(DBResourceTestCase):
                     continue
                 dcs = dc_by_screen.get(facility_id,None)
                 if not dcs:
-                    self.fail('no datacolumns found: %r' % facility_id)
+                    self.fail('no ref datacolumns found: %r, expected access_level: %r' 
+                        % (facility_id, access_level))
                 for dc in dcs:
                     logger.debug(
                         'access_level: %r, dc: %r', 
@@ -12248,7 +12265,7 @@ class DataSharingLevel(DBResourceTestCase):
             'not all wells were found: missing: %r, expected: %r, reported: %r' %
             (expected_wells-reported_wells, expected_wells, reported_wells))
         for well_id, reagent in reported_reagents.items():
-            logger.info('reported reagent: %s %r', well_id, reagent)
+            logger.debug('reported reagent: %s %r', well_id, reagent)
             for dc_id, dc in reported_datacolumns.items():
                 dc_name = 'dc_{screen_facility_id}_{data_column_id}'.format(**dc)
                 if dc_id in level1_datacolums:
@@ -12409,7 +12426,7 @@ class DataSharingLevel(DBResourceTestCase):
                         # does the converse, converting them into "NT", "NP", False
                         # This test is finding the overlapping positives
                         # 20180321
-                        logger.info('dc: %r, %r', dc['key'], dc_type)
+                        logger.debug('dc: %r, %r', dc['key'], dc_type)
                         if access_level > ACCESS_LEVEL.OVERLAPPING_ONLY:
                             self.assertEqual(
                                 reference_value, value,
@@ -12468,29 +12485,47 @@ class DataSharingLevel(DBResourceTestCase):
 
         user = self.reference_users['lead_screener1a']
         own_screens = self.screens_by_lead[user['username']]
+        other_screens = set()
+        for username, screens in self.screens_by_lead.items():
+            if username != user['username']:
+                other_screens.update(screens)
+        logger.info('user: %r, own screens: %r', user['username'], own_screens)
+        logger.info('other screens: %r', other_screens)
         logger.info('screens by lead: %r', self.screens_by_lead)
 
-        logger.info('user: %r, own screens: %r', user['username'], own_screens)
-        
+        well_ids_to_create = ['00001:A0%d'%i for i in range(1,6)]
+        logger.info('Add screen results so other screens are "active"...')
+        for screen_facility_id in other_screens:
+            self.create_screen_result_for_test(
+                screen_facility_id, well_ids_to_create)
+
+        # Print current screen result status
+        reference_screens = self.get_list_resource(BASE_URI + '/screen') 
+        self.reference_screens = { 
+            screen['facility_id']: screen 
+                for screen in reference_screens}
+        for facility_id, screen in self.reference_screens.items():
+            logger.info('screen: %r, has screen result: %r', 
+                facility_id, 
+                SCREEN_AVAILABILITY.get_lookup_dict().get(screen.get('has_screen_result')))
+
         # Get the Screen schema for the user
         screen_schema = self.get_schema('screen', user['username'])
         self.assertIsNotNone(screen_schema)
         
         fields_by_level = self.get_fields_by_level(screen_schema['fields'])
         
-        logger.info(
-            '1. Visibility before data deposit (own & level 0 screens only)')
+        logger.info('1. Visibility before data deposit (own & 0 screens)')
         
         expected_screens_access_levels = defaultdict(set)
         expected_screens_access_levels[2] = \
             set(self.screens_by_level[0]) - set(own_screens)
+
         expected_screens_access_levels[3] = set(own_screens)
         self.do_visibility_test(
             screen_schema['fields'], user, expected_screens_access_levels)
 
-        logger.info(
-            '2. After data deposit')
-        well_ids_to_create = ['00001:A0%d'%i for i in range(1,6)]
+        logger.info('2. After data deposit')
          
         logger.info('2.a non-qualifying deposit (level 2 screen for level 1 user)')
         # - Screen visibility should be unchanged
@@ -12501,15 +12536,13 @@ class DataSharingLevel(DBResourceTestCase):
         expected_positive_count_by_col_title = {
             '%s [%s]' % ('Field2_positive_indicator',screen_facility_id): 1 }
         # test that user can get own screen result
-        
         screen_result = self.get_screenresult(
             screen_facility_id, user['username'])
- 
+  
         self.do_visibility_test(
             screen_schema['fields'], user, expected_screens_access_levels)
         
-        logger.info(
-            '2.b qualifying deposit, can now see data for level 1,2 screens')
+        logger.info('2.b qualifying deposit, can now see data for level 1,2 screens')
         screen_facility_id = own_screens[1]
         self.create_screen_result_for_test(
             screen_facility_id, well_ids_to_create,
@@ -12532,9 +12565,9 @@ class DataSharingLevel(DBResourceTestCase):
             user, expected_screens_access_levels,
             expected_positive_count_by_col_title=expected_positive_count_by_col_title)
         
-        logger.info(
-            '2.c Create overlapping data in a level 2 Screen')
         screen_facility_id = self.screens_by_lead['lead_screener2a'][2]
+        logger.info('2.c Create overlapping data in level 2 Screen: %r', 
+            screen_facility_id)
         self.create_screen_result_for_test(
             screen_facility_id, well_ids_to_create,
             confirmed_positive_wells=['00001:A02','00001:A03'])
@@ -12564,12 +12597,17 @@ class DataSharingLevel(DBResourceTestCase):
         self.do_screenresult_test(user, own_screens[1], 3,
             mutual_wells=['00001:A02'])
 
-        logger.info(
-            '3 remove screen result')
+        logger.info('3 remove screen result for %r', screen_facility_id)
         delete_url = '/'.join([
             BASE_URI, 'screenresult',screen_facility_id])
         self.api_client.delete(delete_url, authentication=self.get_credentials())
 
+        # Create a non-overlap result for this screen, so it is "valid", but 
+        # should -not- be visible, because it is level 2 - mutual, and no 
+        # confirmed positive wells are present this time.
+        self.create_screen_result_for_test(
+            screen_facility_id, well_ids_to_create)
+        
         self.do_visibility_test(
             screen_schema['fields'], user, 
             expected_screens_access_levels_after_deposit_no_overlap)
@@ -12582,9 +12620,30 @@ class DataSharingLevel(DBResourceTestCase):
 
         user = self.reference_users['lead_screener2a']
         own_screens = self.screens_by_lead[user['username']]
-        logger.info('screens by lead: %r', self.screens_by_lead)
+        other_screens = set()
+        for username, screens in self.screens_by_lead.items():
+            if username != user['username']:
+                other_screens.update(screens)
         logger.info('user: %r, own screens: %r', user['username'], own_screens)
-        
+        logger.info('other screens: %r', other_screens)
+        logger.info('screens by lead: %r', self.screens_by_lead)
+
+        well_ids_to_create = ['00001:A0%d'%i for i in range(1,6)]
+        logger.info('Add screen results so other screens are "active"...')
+        for screen_facility_id in other_screens:
+            self.create_screen_result_for_test(
+                screen_facility_id, well_ids_to_create)
+
+        # Print current screen result status
+        reference_screens = self.get_list_resource(BASE_URI + '/screen') 
+        self.reference_screens = { 
+            screen['facility_id']: screen 
+                for screen in reference_screens}
+        for facility_id, screen in self.reference_screens.items():
+            logger.info('screen: %r, has screen result: %r', 
+                facility_id, 
+                SCREEN_AVAILABILITY.get_lookup_dict().get(screen.get('has_screen_result')))
+
         # Get the Screen schema for the user
         screen_schema = self.get_schema('screen', user['username'])
         self.assertIsNotNone(screen_schema)
@@ -12657,18 +12716,21 @@ class DataSharingLevel(DBResourceTestCase):
         self.do_visibility_test(
             screen_schema['fields'], user, expected_screens_access_levels)
 
-#         self.do_reagent_cols_test(user, screen_facility_id, expected_screens_access_levels,
-#             ['00001:A01','00001:A02','00001:A03'])
         self.do_reagent_cols_test(user, ['00001:A01','00001:A02','00001:A03'])
 
         self.do_data_columns_test(user, expected_screens_access_levels)
 
-        logger.info(
-            '3 remove screen result')
+        logger.info('3 remove screen result for %r', screen_facility_id)
         delete_url = '/'.join([
             BASE_URI, 'screenresult',screen_facility_id])
         self.api_client.delete(
             delete_url, authentication=self.get_credentials())
+        # Create a non-overlap result for this screen, so it is "valid", but 
+        # should -not- be visible, because it is level 2 - mutual, and no 
+        # confirmed positive wells are present this time.
+        self.create_screen_result_for_test(
+            screen_facility_id, well_ids_to_create)
+        
         self.do_visibility_test(
             screen_schema['fields'], user, 
             expected_screens_access_levels_after_deposit_no_overlap)

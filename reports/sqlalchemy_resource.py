@@ -1030,7 +1030,7 @@ class SqlAlchemyResource(IccblBaseResource):
                         logger.info('cache not set: execute stmt')
                         count = conn.execute(count_stmt).scalar()
                         result = conn.execute(stmt)
-                    logger.info('====count: %d====', count)
+                    logger.info('====count: %d, limit: %d ====', count, limit)
                     
                 else:
                     logger.info('not cached, execute count stmt...')

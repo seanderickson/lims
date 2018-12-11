@@ -3281,31 +3281,44 @@ class ScreenAuthorization(UserGroupAuthorization):
         if DEBUG_SCREEN_ACCESS:
             logger.info('user: %r, has_rnai: %r, has_sm: %r', 
                         screensaver_user.username, has_rnai, has_sm)
+            logger.info('user screens: %r', [x.facility_id for x in user_screens])
         if has_sm:
+            # NOTE: 20181207 - Only screens with screen results are "visible"
             public_screens = Screen.objects.all()\
                 .filter(data_sharing_level=DSL.SHARED)\
-                .filter(screen_type=SCREEN_TYPE.SMALL_MOLECULE)
+                .filter(screen_type=SCREEN_TYPE.SMALL_MOLECULE)\
+                .exclude(screenresult=None)
             authorized_screens.update(public_screens)
         if has_rnai:
+            # NOTE: 20181207 - Only screens with screen results are "visible"
             public_screens = Screen.objects.all()\
                 .filter(data_sharing_level=DSL.SHARED)\
-                .filter(screen_type=SCREEN_TYPE.RNAI)
+                .filter(screen_type=SCREEN_TYPE.RNAI)\
+                .exclude(screenresult=None)
             authorized_screens.update(public_screens)
 
         has_sm_data_deposited = self.has_sm_data_deposited(screensaver_user)
         has_rna_data_deposited = self.has_rna_data_deposited(screensaver_user)
         
         if has_sm_data_deposited:
+            # NOTE: 20181207 - Only screens with screen results are "visible"
             visible_screens = (
-                Screen.objects.all().filter(screen_type=SCREEN_TYPE.SMALL_MOLECULE)
-                    .filter(data_sharing_level__lt=DSL.PRIVATE))
+                Screen.objects.all()\
+                    .filter(screen_type=SCREEN_TYPE.SMALL_MOLECULE)
+                    .filter(data_sharing_level__lt=DSL.PRIVATE)
+                    .exclude(screenresult=None)
+                    )
             logger.info('update with visible small_molecule screens: %r', 
                         [x.facility_id for x in visible_screens])
             authorized_screens.update(visible_screens)
         if has_rna_data_deposited:
+            # NOTE: 20181207 - Only screens with screen results are "visible"
             visible_screens = (
-                Screen.objects.all().filter(screen_type=SCREEN_TYPE.RNAI)
-                    .filter(data_sharing_level__lt=DSL.PRIVATE))
+                Screen.objects.all()
+                    .filter(screen_type=SCREEN_TYPE.RNAI)
+                    .filter(data_sharing_level__lt=DSL.PRIVATE)
+                    .exclude(screenresult=None)
+                    )
             logger.info('update with visible rna screens: %r', 
                         [x.facility_id for x in visible_screens])
             authorized_screens.update(visible_screens)
@@ -4876,7 +4889,12 @@ class ScreenResultResource(DbApiResource):
         if extra_dc_ids:
             cache_key += '_dcs_.'  + '_'.join(extra_dc_ids)
         logger.info('build screenresult schema: %s', cache_key)
-        data = self.get_cache().get(cache_key)
+        
+        m = hashlib.md5()
+        m.update(cache_key)
+        digested_cache_key = m.hexdigest()
+        
+        data = self.get_cache().get(digested_cache_key)
         
         def add_well_fields(current_fields):
             well_schema = \
@@ -5033,7 +5051,7 @@ class ScreenResultResource(DbApiResource):
             data['fields'] = newfields
                 
             logger.info('build screenresult schema done')
-            self.get_cache().set(cache_key, data)
+            self.get_cache().set(digested_cache_key, data)
             
         return data
 

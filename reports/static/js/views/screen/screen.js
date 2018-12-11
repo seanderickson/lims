@@ -1730,7 +1730,11 @@ define([
       if (!appModel.hasGroup('readEverythingAdmin')){
         return;
       }
-
+      
+      if (self.model.get('has_screen_result') != 1){
+        return;
+      }
+      
       console.log('showUserDslWarnings');
       var users = appModel.getUsers();
       var screenMembers = users.filter(function(model){

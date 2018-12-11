@@ -1239,7 +1239,6 @@ define([
               defaults[key] = JSON.parse(field.default);
             }
           }catch(e){
-            console.log('json parse error', key, field.default);
             if (field.data_type == 'date' && field.default == 'now'){
               defaults[key] = Iccbl.getISODateString(new Date());
             }else{

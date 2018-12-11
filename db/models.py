@@ -688,7 +688,7 @@ class Screen(models.Model):
     def clean(self):
         min = self.min_allowed_data_privacy_expiration_date
         max = self.max_allowed_data_privacy_expiration_date
-        if min > max:
+        if min is not None and max is not None and min > max:
             temp = max
             max = min
             min = temp
@@ -698,10 +698,10 @@ class Screen(models.Model):
         
         dped = self.data_privacy_expiration_date
         
-        if dped:
-            if dped < min:
+        if dped is not None:
+            if min is not None and dped < min:
                 self.data_privacy_expiration_date = min
-            if dped > max:
+            if max is not None and dped > max:
                 self.data_privacy_expiration_date = max
         
     class Meta:

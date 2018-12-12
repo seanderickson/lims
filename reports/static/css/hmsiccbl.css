@@ -6,38 +6,6 @@ body {
 #menu {
   background-color: rgba(197, 210, 219, 0.3);
 }
-@media (min-width: 568px) {
-  .container {
-    width: inherit;
-  }
-}
-@media (min-width: 992px) {
-  .container {
-    width: inherit;
-  }
-}
-@media (min-width: 768px) {
-  .controls-right {
-    float: right !important; 
-  }
-  .controls-left {
-    float: left !important; 
-  }
- 
-}
-@media (max-width: 767px) {
-  .app_container {
-    padding-left: 0px;
-  }
-  
-  .controls-right {
-    float: none;
-  }
-  .controls-left {
-    float: none;
-  }
-}  
-
 .btn.disabled, a.btn.disabled {
     pointer-events: auto;
 }
@@ -614,4 +582,36 @@ table.backgrid.left-align td{
 .pull-left button{
   float: left !important;
 }
+
+@media (min-width: 568px) {
+  .container {
+    width: inherit;
+  }
+}
+@media (min-width: 992px) {
+  .container {
+    width: inherit;
+  }
+}
+@media (min-width: 768px) {
+  .controls-right {
+    float: right !important; 
+  }
+  .controls-left {
+    float: left !important; 
+  }
+ 
+}
+@media (max-width: 767px) {
+  .app_container {
+    padding-left: 0px;
+  }
+  
+  .controls-right {
+    float: none;
+  }
+  .controls-left {
+    float: none;
+  }
+}  
 

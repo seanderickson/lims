@@ -303,6 +303,25 @@ class SILENCING_REAGENT(schema_obj):
     SILENCING_REAGENT_TYPE = 'silencing_reagent_type'
     IS_POOL = 'is_pool'
 
+class LAB_CHERRY_PICK(schema_obj):
+    
+    CPR_ID = 'cherry_pick_request_id'
+    STATUS = 'status'
+    SELECTED = 'selected'
+    LIBRARY_SHORT_NAME = 'library_short_name'
+    PLATE_NUMBER = 'library_plate'
+    SOURCE_COPY_NAME = 'source_copy_name'
+    SCREENER_WELL_ID = 'screener_well_id'
+    SCREENER_LIBRARY_SHORT_NAME = 'screener_library_short_name'
+    SOURCE_WELL_ID = 'source_well_id'
+    SOURCE_WELL_NAME = 'source_well_name'
+    SOURCE_COPYWELL_ID = 'source_copywell_id'
+    SELECTED_COPY_NAME = 'selected_copy_name'
+    SOURCE_PLATE_TYPE = 'source_plate_type'
+    DEST_WELL = 'destination_well'
+    DEST_PLATE_TYPE = 'destination_plate_type'
+    LOCATION = 'location'
+
 class VOCAB(reports.schema.VOCAB):
     ''' Define selected vocabulary constants used by the API.'''
     
@@ -357,7 +376,15 @@ class VOCAB(reports.schema.VOCAB):
             retired_statuses = [
                 RETIRED, DISCARDED, LOST, GIVEN_AWAY, DISCARDED_VOL_XFER]
 
-    
+        class plate_type(schema_obj):
+            ABGENE_384 = 'abgene_384'
+            COSTAR_96 = 'costar_96'
+            EPPENDORF_384 = 'eppendorf_384'
+            EPPENDORF_96 = 'eppendorf_96'
+            GENETIX_384 = 'genetix_384'
+            MARSH_384 = 'marsh_384'
+            NUNC_96 = 'nunc_96'
+        
     class copy(schema_obj):
         class usage_type(schema_obj):
             LIBRARY_SCREENING_PLATES = 'library_screening_plates'

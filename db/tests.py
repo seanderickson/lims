@@ -250,27 +250,24 @@ class DBResourceTestCase(IResourceTestCase):
             _data[k] = v
         return _data
     
-    def create_copy(self, library_short_name, copy_name, 
-            usage_type="library_screening_plates", **kwargs ):
-        data = {
-            'library_short_name': library_short_name,
-            'copy_name': copy_name,
-            'usage_type': usage_type,
-        }
-        for k,v in kwargs.items():
-            data[k] = v
+    def create_copy(self, copy_input_data ):   
+
+        extra_required = ['initial_plate_well_volume', 'initial_plate_status',
+            'plate_type']
+        missing = set(extra_required)-set(copy_input_data.keys())
+        self.assertFalse(missing, 'missing params for copy create: %r' % missing)
         
         resource_uri = BASE_URI_DB + '/librarycopy'
         resource_test_uri = '/'.join([
-            resource_uri,data['library_short_name'],
-            data['copy_name']])
+            resource_uri,copy_input_data['library_short_name'],
+            copy_input_data['copy_name']])
         copy_data = self._create_resource(
-            data, resource_uri, resource_test_uri, 
-            excludes=['initial_plate_well_volume','initial_plate_status'])
-        logger.info('created: %r', copy_data)
+            copy_input_data, resource_uri, resource_test_uri, 
+            excludes=['initial_plate_well_volume','initial_plate_status',
+                'plate_type'])
+        logger.info('created library copy: %r', copy_data)
         return copy_data
-
-
+    
     def create_plate_range(self, library_short_name, copy_name, start_plate, end_plate):
         
         return SCHEMA.PLATE.PLATE_RANGE_FORMAT.format(
@@ -388,17 +385,6 @@ class DBResourceTestCase(IResourceTestCase):
         result,msg = assert_obj1_to_obj2(input_data,new_obj)
         self.assertTrue(result, msg)
         return new_obj
-    
-    def create_copy(self, copy_input_data ):   
-        resource_uri = BASE_URI_DB + '/librarycopy'
-        resource_test_uri = '/'.join([
-            resource_uri,copy_input_data['library_short_name'],
-            copy_input_data['copy_name']])
-        copy_data = self._create_resource(
-            copy_input_data, resource_uri, resource_test_uri, 
-            excludes=['initial_plate_well_volume','initial_plate_status'])
-        logger.info('created library copy: %r', copy_data)
-        return copy_data
     
     def get_screen(self, facility_id, data_for_get=None):
         ''' Retrieve a Screen from the API'''
@@ -742,9 +728,10 @@ class DBResourceTestCase(IResourceTestCase):
         duplex_library_copy1_input = {
             'library_short_name': self.duplex_library1['short_name'],
             'copy_name': "copy1",
-            'usage_type': "cherry_pick_source_plates",
+            'usage_type': VOCAB.copy.usage_type.CHERRY_PICK_SOURCE_PLATES,
             'initial_plate_well_volume': '0.000010',
-            'initial_plate_status': 'available'
+            'initial_plate_status': VOCAB.plate.status.AVAILABLE,
+            'plate_type': VOCAB.plate.plate_type.ABGENE_384
         }  
         self.duplex_library_copy1 = self.create_copy(duplex_library_copy1_input)
         logger.info(
@@ -1792,7 +1779,6 @@ class LibraryResource(DBResourceTestCase):
             WELL.WELL_ID: test_well_id})
         self.assertEqual(well_data[WELL.LIBRARY_WELL_TYPE], WELL_TYPE.EMPTY)
         
-        
         # 4.b experimental -> undefined
         test_undefined_well = {
             WELL.WELL_ID: test_well_id,
@@ -1812,7 +1798,6 @@ class LibraryResource(DBResourceTestCase):
         
         # 5. TODO: experimental -> undefined/empty, after screen results are loaded
         # - should generate an error
-        
         
     def validate_wells(self, input_data, output_data, fields):
         ''' 
@@ -1844,155 +1829,8 @@ class LibraryResource(DBResourceTestCase):
             #     ('substance_id not unique', substance_id, substance_ids))
             # substance_ids.add(substance_id)
         
-    def test10_create_library_copy_specific_wells(self):
-
-        logger.info('test10_create_library_copy ...')
-        
-        # 1. Create Library
-        logger.info('create library a library...')
-        start_plate = 1000
-        end_plate = 1005
-        plate_size = 384
-        library_data = self.create_library({
-            START_PLATE: start_plate, 
-            END_PLATE: end_plate,
-            'plate_size': plate_size,
-            SCREEN_TYPE: 'small_molecule' })
-        short_name = library_data['short_name']
-        
-        # 2. Create Library Wells: wells have various concentrations 
-        logger.info('create and load well data, plates: %r-%r...', 
-            start_plate, end_plate)
-        well_input_data = {}
-        for plate in range(start_plate, end_plate+1):
-            for i in range(0,plate_size):
-                # Create test wells, concentrations will be varied
-                well_input = self.create_small_molecule_test_well(
-                    plate,i,library_well_type='experimental')
-                well_input_data[well_input['well_id']] = well_input
-        resource_name = 'well'
-        resource_uri = '/'.join([
-            BASE_URI_DB,'library', short_name, resource_name])
-        resp = self.api_client.put(
-            resource_uri, format='sdf', 
-            data={ 'objects': well_input_data.values()}, 
-            authentication=self.get_credentials(), 
-            **{ 'limit': 0, 'includes': '*'} )
-        self.assertTrue(
-            resp.status_code in [200], 
-            (resp.status_code, self.get_content(resp)))
-        
-        # 3. Create a Library Copy:
-        # - will also create Plates: 
-        # -- initial_well_volume will be set
-        # -- because the well concentrations vary, 
-        # Plate.concentration fields are not set
-        logger.info('Create library copy...')
-        copy_input_data = {
-            'library_short_name': library_data['short_name'],
-            'copy_name': "A",
-            'usage_type': "library_screening_plates",
-            'initial_plate_well_volume': Decimal('0.000040')
-        }        
-        resource_uri = BASE_URI_DB + '/librarycopy'
-        resource_test_uri = '/'.join([
-            resource_uri,copy_input_data['library_short_name'],
-            copy_input_data['copy_name']])
-        library_copy = self._create_resource(
-            copy_input_data, resource_uri, resource_test_uri, 
-            excludes=['initial_plate_well_volume'])
-
-        # 4. Verify created Plates
-        logger.info('Verify plates created...')
-        uri = '/'.join([resource_test_uri,'plate'])
-        data_for_get={ 'limit': 0 }        
-        data_for_get.setdefault('includes', ['*'])
-        resp = self.api_client.get(
-            uri, format='json', authentication=self.get_credentials(), 
-            data=data_for_get)
-        self.assertTrue(
-            resp.status_code in [200], 
-            (resp.status_code,self.get_content(resp)))
-        new_obj = self.deserialize(resp)
-        start_plate = int(library_data[START_PLATE])
-        end_plate = int(library_data[END_PLATE])
-        number_of_plates = end_plate-start_plate+1
-        self.assertEqual(len(new_obj[API_RESULT_DATA]),number_of_plates)
-        for plate_data in new_obj[API_RESULT_DATA]:
-            self.assertEqual(library_copy['copy_name'],plate_data['copy_name'])
-            plate_number = int(plate_data['plate_number'])
-            self.assertTrue(
-                plate_number>=start_plate and plate_number<=end_plate,
-                'wrong plate_number: %r' % plate_data)
-            self.assertEqual(
-                Decimal(copy_input_data['initial_plate_well_volume']),
-                Decimal(plate_data['well_volume']))
-            self.assertTrue(plate_data['molar_concentration'] is None)
-            self.assertTrue(plate_data['mg_ml_concentration'] is None)
-            # Min Molar concentration is set, because copy_wells were created
-            self.assertTrue(plate_data['min_molar_concentration'] is not None)
-            # Min mg/ml concentration not set, as copy_wells only have molar
-            self.assertTrue(plate_data['min_mg_ml_concentration'] is None)
-            self.assertEqual(plate_data['status'], 'not_specified')
-            
-        # 5. Verify created CopyWells
-        logger.info('Verify copy_wells created (check varying concentrations)')
-        uri = '/'.join([
-            BASE_URI_DB,
-            'library',
-            copy_input_data['library_short_name'],
-            'copy',
-            copy_input_data['copy_name'],
-            'copywell'])
-        data_for_get={ 'limit': 0 }        
-        data_for_get.setdefault('includes', ['*'])
-        resp = self.api_client.get(
-            uri, format='json', authentication=self.get_credentials(), 
-            data=data_for_get)
-        self.assertTrue(
-            resp.status_code in [200], 
-            (resp.status_code,self.get_content(resp)))
-        new_obj = self.deserialize(resp)
-        copy_wells_returned = new_obj[API_RESULT_DATA]
-        self.assertEqual(len(copy_wells_returned),len(well_input_data))
-
-        for copy_well_data in copy_wells_returned:
-            self.assertEqual(
-                library_copy['copy_name'],copy_well_data['copy_name'])
-            self.assertTrue(
-                copy_well_data['plate_number'] >= start_plate
-                and copy_well_data['plate_number'] <= end_plate,
-                'copy_well returned for wrong plate: %r' % copy_well_data )
-            well_input = well_input_data.get(copy_well_data['well_id'], None)
-            self.assertTrue(well_input is not None, 
-                'copy well not in wells: %r' % copy_well_data)
-            if well_input['library_well_type'] == 'experimental':
-                self.assertEqual(
-                    Decimal(copy_input_data['initial_plate_well_volume']),
-                    Decimal(copy_well_data['initial_volume']))
-                self.assertEqual(
-                    copy_well_data['initial_volume'], 
-                    copy_well_data['volume'])
-                self.assertEqual(
-                    Decimal(well_input['molar_concentration']),
-                    Decimal(copy_well_data['molar_concentration']), 
-                    'molar concentration mismatch: %r output %r' 
-                    % (well_input,copy_well_data))
-                self.assertTrue(copy_well_data['mg_ml_concentration'] is None)
-            else:
-                self.assertTrue(
-                    copy_well_data['initial_volume'] is None,
-                    'non-experimental well has data: %r' % copy_well_data)
-                self.assertTrue(copy_well_data['volume'] is None,
-                    'non-experimental well has data: %r' % copy_well_data)
-                self.assertTrue(copy_well_data['molar_concentration'] is None,
-                    'non-experimental well has data: %r' % copy_well_data)
-        return (library_data, library_copy, copy_wells_returned)
-
-    def test10a_create_library_copy_simple_wells(self):
-
-        logger.info('test10a_create_library_copy_simple_wells ...')
-        logger.info('creates a library wells with single concentration')
+    def test10_create_copy_plates(self):
+        logger.info('test10_create_copy_plates ...')
         
         # 1. Create a Library
         logger.info('create library a library...')
@@ -2006,17 +1844,19 @@ class LibraryResource(DBResourceTestCase):
             SCREEN_TYPE: 'small_molecule' })
         short_name = library_data['short_name']
         
-        # 2. Create Library Wells: wells all have the same concentration 
+        # 2. Create Library Wells
         logger.info('create and load well data, plates: %r-%r...', 
             start_plate, end_plate)
         well_input_data = {}
-        single_molar_concentration = '0.010'
         for plate in range(start_plate, end_plate+1):
             for i in range(0,plate_size):
-                well_input = self.create_small_molecule_test_well(
-                    plate,i)
-                if well_input['library_well_type'] == 'experimental':
-                    well_input['molar_concentration'] = single_molar_concentration
+                if i < plate_size -1:
+                    well_input = self.create_small_molecule_test_well(
+                        plate,i,library_well_type='experimental')
+                else:
+                    # let one be empty
+                    well_input = self.create_small_molecule_test_well(
+                        plate,i, library_well_type='empty')
                 well_input_data[well_input['well_id']] = well_input
         resource_name = 'well'
         resource_uri = '/'.join([
@@ -2036,15 +1876,15 @@ class LibraryResource(DBResourceTestCase):
             'library_short_name': library_data['short_name'],
             'copy_name': "A",
             'usage_type': "library_screening_plates",
-            'initial_plate_well_volume': '0.000040'
+            'initial_plate_well_volume': '0.000040',
+            'initial_plate_status': VOCAB.plate.status.AVAILABLE,
+            'plate_type': VOCAB.plate.plate_type.ABGENE_384
         }        
+        library_copy = self.create_copy(copy_input_data)
         resource_uri = BASE_URI_DB + '/librarycopy'
         resource_test_uri = '/'.join([
             resource_uri,copy_input_data['library_short_name'],
             copy_input_data['copy_name']])
-        library_copy = self._create_resource(
-            copy_input_data, resource_uri, resource_test_uri, 
-            excludes=['initial_plate_well_volume'])
         
         # 4. Verify created Plates
         logger.info('Verify plates created...')
@@ -2062,7 +1902,10 @@ class LibraryResource(DBResourceTestCase):
         end_plate = int(library_data[END_PLATE])
         number_of_plates = end_plate-start_plate+1
         self.assertEqual(len(new_obj[API_RESULT_DATA]),number_of_plates)
-        for plate_data in new_obj[API_RESULT_DATA]:
+        
+        plates_data = new_obj[API_RESULT_DATA]
+        
+        for plate_data in plates_data:
             self.assertEqual(library_copy['copy_name'],plate_data['copy_name'])
             plate_number = int(plate_data['plate_number'])
             self.assertTrue(
@@ -2071,25 +1914,35 @@ class LibraryResource(DBResourceTestCase):
             self.assertEqual(
                 Decimal(copy_input_data['initial_plate_well_volume']),
                 Decimal(plate_data['well_volume']))
-            self.assertEqual(
-                Decimal(single_molar_concentration),
-                Decimal(plate_data['min_molar_concentration']))
-            self.assertEqual(
-                Decimal(single_molar_concentration),
-                Decimal(plate_data['max_molar_concentration']))
             self.assertTrue(plate_data['molar_concentration'] is None)
             self.assertTrue(plate_data['mg_ml_concentration'] is None)
+            # Min Molar concentration is set, because copy_wells were created
+            self.assertTrue(plate_data['min_molar_concentration'] is not None)
+            # Min mg/ml concentration not set, as copy_wells only have molar
             self.assertTrue(plate_data['min_mg_ml_concentration'] is None)
+            
+            self.assertEqual(
+                copy_input_data['initial_plate_status'], plate_data['status'])
+            self.assertEqual(
+                copy_input_data['plate_type'], plate_data['plate_type'])
 
-        # 5. Verify CopyWell data can be queried, 
-        # but that all have single concentration
-        logger.info('Verify copy_wells created ()...')
+        return (library_data, library_copy, plates_data, well_input_data)
+        
+    def test10a_create_copy_wells(self):
+
+        logger.info('test10a_create_copy_wells...')
+            
+        (library_data, copy_data, plates_data, well_input_data) = \
+            self.test10_create_copy_plates()
+            
+        # 5. Verify created CopyWells
+        logger.info('Verify copy_wells created (check varying concentrations)')
         uri = '/'.join([
             BASE_URI_DB,
             'library',
-            copy_input_data['library_short_name'],
+            copy_data['library_short_name'],
             'copy',
-            copy_input_data['copy_name'],
+            copy_data['copy_name'],
             'copywell'])
         data_for_get={ 'limit': 0 }        
         data_for_get.setdefault('includes', ['*'])
@@ -2103,19 +1956,20 @@ class LibraryResource(DBResourceTestCase):
         copy_wells_returned = new_obj[API_RESULT_DATA]
         self.assertEqual(len(copy_wells_returned),len(well_input_data))
 
+
         for copy_well_data in copy_wells_returned:
             self.assertEqual(
-                library_copy['copy_name'],copy_well_data['copy_name'])
+                copy_data['copy_name'],copy_well_data['copy_name'])
             self.assertTrue(
-                copy_well_data['plate_number'] >= start_plate
-                and copy_well_data['plate_number'] <= end_plate,
+                copy_well_data['plate_number'] >= library_data['start_plate']
+                and copy_well_data['plate_number'] <= library_data['end_plate'],
                 'copy_well returned for wrong plate: %r' % copy_well_data )
             well_input = well_input_data.get(copy_well_data['well_id'], None)
             self.assertTrue(well_input is not None, 
                 'copy well not in wells: %r' % copy_well_data)
             if well_input['library_well_type'] == 'experimental':
                 self.assertEqual(
-                    Decimal(copy_input_data['initial_plate_well_volume']),
+                    Decimal(copy_data['avg_plate_volume']),
                     Decimal(copy_well_data['initial_volume']))
                 self.assertEqual(
                     Decimal(copy_well_data['initial_volume']), 
@@ -2134,7 +1988,8 @@ class LibraryResource(DBResourceTestCase):
                     'non-experimental well has data: %r' % copy_well_data)
                 self.assertTrue(copy_well_data['molar_concentration'] is None,
                     'non-experimental well has data: %r' % copy_well_data)
-        return (library_data, library_copy, copy_wells_returned)
+
+        return (library_data, copy_data, copy_wells_returned)
         
     def test11_create_library_copy_invalids(self):
         # TODO: try to create duplicate copy names
@@ -2146,8 +2001,8 @@ class LibraryResource(DBResourceTestCase):
 
         logger.info('test12_modify_copy_wells ...')
     
-        (library_data, copy_data, plate_data) = \
-            self.test10_create_library_copy_specific_wells()
+        (library_data, copy_data, copy_wells_data) = \
+            self.test10a_create_copy_wells()
         end_plate = int(library_data[END_PLATE])
         start_plate = int(library_data[START_PLATE])
         short_name = library_data['short_name']
@@ -2170,8 +2025,8 @@ class LibraryResource(DBResourceTestCase):
         
         copywell_data = new_obj[API_RESULT_DATA]
         expected_wells = plate_size;
-        logger.info('returned copywell: %r', copywell_data[0])
-        logger.info('returned copywell: %r', copywell_data[-1])
+        logger.info('1.returned copywell: %r', copywell_data[0])
+        logger.info('last returned copywell: %r', copywell_data[-1])
         self.assertEqual(len(copywell_data),expected_wells)
         
         logger.info('patch a copywell...')
@@ -2201,15 +2056,14 @@ class LibraryResource(DBResourceTestCase):
     def test13_plate_locations(self):
 
         logger.info('test13_plate_locations ...')
-        (library_data, copy_data, plate_data) = \
-            self.test10_create_library_copy_specific_wells()
+        (library_data, copy_data, copy_wells_data) = \
+            self.test10a_create_copy_wells()
         
         end_plate = library_data[END_PLATE]
         start_plate = library_data[START_PLATE]
         short_name = library_data['short_name']
         
         # 1. Simple test
-#         lps_format = '{library_short_name}:{copy_name}:{start_plate}-{end_plate}'
         lps_format = SCHEMA.PLATE.PLATE_RANGE_FORMAT
         copy_plate_ranges = [
             lps_format.format(
@@ -2369,8 +2223,8 @@ class LibraryResource(DBResourceTestCase):
         
         logger.info('test17_batch_edit_copyplate_info ...')
         
-        (library_data, copy_data, plate_data) = \
-            self.test10_create_library_copy_specific_wells()
+        (library_data, copy_data, copy_wells_data) = \
+            self.test10a_create_copy_wells()
         end_plate = library_data[END_PLATE]
         start_plate = library_data[START_PLATE]
         short_name = library_data['short_name']
@@ -2522,8 +2376,8 @@ class LibraryResource(DBResourceTestCase):
         
         logger.info('test16_batch_edit_copyplate_location ...')
 
-        (library_data, copy_data, plate_data) = \
-            self.test10_create_library_copy_specific_wells()
+        (library_data, copy_data, copy_wells_data) = \
+            self.test10a_create_copy_wells()
         end_plate = library_data[END_PLATE]
         start_plate = library_data[START_PLATE]
         short_name = library_data['short_name']
@@ -2656,8 +2510,8 @@ class LibraryResource(DBResourceTestCase):
 
         logger.info('test15_modify_copyplate_info ...')
         
-        (library_data, copy_data, plate_data) = \
-            self.test10_create_library_copy_specific_wells()
+        (library_data, copy_data, copy_wells_data) = \
+            self.test10a_create_copy_wells()
         end_plate = library_data[END_PLATE]
         start_plate = library_data[START_PLATE]
         short_name = library_data['short_name']
@@ -2750,8 +2604,8 @@ class LibraryResource(DBResourceTestCase):
 
         logger.info('test14_modify_copy_plate_locations ...')
         
-        (library_data, copy_data, plate_data) = \
-            self.test10_create_library_copy_specific_wells()
+        (library_data, copy_data, copy_wells_data) = \
+            self.test10a_create_copy_wells()
         end_plate = library_data[END_PLATE]
         start_plate = library_data[START_PLATE]
         short_name = library_data['short_name']
@@ -5488,25 +5342,16 @@ class ScreenResource(DBResourceTestCase):
             'copy_name': "A",
             'usage_type': "library_screening_plates",
             'initial_plate_well_volume': '0.000010',
-            'initial_plate_status': 'available'
+            'initial_plate_status': VOCAB.plate.status.AVAILABLE,
+            'plate_type': VOCAB.plate.plate_type.ABGENE_384
         }  
-        resource_uri = BASE_URI_DB + '/librarycopy'
-        resource_test_uri = '/'.join([
-            resource_uri,library_copy1_input['library_short_name'],
-            library_copy1_input['copy_name']])
-        library_copy1 = self._create_resource(
-            library_copy1_input, resource_uri, resource_test_uri, 
-            excludes=['initial_plate_well_volume','initial_plate_status'])
+        library_copy1 = self.create_copy(library_copy1_input)
         logger.info('created: %r', library_copy1)
  
         library_copy2_input = library_copy1_input.copy()
         library_copy2_input['library_short_name'] = library2['short_name']
-        resource_test_uri = '/'.join([
-            resource_uri,library_copy2_input['library_short_name'],
-            library_copy2_input['copy_name']])
-        library_copy2 = self._create_resource(
-            library_copy2_input, resource_uri, resource_test_uri,
-            excludes=['initial_plate_well_volume','initial_plate_status'])
+
+        library_copy2 = self.create_copy(library_copy2_input)
         logger.info('created: %r', library_copy2)
         
         logger.info('create screen...')        
@@ -5878,36 +5723,21 @@ class ScreenResource(DBResourceTestCase):
             'usage_type': "library_screening_plates",
             'initial_plate_well_volume':
                  '{:.9f}'.format(min_allowed_small_molecule_volume + valid_test_volume*5),
-            'initial_plate_status': 'available'
+            'initial_plate_status': VOCAB.plate.status.AVAILABLE,
+            'plate_type': VOCAB.plate.plate_type.ABGENE_384
         }  
-        resource_uri = BASE_URI_DB + '/librarycopy'
-        resource_test_uri = '/'.join([
-            resource_uri,library_copy1_input['library_short_name'],
-            library_copy1_input['copy_name']])
-        library_copy1 = self._create_resource(
-            library_copy1_input, resource_uri, resource_test_uri, 
-            excludes=['initial_plate_well_volume','initial_plate_status'])
+        library_copy1 = self.create_copy(library_copy1_input)
         logger.info('created: %r', library_copy1)
 
         library_copy1_cpp_input = library_copy1_input.copy()
         library_copy1_cpp_input['usage_type'] = 'cherry_pick_source_plates'
         library_copy1_cpp_input['copy_name'] = 'A1_cpsp'
-        resource_test_uri = '/'.join([
-            resource_uri,library_copy1_cpp_input['library_short_name'],
-            library_copy1_cpp_input['copy_name']])
-        library_copy1_cpp = self._create_resource(
-            library_copy1_cpp_input, resource_uri, resource_test_uri, 
-            excludes=['initial_plate_well_volume','initial_plate_status'])
+        library_copy1_cpp = self.create_copy(library_copy1_cpp_input)
         logger.info('created: %r', library_copy1_cpp)
         
         library_copy2_input = library_copy1_input.copy()
         library_copy2_input['library_short_name'] = library2['short_name']
-        resource_test_uri = '/'.join([
-            resource_uri,library_copy2_input['library_short_name'],
-            library_copy2_input['copy_name']])
-        library_copy2 = self._create_resource(
-            library_copy2_input, resource_uri, resource_test_uri,
-            excludes=['initial_plate_well_volume','initial_plate_status'])
+        library_copy2 = self.create_copy(library_copy2_input)
         logger.info('created: %r', library_copy2)
         
         logger.info('create screen...')        
@@ -7297,9 +7127,10 @@ class CherryPickRequestResource(DBResourceTestCase):
         library_copy1_input = {
             'library_short_name': self.library1['short_name'],
             'copy_name': "copy1",
-            'usage_type': "cherry_pick_source_plates",
+            'usage_type': VOCAB.copy.usage_type.CHERRY_PICK_SOURCE_PLATES,
             'initial_plate_well_volume': '0.000010',
-            'initial_plate_status': 'available'
+            'initial_plate_status': VOCAB.plate.status.AVAILABLE,
+            'plate_type': VOCAB.plate.plate_type.ABGENE_384
         }  
         self.library1_copy1 = self.create_copy(library_copy1_input)
         logger.info('created library copy1: %r', self.library1_copy1)
@@ -7334,9 +7165,10 @@ class CherryPickRequestResource(DBResourceTestCase):
         library_copy3_input = {
             'library_short_name': self.library1['short_name'],
             'copy_name': "copy3",
-            'usage_type': "library_screening_plates",
+            'usage_type': VOCAB.copy.usage_type.LIBRARY_SCREENING_PLATES,
             'initial_plate_well_volume': '0.000010',
-            'initial_plate_status': 'available'
+            'initial_plate_status': VOCAB.plate.status.AVAILABLE,
+            'plate_type': VOCAB.plate.plate_type.ABGENE_384
         }  
         self.library1_copy3 = self.create_copy(library_copy3_input)
 
@@ -7347,9 +7179,10 @@ class CherryPickRequestResource(DBResourceTestCase):
         library_copy4_input = {
             'library_short_name': self.library1['short_name'],
             'copy_name': "copy4",
-            'usage_type': "library_screening_plates",
+            'usage_type': VOCAB.copy.usage_type.LIBRARY_SCREENING_PLATES,
             'initial_plate_well_volume': '0.000010',
-            'initial_plate_status': 'retired'
+            'initial_plate_status': VOCAB.plate.status.RETIRED,
+            'plate_type': VOCAB.plate.plate_type.ABGENE_384
         }  
         self.library1_copy4 = self.create_copy(library_copy4_input)
 

@@ -2117,7 +2117,7 @@ class LibraryCopyPlateResource(DbApiResource):
             'max_mg_ml_concentration': _plate_statistics.c.max_mg_ml_concentration,
             'first_date_screened': _plate_screening_statistics.c.first_date_screened,
             'last_date_screened': _plate_screening_statistics.c.last_date_screened,
-            'status_date': _status_apilogs.c.date_time,
+            'status_date': func.coalesce(_status_apilogs.c.date_time, _p.c.date_created),
             'status_performed_by': _status_apilogs.c.name,
             'status_performed_by_username': _status_apilogs.c.username,
             'experimental_copy_well_count': (
@@ -7642,6 +7642,8 @@ class CherryPickRequestResource(DbApiResource):
     @read_authorization
     def get_plate_mapping_file(self, request, **kwargs):
         
+        LCP = SCHEMA.LAB_CHERRY_PICK
+        
         request_method = request.method.lower()
         if request_method != 'get':
             raise BadRequestError(key='method', msg='Only GET is allowed')
@@ -7670,10 +7672,9 @@ class CherryPickRequestResource(DbApiResource):
         
         lcp_schema = self.get_labcherrypick_resource().build_schema(
             user=request.user, library_classification=cpr_obj.screen.screen_type)
-        columns_to_include = [
-            'library_plate','source_copy_name','source_well_name',
-            'source_plate_type','destination_well','destination_plate_type']
 
+        # FIXME: 20181214 - use db.schema for field names
+        
         lcps = self.get_labcherrypick_resource()._get_list_response_internal(
             **{
                 'cherry_pick_request_id': cpr_id,
@@ -7682,7 +7683,6 @@ class CherryPickRequestResource(DbApiResource):
                     'source_plate_type','destination_plate_type',
                     'location','-structure_image','-molfile',
                     '-library_plate_comment_array'],
-                'order_by': ['destination_well']
             })
         plate_name_to_types = defaultdict(set)
         source_plate_to_dest_plates = defaultdict(set)
@@ -7713,7 +7713,11 @@ class CherryPickRequestResource(DbApiResource):
         # Sort internally
         for plate_name in plate_map.keys():
             lcps = plate_map[plate_name]
-            lcps = sorted(lcps, key=lambda lcp: lcp['source_well_id'])
+            # 20181214 - per Lab staff; preferred sorting:
+            # plate number, copy name, (dest well not req'd)
+            lcps = sorted(
+                lcps, key=lambda lcp: (lcp['library_plate'], 
+                    lcp['source_copy_name'], lcp['source_well_id']))
             plate_map[plate_name] = lcps
         
         locations = [location_map[x] for x in sorted(location_map.keys())]
@@ -7767,7 +7771,10 @@ class CherryPickRequestResource(DbApiResource):
             'following cherry pick plates:',])
         reload_plate_msg = 'Cherry pick plate %s requires reload of source plate: %s'
 
-        
+        columns_to_include = [
+            LCP.PLATE_NUMBER,LCP.SOURCE_COPY_NAME, LCP.SOURCE_WELL_NAME,
+            LCP.SOURCE_PLATE_TYPE, LCP.DEST_WELL, LCP.DEST_PLATE_TYPE]
+
         readme_text = [
             'This zip file contains plate mappings for Cherry Pick Request %r' 
             % str(cpr_id) ]
@@ -12397,23 +12404,29 @@ class LibraryCopyResource(DbApiResource):
                     librarycopy.library.start_plate, 
                     librarycopy.library.end_plate, librarycopy.name )
     
-                initial_plate_status = deserialized.get(
-                    'initial_plate_status', None)
+                initial_plate_status = deserialized.get('initial_plate_status')
                 if initial_plate_status:
                     self.get_plate_resource().validate({
                         'status': initial_plate_status}, schema=schema)
+                else:
+                    raise MissingParam('initial_plate_status')
             
-                initial_plate_well_volume = deserialized.get(
-                    'initial_plate_well_volume', None)
+                initial_plate_well_volume = \
+                    deserialized.get('initial_plate_well_volume')
                 if initial_plate_well_volume:
                     initial_plate_well_volume = parse_val(
                         initial_plate_well_volume, 
                         'initial_plate_well_volume', 'decimal')
-                elif patch is False:
-                    raise ValidationError(
-                        key='initial_plate_well_volume',
-                        msg='required')
+                else:
+                    raise MissingParam('initial_plate_well_volume')
 
+                plate_type = deserialized.get('plate_type')
+                if plate_type:
+                    self.get_plate_resource().validate({
+                        'plate_type': plate_type}, schema=schema)
+                else:
+                    raise MissingParam('plate_type')
+                
                 # Validation of concentration settings
                 
                 initial_plate_mg_ml_concentration = \
@@ -12486,6 +12499,7 @@ class LibraryCopyResource(DbApiResource):
                         plate_number=x,
                         screening_count=0,
                         status='not_specified',
+                        plate_type=plate_type,
                         well_volume=initial_plate_well_volume,
                         remaining_well_volume=initial_plate_well_volume,
                         mg_ml_concentration=initial_plate_mg_ml_concentration,

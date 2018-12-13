@@ -17,15 +17,10 @@ from reports import ValidationError
 logger = logging.getLogger(__name__)
 
 
-# 20180919: Activity Refactor:
-# 1. combine ServiceActivity into Activity:
-#  - move SA.serviced_user, SA.serviced_screen
-#  - move SA.service_activity_type to Activity.type
-#  - populate Activity.classification with SA types: LS, extLS, and CPLT; 
-#    as well as new "training" and "automation" service activity types
-# 2. move LabActivity.screen -> Activity.screen
-# 3. Remove unused activity tables and join tables 
 class Activity(models.Model):
+    '''
+    Activity tracks Service and Lab Activities performed for screeners.
+    '''
      
     activity_id = models.AutoField(primary_key=True) 
     date_created = models.DateTimeField(default=timezone.now)
@@ -41,8 +36,6 @@ class Activity(models.Model):
     date_loaded = models.DateTimeField(null=True)
     date_publicly_available = models.DateTimeField(null=True)
 
-    # activity_refactor fields from subclasses 
-    # NOTE: SS Version 2: require either serviced screen or serviced user
     screen = models.ForeignKey('Screen', related_name='activities', null=True,
         on_delete=models.deletion.CASCADE)
     serviced_user = models.ForeignKey(
@@ -130,10 +123,12 @@ class LibraryScreening(Screening):
             % (self.activity_id, self.performed_by, self.screen.facility_id,
                 self.volume_transferred_per_well_from_library_plates))
 
-# Purpose, to record a "Screening" activity for the plates of a Cherry Pick
-# 20180925 - May remove, not used in ICCBL
-# TODO: replace with Cherry Pick Status change
 class CherryPickScreening(Screening):
+    '''
+    Purpose, to record a "Screening" activity for the plates of a Cherry Pick
+    # 20180925 - May remove, not used in ICCBL
+    # TODO: replace with Cherry Pick Status change
+    '''
     
     screeninglink = models.OneToOneField(
         'Screening', primary_key=True, parent_link=True, 
@@ -151,8 +146,10 @@ class CherryPickScreening(Screening):
             % (self.activity_id, self.performed_by, self.screen.facility_id,
                 self.cherry_pick_request.id))
 
-# Purpose: to record the "Cherry Pick Plate Activity" on the CherryPickAssayPlates
 class CherryPickLiquidTransfer(LabActivity):
+    '''
+    Purpose: to record the "Cherry Pick Plate Activity" on the CherryPickAssayPlates
+    '''
     
     cherry_pick_request = models.ForeignKey(
         'CherryPickRequest', on_delete=models.CASCADE, null=False)
@@ -174,14 +171,15 @@ class CherryPickLiquidTransfer(LabActivity):
                 self.volume_transferred_per_well_from_library_plates))
 
 
-# TODO: 20180925 - consider removal:
-# Original purpose: 
-# 1. map library_screening->plate, with ordinal count
-# 2. Old: correlate screening data (plates) to data loading plates
-# - data loading plates have been removed
-# 3. assay plates are not needed to track screening data
-# 4. Still need CherryPickAssayPlate for 
+
 class AssayPlate(models.Model):
+    '''
+    Purpose: map library_screening->plate, with ordinal count
+
+    Old use: to correlate screening data (plates) to data loading plates, but
+    data loading plates have been removed.
+    
+    '''
     
     assay_plate_id = models.AutoField(primary_key=True)
     replicate_ordinal = models.IntegerField(db_index=True)
@@ -210,8 +208,10 @@ class AssayPlate(models.Model):
                self.plate.copy_name, self.screen.facility_id, 
                self.library_screening.activity_id ))
       
-# Purpose: AssayWell serves as a "row" of a ScreenResult        
 class AssayWell(models.Model):
+    '''
+    Purpose: AssayWell serves as a "row" of a ScreenResult
+    '''
     
     assay_well_id = models.AutoField(primary_key=True)
     assay_well_control_type = models.TextField(null=True,)
@@ -338,7 +338,6 @@ class CherryPickRequest(models.Model):
     cherry_pick_assay_protocols_followed = models.TextField(null=True)
     cherry_pick_followup_results_status = models.TextField(null=True)
 
-
     # True when screener requested a random layout for the cherry pick plates
     is_randomized_assay_plate_layout = models.BooleanField(default=False)
     # True when cherry picks from the same source plate should always be 
@@ -461,12 +460,13 @@ class LabCherryPick(models.Model):
                self.assay_plate_row,
                self.assay_plate_column)) 
 
-# Original Purpose:
-# (TODO: 20180925 - review requirements)
-# - assign plate_ordinal to LabCherryPick wells
-# - record each attempt for a cherry pick (support for "failed")
-# - record the "plating" activity
 class CherryPickAssayPlate(models.Model):
+    '''
+    Purpose:
+    - assign plate_ordinal to LabCherryPick wells
+    - record the "plating" activity    
+    - OLD: record each attempt for a cherry pick (support for "failed")
+    '''
     
     cherry_pick_assay_plate_id = models.AutoField(primary_key=True)
     cherry_pick_request = models.ForeignKey(
@@ -512,18 +512,6 @@ class CherryPickAssayPlate(models.Model):
             'plate_ordinal=%r)>' 
             % (self.cherry_pick_request_id, 
                self.plate_ordinal)) 
-
-# Purpose: to cast CherryPickRequest for SiRNA screens
-# Deprecate
-class RnaiCherryPickRequest(models.Model):
-    
-    cherry_pick_request = \
-        models.OneToOneField(
-            CherryPickRequest, primary_key=True, on_delete=models.CASCADE)
-    
-    class Meta:
-        db_table = 'rnai_cherry_pick_request'
-
 
 class Publication(models.Model):
     
@@ -722,7 +710,6 @@ class ScreenBillingItem(models.Model):
     class Meta:
         db_table = 'screen_billing_item'
 
-# NEW
 class ScreenFundingSupports(models.Model):
     screen = models.ForeignKey(
         Screen, on_delete=models.CASCADE, related_name='fundingsupports')
@@ -732,7 +719,6 @@ class ScreenFundingSupports(models.Model):
         unique_together = (('screen', 'funding_support'))
         db_table = 'screen_funding_supports'
         
-# NEW
 class ScreenCellLines(models.Model):
     screen = models.ForeignKey(
         Screen, related_name='celllines', on_delete=models.CASCADE)
@@ -876,10 +862,6 @@ class ScreensaverUser(models.Model):
     # FIXME: 20170926: not needed
     username = models.TextField(null=True, unique=True)
 
-    # FIXME: legacy fields
-#     login_id = models.TextField(unique=True, null=True)
-#     digested_password = models.TextField(null=True)
-    
     user = models.OneToOneField(
         'reports.UserProfile', null=True,on_delete=models.SET_NULL)
 
@@ -898,9 +880,12 @@ class ScreensaverUser(models.Model):
     lab_head_appointment_department = models.TextField(null=True)
     lab_head_appointment_update_date = models.DateField(null=True)
 
+    # FIXME: legacy fields
 #     sm_data_sharing_level = models.IntegerField(null=True)
 #     rnai_data_sharing_level = models.IntegerField(null=True)
-
+#     login_id = models.TextField(unique=True, null=True)
+#     digested_password = models.TextField(null=True)
+    
     class Meta:
         db_table = 'screensaver_user'
         
@@ -981,22 +966,6 @@ class CachedQuery(models.Model):
             '<CachedQuery(id: %r, uri: %r, username: %r, count:%r)>' 
             % (self.id, self.uri, self.username, self.count ))
 
-# class WellQueryIndex(models.Model):
-#     ''' For caching large resultvalue queries '''
-#      
-#     well = models.ForeignKey(
-#         'Well', null=False, on_delete=models.CASCADE)
-#     query = models.ForeignKey(
-#         'CachedQuery', null=False, on_delete=models.CASCADE)
-# 
-#     class Meta:
-#         db_table = 'well_query_index'
-# 
-#     def __repr__(self):
-#         return (
-#             '<WellQueryIndex(id: %r, well: %r, query: %r)>' 
-#             % (self.id, self.well, self.query ))
-        
 class Reagent(models.Model):
 
     reagent_id = models.AutoField(primary_key=True)
@@ -1191,10 +1160,6 @@ class Library(models.Model):
     date_created = models.DateTimeField(default=timezone.now)
     plate_size = models.TextField()
 
-    # FIXME: need to create a migration script that will invalidate all of the
-    # reagent.well_id's for reagents other than the "latest released reagent"
-    latest_released_contents_version_id = models.IntegerField(null=True)
-    
     experimental_well_count = models.IntegerField(null=True)
     is_pool = models.NullBooleanField(null=True)
     
@@ -1214,6 +1179,9 @@ class Library(models.Model):
     
     is_released = models.BooleanField(default=False)
     is_archived = models.BooleanField(default=False)
+    
+    # deprecated: SS1 only
+    latest_released_contents_version_id = models.IntegerField(null=True)
     
     @property
     def classification(self):
@@ -1421,7 +1389,24 @@ class ScreenKeyword(models.Model):
         unique_together = (('screen', 'keyword'))
         db_table = 'screen_keyword'
 
-# TODO: 2018-07-09: proposed, but unused 
+# NOTE: created dynamically in db/api.py
+# class WellQueryIndex(models.Model):
+#     ''' For caching large resultvalue queries '''
+#      
+#     well = models.ForeignKey(
+#         'Well', null=False, on_delete=models.CASCADE)
+#     query = models.ForeignKey(
+#         'CachedQuery', null=False, on_delete=models.CASCADE)
+# 
+#     class Meta:
+#         db_table = 'well_query_index'
+# 
+#     def __repr__(self):
+#         return (
+#             '<WellQueryIndex(id: %r, well: %r, query: %r)>' 
+#             % (self.id, self.well, self.query ))
+        
+# NOTE: 2018-07-09: proposed, but unused 
 # def create_id():
 #     try:
 #         cursor = connection.cursor()
@@ -1446,10 +1431,32 @@ class ScreenKeyword(models.Model):
 #     
 #     class Meta:
 #         db_table = 'substance'
+
+###################################
+# Archive: Old Screensaver 1 tables
+###################################
+
+# 20180919: Activity Refactor:
+# 1. combine ServiceActivity into Activity:
+#  - move SA.serviced_user, SA.serviced_screen
+#  - move SA.service_activity_type to Activity.type
+#  - populate Activity.classification with SA types: LS, extLS, and CPLT; 
+#    as well as new "training" and "automation" service activity types
+# 2. move LabActivity.screen -> Activity.screen
+# 3. Remove unused activity tables and join tables 
+
+# # Purpose: to cast CherryPickRequest for SiRNA screens
+# # Deprecate
+# class RnaiCherryPickRequest(models.Model):
+#     
+#     cherry_pick_request = \
+#         models.OneToOneField(
+#             CherryPickRequest, primary_key=True, on_delete=models.CASCADE)
+#     
+#     class Meta:
+#         db_table = 'rnai_cherry_pick_request'
+
         
-
-
-
 # TODO: remove, see migrations 0004, 0007
 # class ScreeningRoomUser(models.Model):
 #     

@@ -4,7 +4,8 @@ from __future__ import unicode_literals
 import base64
 from functools import wraps
 import logging
-import re
+import sys
+import traceback
 
 from django.conf import settings
 from django.conf.urls import url, include
@@ -24,9 +25,10 @@ import django.urls
 from django.utils import six
 from django.utils.crypto import constant_time_compare
 from django.utils.encoding import force_text
+from django.utils.html import escape
+from django.utils.http import is_same_domain
 from django.views.decorators.csrf import csrf_exempt
 
-from reports.utils import default_converter
 from reports import ValidationError, InformationError, BadRequestError, \
     ApiNotImplemented, BackgroundJobImmediateResponse, LoginFailedException, \
     ConfigurationError, API_RESULT_ERROR
@@ -34,9 +36,8 @@ from reports.auth import DEBUG_AUTHENTICATION
 from reports.serialize import XLSX_MIMETYPE, SDF_MIMETYPE, XLS_MIMETYPE, \
     CSV_MIMETYPE, JSON_MIMETYPE
 from reports.serializers import BaseSerializer, LimsSerializer
+from reports.utils import default_converter
 from reports.utils.django_requests import convert_request_method_to_put
-from django.utils.http import is_same_domain
-from django.utils.html import escape
 
 
 # from django.utils.http import same_origin
@@ -213,7 +214,7 @@ class IccblSessionAuthentication(Authentication):
     '''
     def is_authenticated(self, request, **kwargs):
         '''
-        Checks to make sure the user is logged in & has a Django session.
+        Checks to make sure the user is logged in and has a Django session.
         '''
         if request.method in ('GET', 'HEAD', 'OPTIONS', 'TRACE'):
             return bool(request.user.is_authenticated)
@@ -237,15 +238,6 @@ class IccblSessionAuthentication(Authentication):
             
             if self._django_csrf_check(request) is not True:
                 return False
-#             referer = request.META.get('HTTP_REFERER')
-# 
-#             if referer is None:
-#                 return False
-# 
-#             good_referer = 'https://%s/' % request.get_host()
-# 
-#             if not same_origin(referer, good_referer):
-#                 return False
 
         request_csrf_token = ''
         if request.method == 'POST':
@@ -258,10 +250,7 @@ class IccblSessionAuthentication(Authentication):
                         'SessionAuthentication: POST csrf token (%r): %r', 
                         'csrfmiddlewaretoken', request_csrf_token)
             except IOError:
-                # Handle a broken connection before we've completed reading
-                # the POST data. 
-                # (assuming they're still listening, which they probably
-                # aren't because of the error).
+                # Handle a broken connections
                 pass
 
         if request_csrf_token == '':
@@ -338,6 +327,14 @@ class Authorization(object):
 
     def _is_resource_authorized(
         self, user, permission_type, resource_name=None, **kwargs):
+        '''Determine if the user has the given permission for the resource:
+        
+        @param user the Django Request.User
+        @param permission_type one of ['read','write']
+        @param resource_name of the API resource
+        
+        @return True if permission assigned, False otherwise
+        '''
 
         if resource_name is None:
             resource_name = self.resource_name
@@ -360,11 +357,7 @@ class ResourceOptions(object):
     api_name = None
     resource_name = None
     alt_resource_name = None
-    object_class = None
-    queryset = None
     always_return_data = False
-    collection_name = 'objects'
-    detail_uri_name = 'pk'
 
     def __new__(cls, meta=None):
         overrides = {}
@@ -581,28 +574,14 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
             except Exception as e:
                 logger.exception('Unhandled exception: %r', e)
                 if hasattr(e, 'response'):
-                    # A specific response was specified
                     response = e.response
                 else:
                     logger.exception('Unhandled exception: %r', e)
-    
-#                     # A real, non-expected exception.
-#                     # Handle the case where the full traceback is more helpful
-#                     # than the serialized error.
-#                     if settings.DEBUG:
-#                         
-#                         logger.warn('raise full exception for %r', e)
-#                         raise
-    
-                    # Rather than re-raising, we're going to things similar to
-                    # what Django does. The difference is returning a serialized
-                    # error message.
                     logger.exception('handle 500 error %r...', str(e))
                     response = self._handle_500(request, e)
             
             return response
         return _inner
-
     
     
     def wrap_view(self, view):
@@ -663,6 +642,7 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
         raise ApiNotImplemented(self._meta.resource_name, 'get_cache')
 
     def deserialize(self, request, format=None, schema=None):
+        '''Provide standard deserialization of request data.'''
         
         # TODO: refactor to use delegate deserialize to the serializer class:
         # - allow Resource classes to compose functionality vs. inheritance
@@ -676,11 +656,11 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
         
         if schema is None:
             schema = self.build_schema(user=request.user)
-        # NOTE: Injecting information about the list fields, so that they
+
+        # NOTE: Inject information about the list fields, so that they
         # can be properly parsed (this is a custom serialization format)
         list_keys = [x for x,y in schema['fields'].items() 
             if y.get('data_type') == 'list']
-            
         
         if content_type.startswith('multipart'):
             if not request.FILES:
@@ -698,7 +678,9 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
                     'FILES': 'File upload supports only one file at a time',
                     'filenames': request.FILES.keys(),
                 })
-             
+            
+            # NOTE: for multipart posted content, use the key to determin the 
+            # file type.
             # FIXME: rework to use the multipart Content-Type here
             if 'sdf' in request.FILES:  
                 file = request.FILES['sdf']
@@ -758,10 +740,6 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
             content=serialized, 
             content_type=content_type)
         
-        # FIXME: filename is not being set well here:
-        # - used for downloads; reports.api resources use
-        # this method to serialize; all others use streaming serializers.
-
         format = self.get_serializer().get_format_for_content_type(content_type)
         if format != 'json':
             filename = kwargs.get('filename', None)
@@ -795,10 +773,7 @@ class IccblBaseResource(six.with_metaclass(DeclarativeMetaclass)):
             .replace('&#39;', "'").replace('&quot;', '"')
 
     def _handle_500(self, request, exception):
-        ''' 
-        '''
-        import traceback
-        import sys
+
         the_trace = '\n'.join(traceback.format_exception(*(sys.exc_info())))
         response_class = HttpResponseServerError
         response_code = 500

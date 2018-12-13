@@ -47,7 +47,7 @@ from sqlalchemy.sql.expression import column, join, insert, delete, distinct, \
     exists, cast, union_all, union, bindparam
 from sqlalchemy.sql.expression import nullslast
 import sqlalchemy.sql.schema
-import sqlalchemy.sql.sqltypes
+from sqlalchemy.sql.sqltypes import TEXT, INTEGER
 import unicodecsv
 import xlsxwriter
 
@@ -168,9 +168,7 @@ API_MSG_PLATING_CANCELED = 'Plating canceled'
 API_MSG_CPR_PLATES_PLATED = 'Plates plated'
 API_MSG_CPR_PLATES_SCREENED = 'Plates screened'
 API_MSG_CPR_PLATED_CANCEL_DISALLOWED = 'Plating reservation may not be canceled after plates are plated'
-
 API_MSG_CPR_CONCENTRATIONS = 'concentration_warnings'
-
 # API_PARAM_PLATE_MAPPING_OVERRIDE = 'plate_mapping_override'
 API_PARAM_SHOW_OTHER_REAGENTS = 'show_other_reagents'
 API_PARAM_SHOW_ALTERNATE_SELECTIONS = 'show_alternate_selections'
@@ -190,6 +188,7 @@ logger = logging.getLogger(__name__)
 
 DEBUG_SCREEN_ACCESS = False or logger.isEnabledFor(logging.DEBUG)
 DEBUG_DC_ACCESS = False or logger.isEnabledFor(logging.DEBUG)
+DEBUG_RDT = False or logger.isEnabledFor(logging.DEBUG)
 DEBUG_RV_CREATE = False or logger.isEnabledFor(logging.DEBUG)
 DEBUG_SCREENRESULT = logger.isEnabledFor(logging.DEBUG)
 DEBUG_LIB_LOAD = False or logger.isEnabledFor(logging.DEBUG)
@@ -655,7 +654,7 @@ class PlateLocationResource(DbApiResource):
             if 'library_copy' in param_hash:
                 param = param_hash.pop('library_copy')
                 param = urllib.unquote(param).decode('utf-8')
-                logger.info('param library_copy: %r', param)
+                logger.debug('param library_copy: %r', param)
                 if '/' not in param or len(param.split('/')) !=2:
                     raise BadRequestError({
                         'library_copy': 'must be of the form '
@@ -823,7 +822,6 @@ class PlateLocationResource(DbApiResource):
 
         # cache state, for logging
         # Look for id's kwargs, to limit the potential candidates for logging
-#         id_attribute = schema['id_attribute']
         kwargs_for_log = self.get_id(
             deserialized, schema=schema, validate=True,**kwargs)
 
@@ -852,9 +850,7 @@ class PlateLocationResource(DbApiResource):
         update_log = self.log_patch(request, original_data,new_data, schema=schema, **kwargs)
         if update_log:
             update_log.save()
-        # patch_count = len(patched_plate_logs)
         update_count = len([x for x in patched_plate_logs if x.diffs ])
-        #unchanged_count = patch_count - update_count
         action = update_log.api_action if update_log else 'Unchanged'
         if action == API_ACTION.CREATE:
             action += ': ' + update_log.key
@@ -879,12 +875,12 @@ class PlateLocationResource(DbApiResource):
     @transaction.atomic
     def patch_obj(self, request, deserialized, **kwargs):
 
-        logger.info('patch platelocation')
         schema = kwargs.pop('schema', None)
         if not schema:
             raise Exception('schema not initialized')
         id_kwargs = \
             self.get_id(deserialized, schema=schema, validate=True, **kwargs)
+        logger.info('patch platelocation: %r', id_kwargs)
 
         create = False
         try:
@@ -1062,9 +1058,6 @@ class LibraryCopyPlateResource(DbApiResource):
                                              IccblSessionAuthentication())
         resource_name = 'librarycopyplate'
         authorization = UserGroupAuthorization(resource_name)
-        
-        ordering = []
-        filtering = {}
         serializer = LimsSerializer()
         always_return_data = True 
 
@@ -1354,7 +1347,7 @@ class LibraryCopyPlateResource(DbApiResource):
                 _c.c.name.label('copy_name'),
                 _concat(
                     _l.c.short_name, '/', _c.c.name, '/', 
-                    cast(_p.c.plate_number, sqlalchemy.sql.sqltypes.Text)
+                    cast(_p.c.plate_number, TEXT)
                 ).label('key'),
                 ])
             .select_from(j))
@@ -1409,7 +1402,7 @@ class LibraryCopyPlateResource(DbApiResource):
             cw_vols = cw_vols.where(_c.c.library_id==library_id)
         if copy_id is not None:
             cw_vols = cw_vols.where(_c.c.copy_id==copy_id)
-        # FIXME: adding plate_ids is not performant here
+        # NOTE: adding plate_ids is not performant here
         # if plate_ids is not None:
         #     cw_vols = cw_vols.where(_p.c.plate_id.in_(plate_ids))
         cw_vols = cw_vols.cte('copy_well_volumes')
@@ -1581,9 +1574,7 @@ class LibraryCopyPlateResource(DbApiResource):
         if is_data_interchange:
             use_vocab = False
             use_titles = False
-
         manual_field_includes = set(param_hash.get('includes', []))
-        logger.info('manual_field_includes: %r', manual_field_includes)
         
         if screen_facility_id is not None:
             filename = 'plates_for_screen_%s' % screen_facility_id
@@ -1667,7 +1658,7 @@ class LibraryCopyPlateResource(DbApiResource):
             _ap.c.assay_plate_id,
             _concat(
                 _l.c.short_name, '/', _c.c.name, '/', 
-                cast(_p.c.plate_number, sqlalchemy.sql.sqltypes.Text)
+                cast(_p.c.plate_number, TEXT)
             ).label('plate_key'),
             ])
             .select_from(
@@ -1764,11 +1755,9 @@ class LibraryCopyPlateResource(DbApiResource):
                     select([func.array_to_string(
                         func.array_agg(
                             _concat(                            
-                                cast(_library_comment_apilogs.c.name,
-                                    sqlalchemy.sql.sqltypes.Text),
+                                cast(_library_comment_apilogs.c.name,TEXT),
                                 LIST_DELIMITER_SUB_ARRAY,
-                                cast(_library_comment_apilogs.c.date_time,
-                                    sqlalchemy.sql.sqltypes.Text),
+                                cast(_library_comment_apilogs.c.date_time,TEXT),
                                 LIST_DELIMITER_SUB_ARRAY,
                                 _library_comment_apilogs.c.comment)
                         ), 
@@ -1781,11 +1770,9 @@ class LibraryCopyPlateResource(DbApiResource):
                     select([func.array_to_string(
                         func.array_agg(
                             _concat(                            
-                                cast(_plate_comment_apilogs.c.name,
-                                    sqlalchemy.sql.sqltypes.Text),
+                                cast(_plate_comment_apilogs.c.name,TEXT),
                                 LIST_DELIMITER_SUB_ARRAY,
-                                cast(_plate_comment_apilogs.c.date_time,
-                                    sqlalchemy.sql.sqltypes.Text),
+                                cast(_plate_comment_apilogs.c.date_time, TEXT),
                                 LIST_DELIMITER_SUB_ARRAY,
                                 _plate_comment_apilogs.c.comment)
                         ), 
@@ -1795,8 +1782,7 @@ class LibraryCopyPlateResource(DbApiResource):
                         _concat(
                             _assay_plates.c.short_name,
                             '/%/',
-                            cast(_assay_plates.c.plate_number, 
-                                sqlalchemy.sql.sqltypes.Text))))
+                            cast(_assay_plates.c.plate_number, TEXT))))
                     ).label('comment_array'),
             ])
             .select_from(
@@ -2006,7 +1992,6 @@ class LibraryCopyPlateResource(DbApiResource):
                     temp.append(v)
             order_params = temp
         
-        logger.info('filter hash keys: %r', filter_hash.keys())
         field_hash = self.get_visible_fields(
             schema['fields'], filter_hash.keys(), manual_field_includes,
             param_hash.get('visibilities'),
@@ -2118,10 +2103,10 @@ class LibraryCopyPlateResource(DbApiResource):
                     .where(_ap.c.plate_id==_plate_cte.c.plate_id)),
             'librarycopyplate_id': (
                 _concat(_l.c.short_name,'/',_c.c.name,'/', 
-                    cast(_p.c.plate_number, sqlalchemy.sql.sqltypes.Text))),
+                    cast(_p.c.plate_number, TEXT))),
             'copyplate_id': (
                 _concat(_c.c.name,'/',
-                    cast(_p.c.plate_number, sqlalchemy.sql.sqltypes.Text))),
+                    cast(_p.c.plate_number, TEXT))),
             'remaining_well_volume': _plate_statistics.c.remaining_well_volume,
             'avg_remaining_volume': _plate_statistics.c.avg_well_remaining_volume,
             'min_remaining_volume': _plate_statistics.c.min_well_remaining_volume,
@@ -2145,11 +2130,9 @@ class LibraryCopyPlateResource(DbApiResource):
                 select([func.array_to_string(
                     func.array_agg(
                         _concat(                            
-                            cast(_comment_apilogs.c.name,
-                                sqlalchemy.sql.sqltypes.Text),
+                            cast(_comment_apilogs.c.name, TEXT),
                             LIST_DELIMITER_SUB_ARRAY,
-                            cast(_comment_apilogs.c.date_time,
-                                sqlalchemy.sql.sqltypes.Text),
+                            cast(_comment_apilogs.c.date_time, TEXT),
                             LIST_DELIMITER_SUB_ARRAY,
                             _comment_apilogs.c.comment)
                     ), 
@@ -2161,11 +2144,9 @@ class LibraryCopyPlateResource(DbApiResource):
                 select([func.array_to_string(
                     func.array_agg(
                         _concat(                            
-                            cast(_library_comment_apilogs.c.name,
-                                sqlalchemy.sql.sqltypes.Text),
+                            cast(_library_comment_apilogs.c.name, TEXT),
                             LIST_DELIMITER_SUB_ARRAY,
-                            cast(_library_comment_apilogs.c.date_time,
-                                sqlalchemy.sql.sqltypes.Text),
+                            cast(_library_comment_apilogs.c.date_time, TEXT),
                             LIST_DELIMITER_SUB_ARRAY,
                             _library_comment_apilogs.c.comment)
                     ), 
@@ -2276,7 +2257,6 @@ class LibraryCopyPlateResource(DbApiResource):
         if plate_search_errors:
             meta[SCHEMA.API_MSG_WARNING] = ', '.join(sorted(plate_search_errors))
         
-        logger.info('stream LibraryCopyPlate...')
         return self.stream_response_from_statement(
             request, stmt, count_stmt, filename,
             field_hash=field_hash, param_hash=param_hash,
@@ -2344,7 +2324,7 @@ class LibraryCopyPlateResource(DbApiResource):
         
         logger.info('batch_edit plates...')
         if DEBUG_PLATE_EDIT:
-            logger.info('param_hash: %r', param_hash)
+            logger.info('batch_edit param_hash: %r', param_hash)
         
         plate_info_data = param_hash.pop('plate_info', None)
         if plate_info_data: 
@@ -2381,13 +2361,13 @@ class LibraryCopyPlateResource(DbApiResource):
             original_data = self._get_list_response_internal(**plate_kwargs)
             if not original_data:
                 raise Http404
-            logger.info('got the plate objects for search data: %d', len(original_data))
+            logger.info(
+                'got the plate objects for search data: %d', len(original_data))
             if DEBUG_PLATE_EDIT:
                 logger.info('plates %r', ['{copy_name}/{plate_number}'.format(**lcp)
                     for lcp in original_data])
-            
-            plate_ids = [x['plate_id'] for x in original_data]
 
+            plate_ids = [x['plate_id'] for x in original_data]
             query = Plate.objects.all().filter(plate_id__in=plate_ids)
             for key,value in plate_info_data.items():
                 fi = schema['fields'].get(key,None)
@@ -2534,8 +2514,7 @@ class LibraryCopyPlateResource(DbApiResource):
                 copy__name=id_kwargs['copy_name'],
                 plate_number=id_kwargs['plate_number'])
         except ObjectDoesNotExist:
-            logger.info('plate does not exist: %r',
-                id_kwargs)
+            logger.info('plate does not exist: %r', id_kwargs)
             raise
         
         initializer_dict = self.parse(deserialized, schema=schema, create=False)
@@ -2578,8 +2557,7 @@ class LibraryCopyPlateResource(DbApiResource):
             except ObjectDoesNotExist:
                 logger.info('plate location not found: %r', location_data)
                 logger.info(
-                    'plate location does not exist, creating: %r',
-                    location_data)
+                    'plate location does not exist, creating: %r', location_data)
                 plate_location = PlateLocation.objects.create(**location_data)
                 plate_location.save()
                 
@@ -2598,7 +2576,6 @@ class LibraryCopyPlateResource(DbApiResource):
                 request, original_location_data, new_location_data,**kwargs)
             if log:
                 log.save()
-                logger.info('log created; %r', log)
                     
         return { API_RESULT_OBJ: plate }
 
@@ -2824,7 +2801,7 @@ class UserAgreementResource(DbApiResource):
         j = j.join(
             _lh_entered_agreements,
             and_(
-#                 all_users.c.lab_head_id != all_users.c.screensaver_user_id,
+                # all_users.c.lab_head_id != all_users.c.screensaver_user_id,
                 all_users.c.lab_head_id == _lh_entered_agreements.c.screensaver_user_id,
                 _lh_entered_agreements.c.type== all_users.c.type),
             isouter=True
@@ -2999,7 +2976,6 @@ class UserAgreementResource(DbApiResource):
         if not schema:
             raise Exception('schema not initialized')
         fields = schema['fields']
-#         id_attribute = schema['id_attribute']
         id_kwargs = self.get_id(deserialized,validate=True,schema=schema,**kwargs)
         screensaver_user_id = id_kwargs['screensaver_user_id']
         screensaver_user = ScreensaverUser.objects.get(
@@ -3143,7 +3119,6 @@ class ScreenAuthorization(UserGroupAuthorization):
         - Fields: ['facility_id', 'data_sharing_level','screen_type',
         'overlapping_positive_screens']
         '''
-        logger.info('get_screen_overlapping_table...')
         bridge = get_tables()
         _screen = bridge['screen']
         _overlap_screen = _screen.alias('overlap_screen')
@@ -3243,7 +3218,6 @@ class ScreenAuthorization(UserGroupAuthorization):
         '''
         current_dsl = self.get_user_data_sharing_level(
             screensaver_user, self.VOCAB_USER_AGREEMENT_RNAI)
-        logger.info('current_dsl: %r, %r', screensaver_user, current_dsl)
         my_screens = self.get_user_screens(screensaver_user)
         for screen in my_screens:
             if hasattr(screen, 'screenresult'):
@@ -3308,7 +3282,8 @@ class ScreenAuthorization(UserGroupAuthorization):
                     .filter(data_sharing_level__lt=DSL.PRIVATE)
                     .exclude(screenresult=None)
                     )
-            logger.info('update with visible small_molecule screens: %r', 
+            if DEBUG_SCREEN_ACCESS:
+                logger.info('update with visible small_molecule screens: %r', 
                         [x.facility_id for x in visible_screens])
             authorized_screens.update(visible_screens)
         if has_rna_data_deposited:
@@ -3319,7 +3294,8 @@ class ScreenAuthorization(UserGroupAuthorization):
                     .filter(data_sharing_level__lt=DSL.PRIVATE)
                     .exclude(screenresult=None)
                     )
-            logger.info('update with visible rna screens: %r', 
+            if DEBUG_SCREEN_ACCESS:
+                logger.info('update with visible rna screens: %r', 
                         [x.facility_id for x in visible_screens])
             authorized_screens.update(visible_screens)
         if DEBUG_SCREEN_ACCESS:
@@ -3336,8 +3312,6 @@ class ScreenAuthorization(UserGroupAuthorization):
         - either unrestricted "read" access or restricted access as defined in
         the User Agreement rules for data visibility. 
         '''
-        logger.info('has_screen_read_authorization: %r, %r', user, screen_facility_id)
-
         is_restricted = self.is_restricted_view(user)
         if is_restricted is not True:
             return True
@@ -3360,7 +3334,8 @@ class ScreenAuthorization(UserGroupAuthorization):
             effective_dsl =  self.get_user_data_sharing_level(
                 screensaver_user, self.VOCAB_USER_AGREEMENT_SM)
         if DEBUG_SCREEN_ACCESS:
-            logger.info('effective dsl: %r, %r, %r', screensaver_user, screen_type, effective_dsl)
+            logger.info('effective dsl: %r, %r, %r', 
+                screensaver_user, screen_type, effective_dsl)
         return effective_dsl
     
     def get_screen_access_level_table(self, username):
@@ -3414,13 +3389,15 @@ class ScreenAuthorization(UserGroupAuthorization):
             facility_id for facility_id in my_screen_facility_ids if
                 screen_overlapping_table[facility_id]['data_sharing_level']
                     == user_effective_sm_dsl and
-                screen_overlapping_table[facility_id]['screen_type'] == SCREEN_TYPE.SMALL_MOLECULE            
+                screen_overlapping_table[facility_id]['screen_type'] 
+                    == SCREEN_TYPE.SMALL_MOLECULE            
             ])
         my_qualified_rnai_facility_ids = set([
             facility_id for facility_id in my_screen_facility_ids if
                 screen_overlapping_table[facility_id]['data_sharing_level']
                     == user_effective_rna_dsl and 
-                screen_overlapping_table[facility_id]['screen_type'] == SCREEN_TYPE.RNAI            
+                screen_overlapping_table[facility_id]['screen_type'] 
+                    == SCREEN_TYPE.RNAI            
             ])
 
         
@@ -3558,12 +3535,14 @@ class ScreenAuthorization(UserGroupAuthorization):
         if is_restricted is not True:
             return extant_generator
         else:
-            logger.info('get_access_level_property_generator: %r for user: %r', 
-                self.resource_name, user)
+            if DEBUG_SCREEN_ACCESS:
+                logger.info('get_access_level_property_generator: %r for user: %r', 
+                    self.resource_name, user)
             
             screen_access_dict = self.get_screen_access_level_table(user.username)
             fields_by_level = self.get_fields_by_level(fields)
-            logger.debug('fields by level: %r', fields_by_level)
+            if DEBUG_SCREEN_ACCESS:
+                logger.info('fields by level: %r', fields_by_level)
             class Row:
                 def __init__(self, row):
                     logger.debug(
@@ -3762,8 +3741,10 @@ class ScreenResultAuthorization(ScreenAuthorization):
                                 logger.error(
                                     'unknown level 1 result value field: %r:%r: %r',
                                     self.well_id, key, value)
-                        logger.info('level 1: %r:%r val: %r, is_positive: %r, final: %r',
-                            self.well_id, key, value, self.is_positive, final_value)
+                        if DEBUG_SCREEN_ACCESS:
+                            logger.info(
+                                'level 1: %r:%r val: %r, is_positive: %r, final: %r',
+                                self.well_id, key, value, self.is_positive, final_value)
                         return final_value
                     else:
                         # NOTE: all users viewing screen results already have 
@@ -3788,11 +3769,7 @@ class ScreenResultResource(DbApiResource):
                                              IccblSessionAuthentication())
         resource_name = 'screenresult'
         authorization = ScreenResultAuthorization(resource_name)
-        ordering = []
-        filtering = {}
         serializer = ScreenResultSerializer()
-        object_class = dict
-        max_limit = 10000
         
     def __init__(self, **kwargs):
 
@@ -3956,7 +3933,6 @@ class ScreenResultResource(DbApiResource):
         
     @read_authorization
     def get_list(self, request, **kwargs):
-        logger.info('get_list: %r', kwargs)
         kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
         return self.build_list_response(request, **kwargs)
         
@@ -4203,7 +4179,8 @@ class ScreenResultResource(DbApiResource):
     def get_query(
             self, username, screenresult, param_hash, schema, limit, offset):
 
-        logger.info('build screenresult query')
+        if DEBUG_SCREENRESULT: 
+            logger.info('build screenresult query...')
         
         # Switch result_value query strategy for performance testing:
         # NOTE: 20180221 - orchestra testing shows no perf benefit from 
@@ -4264,7 +4241,7 @@ class ScreenResultResource(DbApiResource):
                  or fi['key'] in order_params
                  or '-%s' % fi['key'] in order_params
                  or fi['key'] in filter_hash)]
-        logger.info('base fields: %r', [
+        logger.debug('base fields: %r', [
             (fi['key'], fi['scope']) for fi in base_fields])
 
         # If filtering on result_value columns, the left joins perform better
@@ -4283,7 +4260,6 @@ class ScreenResultResource(DbApiResource):
                 and '-exclude' not in order_params):
             filter_excluded = False
         if filter_excluded is True:
-            logger.info('filter excluded...')
             base_clause = base_clause.join(
                 excluded_cols_select, 
                 _aw.c.well_id==excluded_cols_select.c.well_id,isouter=True)
@@ -4294,20 +4270,17 @@ class ScreenResultResource(DbApiResource):
                     or fi['scope'] in [
                         'fields.reagent','fields.smallmoleculereagent',
                         'fields.silencingreagent'] ) for fi in base_fields]):
-            logger.info('include well tables')
             base_query_tables.extend(['well','reagent'])
             base_clause = base_clause.join(_w, _aw.c.well_id == _w.c.well_id)
             base_clause = base_clause.join(
                 _reagent,_w.c.well_id==_reagent.c.well_id, isouter=True)
         if any([fi.get('table',None) 
                 in ('screen','screen_result') for fi in base_fields]):
-            logger.info('include screen tables')
             base_query_tables.extend(['screen','screen_result'])
             base_clause = base_clause.join(
                 _sr, _aw.c.screen_result_id == _sr.c.screen_result_id)
             base_clause = base_clause.join(_s, _sr.c.screen_id == _s.c.screen_id)
         if any([fi.get('table',None) in ('library',) for fi in base_fields]):
-            logger.info('include library table...')
             # Store the library table as a cte - the postgres query planner 
             # is not able to use the well-to-library fk to perform an
             # efficient index scan and instead uses a hash join
@@ -4428,7 +4401,8 @@ class ScreenResultResource(DbApiResource):
             base_stmt, param_hash, screenresult.screen.facility_id, username)            
 
         # Use the cached well_query_index table to build efficient output query
-        logger.info('build screenresult output query...')
+        if DEBUG_SCREENRESULT: 
+            logger.info('build screenresult output query...')
         # specific setup 
         base_query_tables = ['assay_well', 'screen']
         # force query to use well_query_index.well_id
@@ -4528,7 +4502,7 @@ class ScreenResultResource(DbApiResource):
                 str(stmt.compile(
                     dialect=postgresql.dialect(),
                     compile_kwargs={"literal_binds": True})))
-        logger.info('screenresult query built')
+            logger.info('screenresult query built')
         return (field_hash, columns, stmt, count_stmt, cachedQuery, filename)
     
 
@@ -4576,13 +4550,15 @@ class ScreenResultResource(DbApiResource):
         show_mutual_positives = bool(param_hash.get('show_mutual_positives', False))
         extra_dc_ids = param_hash.get(API_PARAM_DC_IDS, None)
             
-        logger.info('build screen_result schema...')
+        if DEBUG_SCREENRESULT: 
+            logger.info('build screen_result schema...')
         schema = self.build_schema(
             screenresult=screenresult,
             show_mutual_positives=show_mutual_positives,
             user=request.user,
             extra_dc_ids=extra_dc_ids)
-        logger.info('build screen_result schema - done')
+        if DEBUG_SCREENRESULT: 
+            logger.info('build screen_result schema - done')
 
         content_type = self.get_serializer().get_accept_content_type(
             request, format=kwargs.get('format', None))
@@ -4593,7 +4569,8 @@ class ScreenResultResource(DbApiResource):
             manual_field_includes.discard('molfile')
         param_hash['includes'] = list(manual_field_includes)
 
-        logger.info('build screenresult query...')
+        if DEBUG_SCREENRESULT: 
+            logger.info('build screenresult query...')
         (field_hash, columns, stmt, count_stmt, cachedQuery,filename) = \
             self.get_query(
                 request.user.username,
@@ -4671,11 +4648,10 @@ class ScreenResultResource(DbApiResource):
         
         if ( use_vocab or content_type in [XLS_MIMETYPE,XLSX_MIMETYPE]):
             # NOTE: xls export uses vocab values
-            logger.info('use vocab generator...')
             rowproxy_generator = \
                 DbApiResource.create_vocabulary_rowproxy_generator(field_hash)
         else:
-            logger.info('do not use vocabularies')
+            logger.debug('do not use vocabularies')
 
         # Custom serializer for screen results
         with get_engine().connect() as conn:
@@ -4695,7 +4671,6 @@ class ScreenResultResource(DbApiResource):
                 result,ordered_keys,list_fields=list_fields,
                 value_templates=value_templates)
             data = closing_iterator_wrapper(data, conn.close)
-            logger.info('content_type: %r', content_type)
             if content_type == JSON_MIMETYPE:
                 meta = {
                     'limit': limit,
@@ -4845,7 +4820,6 @@ class ScreenResultResource(DbApiResource):
                 'The screenresult schema requires a screen facility ID'
                 ' in the URI, as in /screenresult/[facility_id]/schema/')
         facility_id = kwargs.pop('screen_facility_id')
-        logger.info('get schema: %r', kwargs)
         if not self._meta.authorization._is_resource_authorized(
             request.user, 'read', screen_facility_id=facility_id):
             logger.info('Permission Denied: ScreenResult.schema, %r, %r',
@@ -4888,7 +4862,8 @@ class ScreenResultResource(DbApiResource):
             % (user.username, screen_facility_id, show_mutual_positives)
         if extra_dc_ids:
             cache_key += '_dcs_.'  + '_'.join(extra_dc_ids)
-        logger.info('build screenresult schema: %s', cache_key)
+        if DEBUG_SCREENRESULT: 
+            logger.info('build screenresult schema: %s', cache_key)
         
         m = hashlib.md5()
         m.update(cache_key)
@@ -4922,11 +4897,11 @@ class ScreenResultResource(DbApiResource):
             
             
         if data:
-            logger.info('cached: %s', cache_key)
+            logger.debug('cached: %s', cache_key)
         else:
-            logger.info('not cached: %s', cache_key)
+            logger.debug('not cached: %s', cache_key)
             data = super(ScreenResultResource, self).build_schema(user=user, **kwargs)
-            logger.info('screen_result schema built: %s', cache_key)
+            logger.debug('screen_result schema built: %s', cache_key)
             
             newfields = add_well_fields(data['fields'])
             if screenresult.screen.study_type is not None:
@@ -4937,7 +4912,8 @@ class ScreenResultResource(DbApiResource):
                 if fi.get('ordinal', 0) > max_ordinal:
                     max_ordinal = fi['ordinal']
             
-            logger.info('map datacolumn definitions into field information definitions...')
+            if DEBUG_SCREENRESULT: 
+                logger.info('map datacolumn definitions into field information definitions...')
             
             datacolumns = self.get_datacolumn_resource()\
                 ._get_list_response_internal(
@@ -5050,7 +5026,8 @@ class ScreenResultResource(DbApiResource):
                 
             data['fields'] = newfields
                 
-            logger.info('build screenresult schema done')
+            if DEBUG_SCREENRESULT: 
+                logger.info('build screenresult schema done')
             self.get_cache().set(digested_cache_key, data)
             
         return data
@@ -5221,7 +5198,6 @@ class ScreenResultResource(DbApiResource):
             
             screen_log.save()
             screenresult_log.parent_log = screen_log
-            logger.info('created log: %r', screen_log)
             
             logger.info(
                 'Create screen result data columns for %r', screen.facility_id)
@@ -5268,11 +5244,12 @@ class ScreenResultResource(DbApiResource):
                     for colname in derived_cols:
                         parent_column.derived_from_columns.add(
                             sheet_col_to_datacolumn[colname])
-                    logger.info(
-                        'parent: %d:%s, derived from columns: %s', 
-                        parent_column.data_column_id,parent_column.name, 
-                        ['%d:%s'%(col.data_column_id,col.name) for col 
-                            in parent_column.derived_from_columns.all()])
+                    if DEBUG_SCREENRESULT: 
+                        logger.info(
+                            'parent: %d:%s, derived from columns: %s', 
+                            parent_column.data_column_id,parent_column.name, 
+                            ['%d:%s'%(col.data_column_id,col.name) for col 
+                                in parent_column.derived_from_columns.all()])
                     parent_column.save()
                 
             if errors:
@@ -5469,7 +5446,6 @@ class ScreenResultResource(DbApiResource):
             
             rows_created = 0
             rvs_to_create = 0
-            # plates_max_replicate_loaded = {}
             logger.info('write temp file result values for screen: %r ...',
                 screen_result.screen.facility_id)
             errors = {}
@@ -5597,8 +5573,6 @@ class ScreenResultResource(DbApiResource):
                     '''COPY result_value ({}) FROM STDIN 
                        WITH (FORMAT CSV, NULL "{}", DELIMITER '{}', QUOTE '{}' )'''.format(
                          ','.join(fieldnames), PSYCOPG_NULL, ',', '"')
-                
-                logger.info('text: %r', copy_command)
                 conn.copy_expert(copy_command, result_value_file)
                 logger.info('result_values created.')
             screenresult_log.diffs.update({
@@ -5763,7 +5737,8 @@ class DataColumnAuthorization(ScreenAuthorization):
         return self.screen_resource
     
     def filter(self, user, filter_expression):
-        # TODO: test: replace with filter_in_sql for performance
+
+        # TODO: investigate filter_in_sql for performance
         
         if self.is_restricted_view(user) is not True:
             return filter_expression
@@ -5793,13 +5768,6 @@ class DataColumnAuthorization(ScreenAuthorization):
                 column('screen_facility_id').in_(level_1_screen_ids)))
         
         auth_filter = or_(*or_clause)
-        # add or clauses conditionally instead
-        # auth_filter = or_(
-        #     column('screen_data_sharing_level') == 0,
-        #     column('screen_facility_id').in_(level_2_3_screen_ids),
-        #     and_(column('positives_count')>0,
-        #         column('screen_facility_id').in_(level_1_screen_ids))
-        #     )
         logger.debug('created data column filter: %r', auth_filter)   
         if filter_expression is not None:
             filter_expression = and_(filter_expression, auth_filter)
@@ -6005,7 +5973,6 @@ class DataColumnResource(DbApiResource):
 
     def build_list_response(self, request, **kwargs):
         
-        logger.info('build datacolumn response...')
         outer_self = self
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
@@ -6101,7 +6068,7 @@ class DataColumnResource(DbApiResource):
             custom_columns = {
                 'key': (
                     _concat('dc_',_screen.c.facility_id, '_', 
-                        cast(_dc.c.data_column_id,sqlalchemy.sql.sqltypes.Text))),
+                        cast(_dc.c.data_column_id,TEXT))),
                 # default to admin level; auth row property generator will update
                 'user_access_level_granted': literal_column('3'),
                 'derived_from_columns': (
@@ -6180,7 +6147,6 @@ class DataColumnResource(DbApiResource):
             },
         'boolean_positive_indicator': {
             'data_type': 'boolean',
-#             'vocabulary_scope_ref': 'resultvalue.boolean_positive_indicator'
             },
         'confirmed_positive_indicator': {
             'vocabulary_scope_ref': 'resultvalue.confirmed_positive_indicator',
@@ -6240,11 +6206,11 @@ class DataColumnResource(DbApiResource):
         logger.debug('created datacolumn from row: %r, %r', key, _dict)
         return _dict
 
-    # FIXME: deprecated
     def _create_datacolumn_from_orm(self, dc):
         ''' Transform an ORM DataColumn record into a
         schema field descriptor.
         '''
+        # TODO: refactor with _create_datacolumn_from_row
 
         screen_facility_id = dc.screen_result.screen.facility_id
         screen = Screen.objects.get(facility_id=screen_facility_id)
@@ -6292,7 +6258,7 @@ class DataColumnResource(DbApiResource):
     @transaction.atomic
     def patch_detail(self, request, **kwargs):
         # TODO: 20170731: allow data_column_id to be passed as an arg so 
-        # that the DataColumn may be patched external from the Screen Result
+        # that the DataColumn may be patched separately from the Screen Result
         raise ApiNotImplemented(self._meta.resource_name, 'patch_detail')
     
     @write_authorization
@@ -6308,7 +6274,7 @@ class DataColumnResource(DbApiResource):
     def patch_obj(self, request, deserialized, screen_result=None, **kwargs):
         
         # TODO: 20170731: allow data_column_id to be passed as an arg so 
-        # that the DataColumn may be patched external from the Screen Result
+        # that the DataColumn may be patched separately from the Screen Result
         if screen_result is None:
             raise BadRequestError(key='screen_result', msg = 'required')
         logger.debug('patch_obj %s', deserialized)
@@ -6376,8 +6342,6 @@ class CopyWellResource(DbApiResource):
                                              IccblSessionAuthentication())
         resource_name = 'copywell'
         authorization = UserGroupAuthorization(resource_name)
-        ordering = []
-        filtering = {}
         serializer = LimsSerializer()
         always_return_data = True 
 
@@ -6623,7 +6587,9 @@ class CopyWellResource(DbApiResource):
                     if well_names:
                         copy_wellname_searches[copy].extend(wellnames)
                     else:
-                        raise ValidationError(key='copies', msg='Must be specified with plates or wells')
+                        raise ValidationError(
+                            key='copies', 
+                            msg='Must be specified with plates or wells')
             else:
                 well_only_searches.append(parsed_search)
         if DEBUG_WELL_PARSE:
@@ -6667,7 +6633,8 @@ class CopyWellResource(DbApiResource):
         
         # TODO: could optimize well only searches as in WellResource
         for well_search in well_only_searches:
-            logger.info('well only search: %r', well_search)
+            if DEBUG_WELL_PARSE:
+                logger.info('well only search: %r', well_search)
             well_clause = None
             plates = well_search.get('plates')
             plate_ranges = well_search.get('plate_ranges')
@@ -6676,20 +6643,28 @@ class CopyWellResource(DbApiResource):
             
             if well_ids:
                 if well_names:
-                    raise ValidationError(key='well_ids',msg='cannot be specified with well names')
+                    raise ValidationError(
+                        key='well_ids',
+                        msg='cannot be specified with well names')
                 if plates or plate_ranges:
-                    raise ValidationError(key='well_ids',msg='cannot be specified with plates or plate ranges')
+                    raise ValidationError(
+                        key='well_ids',
+                        msg='cannot be specified with plates or plate ranges')
                 well_clause = _well.c.well_id.in_(well_ids)
                 
             if well_names:
                 if not plates or plate_ranges:
-                    raise ValidationError(key='well_names',msg='cannot be specified without plates or plate_ranges')
+                    raise ValidationError(
+                        key='well_names',
+                        msg='cannot be specified without plates or plate_ranges')
                 well_clause = _well.c.well_name.in_(well_names)
-                logger.info('well_names: %r', well_names)
+                if DEBUG_WELL_PARSE:
+                    logger.info('well_names: %r', well_names)
             plate_clauses = []
             if plate_ranges:
                 for plate_range in plate_ranges:
-                    plate_clauses.append(_well.c.plate_number.between(*plate_range, symmetric=True))
+                    plate_clauses.append(
+                        _well.c.plate_number.between(*plate_range, symmetric=True))
             if plates:
                 plate_clauses.append(_well.c.plate_number.in_(plates))
             if plate_clauses:
@@ -6721,7 +6696,6 @@ class CopyWellResource(DbApiResource):
         # logger.info('well_query %s', compiled_stmt)
         
         return well_query
-
 
     @read_authorization
     def get_detail(self, request, **kwargs):
@@ -6804,13 +6778,6 @@ class CopyWellResource(DbApiResource):
         filter_expression = \
             self._meta.authorization.filter(request.user,filter_expression)
 
-        # TODO: remove this restriction if the query can be optimized
-        # if filter_expression is None:
-        #     raise InformationError(
-        #         key='Input filters ',
-        #         msg='Please enter a filter expression to begin')
-        # else:
-        logger.debug('filters: %r', readable_filter_hash)                      
         order_params = param_hash.get('order_by', [])
         field_hash = self.get_visible_fields(
             schema['fields'], filter_hash.keys(), manual_field_includes,
@@ -6863,8 +6830,6 @@ class CopyWellResource(DbApiResource):
         custom_columns = {
             'copywell_id': (
                 _concat(_l.c.short_name,'/',_c.c.name,'/',_w.c.well_id)),
-#             'copywell_id': (
-#                 _concat(_c.c.name,'/',_w.c.well_id)),
             'volume': case([
                 (_w.c.library_well_type==WELL_TYPE.EXPERIMENTAL, 
                      func.coalesce(_cw.c.volume, 
@@ -6899,10 +6864,6 @@ class CopyWellResource(DbApiResource):
                     (_pl.c.room,_pl.c.freezer,_pl.c.shelf,_pl.c.bin),'-')
                 ),
             
-            # 'adjustments': case([
-            #     (_w.c.library_well_type==WELL_TYPE.EXPERIMENTAL, 
-            #         func.coalesce(_cw.c.adjustments, 0) )],
-            #     else_=None),
             # Note: the query plan makes this faster than the hash join of 
             # copy-copy_well
             # 'copy_name': literal_column(
@@ -7009,13 +6970,16 @@ class CopyWellResource(DbApiResource):
         return id_kwargs
 
     def _parse_list_ids(self, deserialized, schema):
-        (id_query_params, rows_to_ids) = DbApiResource._parse_list_ids(self, deserialized, schema)
+        
+        (id_query_params, rows_to_ids) = \
+            DbApiResource._parse_list_ids(self, deserialized, schema)
     
         
         if id_query_params:
             id_kwargs_list = id_query_params.get(SCHEMA.API_PARAM_NESTED_SEARCH)
             if not id_kwargs_list:
-                raise Exception('Expected \"%s\" in _parse_list_ids' % SCHEMA.API_PARAM_NESTED_SEARCH)
+                raise Exception('Expected \"%s\" in _parse_list_ids' 
+                    % SCHEMA.API_PARAM_NESTED_SEARCH)
             
             # Group IDS by copy/plate
             
@@ -7025,7 +6989,8 @@ class CopyWellResource(DbApiResource):
                 copy_plate_to_well_names[copy_plate].add(id_kwargs['well_name'])
             
             nested_search = []
-            for (copy_name, plate_number),well_names in copy_plate_to_well_names.items():
+            for (copy_name, plate_number),well_names \
+                    in copy_plate_to_well_names.items():
                 nested_search.append({
                     'copy_name': copy_name, 
                     'plate_number': plate_number,
@@ -7080,8 +7045,6 @@ class CopyWellResource(DbApiResource):
             logger.info(msg)
             raise Http404(msg)
 
-        # TODO: wrapper for parsing
-        logger.debug('fields: %r, deserialized: %r', fields.keys(), deserialized)
         for key in fields.keys():
             if deserialized.get(key, None) is not None:
                 initializer_dict[key] = parse_val(
@@ -7108,9 +7071,6 @@ class CopyWellResource(DbApiResource):
             copywell = CopyWell.objects.get(
                 well=well, copy=librarycopy)
             
-            # FIXME: only "set" adjustments if sent from the user
-            # if volume is not None:
-            #    copywell.adjustments += 1
         except ObjectDoesNotExist:
             # If creating, check that something is updated from the plate values
             if plate.remaining_well_volume == volume:
@@ -7137,10 +7097,6 @@ class CopyWellResource(DbApiResource):
             has_update = True
             copywell.volume = volume
         
-        # Removed: screening count is tracked only on the plate level, and 
-        # adjustment count is simple count of apilogs for volume changes
-        # if adjustments is not None:
-        #     copywell.adjustments = adjustments
         if mg_ml_concentration is not None:
             has_update = True
             copywell.mg_ml_concentration = mg_ml_concentration
@@ -7179,9 +7135,6 @@ class CopyWellResource(DbApiResource):
             log = self.make_child_log(parent_log)
             log.key = '/'.join([copy.library.short_name, copy.name, copywell.well_id])
             log.uri = '/'.join([log.ref_resource_name,log.key])
-#            log.key = '/'.join([copy.name, copywell.well_id])
-#            log.uri = '/'.join([
-#                log.ref_resource_name,'library',copy.library.short_name, log.key])
             log.diffs = {
                 'volume': [copywell.volume, new_volume]}
             log.parent_log = parent_log
@@ -7284,10 +7237,6 @@ class CopyWellResource(DbApiResource):
             log.key = '/'.join([
                 copy.library.short_name, copy.name, copywell.well_id])
             log.uri = '/'.join([log.ref_resource_name,log.key])
-#            log.key = '/'.join([copy.name, copywell.well_id])
-#            # NOTE: make the log uri more robust, with library name as well
-#            log.uri = '/'.join([
-#                log.ref_resource_name,'library',copy.library.short_name,log.key])
             if set_deselected_to_zero is False:
                 new_volume = copywell.volume + cpr.transfer_volume_per_well_approved
             else:
@@ -7322,11 +7271,6 @@ class CopyWellResource(DbApiResource):
                     copy.library.short_name, plate.copy.name, 
                     str(plate.plate_number)])
                 plate_log.uri = '/'.join([log.ref_resource_name,log.key])
-#                plate_log.key = '/'.join([
-#                    plate.copy.name, str(plate.plate_number)])
-#                # NOTE: make the log uri more robust, with library name as well
-#                plate_log.uri = '/'.join([
-#                    log.ref_resource_name,'library',copy.library.short_name,log.key])
                 if plate.cplt_screening_count < 1:
                     logger.warn(
                         'deallocation: plate: %r, cplt_screening_count already 0',
@@ -7401,10 +7345,6 @@ class CopyWellResource(DbApiResource):
             log = self.make_child_log(parent_log)
             log.key = '/'.join([copy.library.short_name, copy.name, copywell.well_id])
             log.uri = '/'.join([log.ref_resource_name,log.key])
-#            log.key = '/'.join([copy.name, copywell.well_id])
-#            # NOTE: make the log uri more robust, with library name as well
-#            log.uri = '/'.join([
-#                log.ref_resource_name,'library',copy.library.short_name,log.key])
             logger.debug('copywell: %r, volume: %r, cpr.transfer volume: %r', 
                 copywell, copywell.volume, cpr.transfer_volume_per_well_approved)
             new_volume = copywell.volume - cpr.transfer_volume_per_well_approved
@@ -7437,11 +7377,6 @@ class CopyWellResource(DbApiResource):
             plate_log.key = '/'.join([
                 copy.library.short_name, plate.copy.name, str(plate.plate_number)])
             plate_log.uri = '/'.join([log.ref_resource_name,log.key])
-#            plate_log.key = '/'.join([ 
-#                plate.copy.name, str(plate.plate_number)])
-#            # NOTE: make the log uri more robust, with library name as well
-#            plate_log.uri = '/'.join([
-#                log.ref_resource_name,'library',copy.library.short_name,log.key])
             new_plate_cplt_screening_count = plate.cplt_screening_count +1
             plate_log.diffs = {
                 'cplt_screening_count': [
@@ -7501,7 +7436,8 @@ class CherryPickRequestAuthorization(ScreenAuthorization):
         screensaver_user = ScreensaverUser.objects.get(username=user.username)
         my_screens = self.get_user_screens(screensaver_user)
         
-        cpr = CherryPickRequest.objects.get(cherry_pick_request_id=cherry_pick_request_id)
+        cpr = CherryPickRequest.objects.get(
+            cherry_pick_request_id=cherry_pick_request_id)
         
         return cpr.screen in my_screens
         
@@ -7514,8 +7450,6 @@ class CherryPickRequestResource(DbApiResource):
                                              IccblSessionAuthentication())
         resource_name = 'cherrypickrequest'
         authorization = CherryPickRequestAuthorization(resource_name)
-        ordering = []
-        filtering = {}
         serializer = LimsSerializer()
         always_return_data = True 
 
@@ -7722,13 +7656,11 @@ class CherryPickRequestResource(DbApiResource):
         if self._meta.authorization.has_cherry_pick_read_authorization(
                 request.user, cpr_id) is False:
             raise PermissionDenied
-         
-        logger.info('get the cpr: %r', cpr_id) 
+
         cpr_obj = CherryPickRequest.objects.get(
             cherry_pick_request_id=cpr_id)
         cpr = self._get_detail_response_internal(**kwargs)
         
-        logger.info('get the cpps: %r', cpr_id) 
         cpps = self.get_cherrypickplate_resource()._get_list_response_internal(
             **{
                 'cherry_pick_request_id': cpr_id,
@@ -7742,7 +7674,6 @@ class CherryPickRequestResource(DbApiResource):
             'library_plate','source_copy_name','source_well_name',
             'source_plate_type','destination_well','destination_plate_type']
 
-        logger.info('get the lcps: %r', cpr_id) 
         lcps = self.get_labcherrypick_resource()._get_list_response_internal(
             **{
                 'cherry_pick_request_id': cpr_id,
@@ -7789,18 +7720,28 @@ class CherryPickRequestResource(DbApiResource):
         
         vocabularies = DbApiResource.get_vocabularies(lcp_schema['fields'])
         def vocab_function(key,val):
-            if key in vocabularies:
-                return vocabularies[key][val]['title']
+            val = str(val)
+            if val and key in vocabularies:
+                if val not in vocabularies[key]:
+                    logger.error('unknown vocabulary: %r, %r, %r',
+                        key, val, vocabularies)
+                    return val
+                else:
+                    return vocabularies[key][val][SCHEMA.VOCABULARY.TITLE]
             else:
                 return val
         def title_function(key):
-            return lcp_schema['fields'][key]['title']
+            if key in lcp_schema['fields']:
+                return lcp_schema['fields'][key]['title']
+            else:
+                return key
 
         extra_values = OrderedDict((
             ('Person Visiting', cpr['requested_by_name']),
             ('Screen Number', cpr['screen_facility_id']),
-            (u'Volume ', 
-                si_unit.print_si_unit(cpr['transfer_volume_per_well_approved'],1e-6, 'L', 1)), 
+            (u'Volume (uL)', 
+                si_unit.convert_decimal(
+                    cpr['transfer_volume_per_well_approved'],1e-6, 2)), 
             # (u'Volume (uL)', 
             #    Decimal(cpr['transfer_volume_per_well_approved']) * Decimal(1e6)),
             # NOTE: UTF-8 encodings are supported, but avoid using them because
@@ -7855,7 +7796,6 @@ class CherryPickRequestResource(DbApiResource):
                         values.extend(extra_values.values())
                         writer.writerow(values)
                     filename = '%s.csv' % plate_name
-                    logger.info('write; %r', plate_name)
                     cherry_pick_plate_number = lcps[0]['cherry_pick_plate_number']
                     cpp = cpps[cherry_pick_plate_number]
                     if cpp['plating_date']:
@@ -7889,7 +7829,7 @@ class CherryPickRequestResource(DbApiResource):
                     if len(types)>1:
                         extra_plate_messages.append(plate_name)
                 if extra_plate_messages:
-                    logger.info('extra_plate_messages: %r', extra_plate_messages)
+                    logger.debug('extra_plate_messages: %r', extra_plate_messages)
                     extra_plate_messages.insert(0,readme_types_warning)
                     readme_text.append('\n')
                     readme_text.extend(extra_plate_messages)
@@ -7899,7 +7839,7 @@ class CherryPickRequestResource(DbApiResource):
                 for plate_copy,dest_plates in source_plate_to_dest_plates.items():
                     if len(dest_plates) > 1:
                         for dest_plate in dest_plates:
-                            logger.info('dest_plate: %r, has source plate: %r',
+                            logger.debug('dest_plate: %r, has source plate: %r',
                                 dest_plate,plate_copy)
                             dest_plates_to_source_plates[dest_plate].add(plate_copy)
                 for dest_plate in sorted(dest_plates_to_source_plates.keys()):
@@ -7908,7 +7848,7 @@ class CherryPickRequestResource(DbApiResource):
                         split_plate_messages.append(
                             reload_plate_msg % (dest_plate,source_plate))
                 if split_plate_messages:
-                    logger.info('split_plate_messages: %r', split_plate_messages)
+                    logger.debug('split_plate_messages: %r', split_plate_messages)
                     split_plate_messages.insert(0,reload_plates_warning)
                     readme_text.append('\n')
                     readme_text.extend(split_plate_messages)
@@ -7917,7 +7857,7 @@ class CherryPickRequestResource(DbApiResource):
                 zipi.filename= '%s/%s' % (zip_dir_name,'readme.txt')
                 zipi.external_attr = 0777 << 16L
                 zipfile.writestr(zipi, '\n'.join(readme_text))
-            logger.info('wrote file %r', temp_file)
+            logger.debug('wrote file %r', temp_file)
         
             temp_file.seek(0, os.SEEK_END)
             size = temp_file.tell()
@@ -7990,12 +7930,9 @@ class CherryPickRequestResource(DbApiResource):
         show_copy_wells = parse_val(
             param_hash.get(API_PARAM_SHOW_COPY_WELLS, False),
             API_PARAM_SHOW_COPY_WELLS, 'boolean')
-        logger.info('%r: %r', API_PARAM_SHOW_COPY_WELLS,show_copy_wells)
         show_available_and_retired_copy_wells = parse_val(
             param_hash.get(API_PARAM_SHOW_RETIRED_COPY_WELlS, False),
             API_PARAM_SHOW_RETIRED_COPY_WELlS, 'boolean')
-        logger.info('%r: %r', 
-            API_PARAM_SHOW_RETIRED_COPY_WELlS,show_available_and_retired_copy_wells)
         show_unfulfilled = parse_val(
             param_hash.get(API_PARAM_SHOW_UNFULFILLED, False),
             API_PARAM_SHOW_UNFULFILLED, 'boolean')
@@ -8503,11 +8440,9 @@ class CherryPickRequestResource(DbApiResource):
             'number_unfulfilled_lab_cherry_picks': (
                 func.coalesce(
                     cast(_lcp_subquery.c.lcp_count - 
-                            _lcp_subquery.c.lcp_fullfilled_count,
-                         sqlalchemy.sql.sqltypes.Integer),0)),                    
+                            _lcp_subquery.c.lcp_fullfilled_count, INTEGER),0)),                    
             'total_number_lcps': func.coalesce(
-                cast(_lcp_subquery.c.lcp_count,
-                    sqlalchemy.sql.sqltypes.Integer),0),
+                cast(_lcp_subquery.c.lcp_count, INTEGER),0),
             'last_plating_activity_date': (
                 select([func.max(_cpp.c.plating_date)])
                 .select_from(_cpp)
@@ -8518,9 +8453,6 @@ class CherryPickRequestResource(DbApiResource):
                 .select_from(_cpp)
                 .where(_cpp.c.cherry_pick_request_id
                     ==_cpr.c.cherry_pick_request_id)),
-            
-            # TODO: new: when the lcp's were reserved and mapped
-            # 'date_volume_reserved': literal_column("'2016-12-07'"),
             
             'screener_cherry_picks': (
                 select([func.array_to_string(
@@ -8551,7 +8483,7 @@ class CherryPickRequestResource(DbApiResource):
                     select([_scps_not_screened.c.screened_well_id])
                         .select_from(_scps_not_screened)
                         # NOTE: when doing an inner select, must use literal_column,
-                        # otherwise SQalchemy thinks it is another table to add
+                        # otherwise SQLalchemy thinks it is another table to add
                         .where(_scps_not_screened.c.cherry_pick_request_id
                             ==literal_column(
                                 'cherry_pick_request.cherry_pick_request_id'))
@@ -8606,7 +8538,7 @@ class CherryPickRequestResource(DbApiResource):
                         func.ceil(settings.APP_PUBLIC_DATA.rnai_cherry_pick_ratio_allowed
                             *_screen.c.screened_experimental_well_count)
                         )
-                    ), sqlalchemy.types.INTEGER)
+                    ), INTEGER)
             ),
             'screener_cherry_pick_count_cumulative': (
                 select([func.count(None)])
@@ -8726,7 +8658,6 @@ class CherryPickRequestResource(DbApiResource):
 
         # cache state, for logging
         # Look for id's kwargs, to limit the potential candidates for logging
-#         id_attribute = schema['id_attribute']
         kwargs_for_log = self.get_id(
             deserialized, schema=schema, validate=True,**kwargs)
 
@@ -8993,7 +8924,6 @@ class CherryPickRequestResource(DbApiResource):
                 _meta[SCHEMA.API_MSG_WARNING] = final_warn_msg
                             
             response = { API_RESULT_OBJ: cpr, API_RESULT_META: _meta }
-            logger.info('response: %r', response)
             return response
         except Exception, e:
             logger.exception('on patch_obj')
@@ -9009,9 +8939,9 @@ class CherryPickRequestResource(DbApiResource):
         plate_size = int(parts[1])
         return plate_size
 
-    
     @classmethod
     def find_wells(cls, cherry_pick_well_patterns ):
+
         logger.debug('find wells for patterns: %r', cherry_pick_well_patterns)
         if not isinstance(cherry_pick_well_patterns, (list,tuple)):
             cherry_pick_well_patterns = (cherry_pick_well_patterns,)
@@ -9038,7 +8968,6 @@ class CherryPickRequestResource(DbApiResource):
             
             
     def validate_cpr_for_plating(self, cpr):
-        logger.info('validating: %r', cpr)      
         if not cpr.transfer_volume_per_well_approved:
             raise ValidationError(
                 key='transfer_volume_per_well_approved',
@@ -9046,7 +8975,6 @@ class CherryPickRequestResource(DbApiResource):
         self.validate_volume_approver(cpr.volume_approved_by)
         
     def validate_volume_approver(self, user):
-        logger.info('validating: %r', user)      
         if not user:
             raise ValidationError(
                 key='volume_approved_by_username',
@@ -9161,7 +9089,6 @@ class CherryPickRequestResource(DbApiResource):
                             'volume_approved',
                             '-structure_image','-molfile','-library_plate_comment_array'],
                     })}
-        logger.info('fetch output readable format...')
         lab_cherry_pick_copywells_output = \
             { lcp['source_copywell_id']: lcp for lcp in
                 self.get_labcherrypick_resource()._get_list_response_internal(
@@ -9213,14 +9140,6 @@ class CherryPickRequestResource(DbApiResource):
                 cpr, fulfillable_lcps, parent_log)
         
         logger.info('Create the assay_plates...')  
-#         # - if true, randomize the plate layout wells
-#         if cpr.is_randomized_assay_plate_layout:
-#             logger.debug('randomize the available assay plate wells: %r',
-#                 available_assay_plate_wells)
-#             random.shuffle(available_assay_plate_wells)
-#             logger.debug('randomized available assay plate wells: %r',
-#                 available_assay_plate_wells)
-                  
         next_plate_ordinal = [1]
         def create_next_assay_plate():
             assay_plate = CherryPickAssayPlate.objects.create(
@@ -9240,7 +9159,6 @@ class CherryPickRequestResource(DbApiResource):
         for lcp in fulfillable_lcps.all():
             plate_copy = '%s:%s' % (
                 str(lcp.source_well.plate_number),lcp.copy.name)
-#                 str(lcp.source_well.plate_number).zfill(5),lcp.copy.name)
             lcp_by_plate_copy[plate_copy].append(lcp)
         # Sort internally
         for plate_copy in lcp_by_plate_copy.keys():
@@ -9372,26 +9290,6 @@ class CherryPickRequestResource(DbApiResource):
             if cpr.is_randomized_assay_plate_layout:                    
                 randomize_lcps(current_plate_lcps)
             
-#             for lcp in fulfillable_lcps.all():
-#                 
-#                 copy_plate = '%s:%s' % (lcp.copy.name, lcp.source_well.plate_number)
-#                 
-#                 if assay_plate is None:
-#                     assay_plate = create_next_assay_plate()
-#                     assay_plates_created.append(assay_plate)
-#                     assay_plate_well_index = 0
-# 
-#                 lcp.cherry_pick_assay_plate = assay_plate
-#                 well_name = available_assay_plate_wells[assay_plate_well_index]
-#                 lcp.assay_plate_row = lims_utils.well_name_row_index(well_name)
-#                 lcp.assay_plate_column = lims_utils.well_name_col_index(well_name)
-#                 lcp.save()
-# 
-#                 assay_plate_well_index += 1
-#                 if assay_plate_well_index >= capacity:
-#                     assay_plate_well_index = 0
-#                     assay_plate = None
-
         # verify that all lcps have been assigned
         for lcp in fulfillable_lcps.all():
             copy_plate = '%s:%s' % (lcp.copy.name, lcp.source_well.plate_number)
@@ -9407,9 +9305,6 @@ class CherryPickRequestResource(DbApiResource):
                 for ap in assay_plates_created ]
         
         plate_copies = sorted(lcp_by_plate_copy.keys())
-#         copy_plate_assigned_msg = [
-#             (plate_copy, len(lcp_by_plate_copy[plate_copy]))
-#                 for plate_copy in plate_copies] 
         _meta = {
             API_MSG_LCP_PLATES_ASSIGNED: plate_copies,
             API_MSG_LCP_ASSAY_PLATES_CREATED: cpap_assignments
@@ -9521,6 +9416,7 @@ class CherryPickRequestResource(DbApiResource):
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
         cpr_id = param_hash['cherry_pick_request_id']
+        
         logger.info('dispatch_cancel_reservation: %r', cpr_id) 
         schema = super(CherryPickRequestResource, self).build_schema(
             user=request.user)
@@ -9529,7 +9425,8 @@ class CherryPickRequestResource(DbApiResource):
             cherry_pick_request_id=cpr_id)
         lcp_query = cpr.lab_cherry_picks.all() 
         if lcp_query.exists():
-            allocated_lcp_query = lcp_query.filter(cherry_pick_assay_plate__isnull=False)
+            allocated_lcp_query = lcp_query.filter(
+                cherry_pick_assay_plate__isnull=False)
             if allocated_lcp_query.exists():
            
                 original_cpr = self._get_detail_response_internal(**{
@@ -9563,8 +9460,8 @@ class CherryPickRequestResource(DbApiResource):
             response_class=HttpResponse, **kwargs)
     
     def _cancel_reservation(self, cpr, parent_log):
-        logger.info(
-            '_cancel_reservation for: %r...', cpr)
+        
+        logger.info('_cancel_reservation for: %r...', cpr)
         
         cpr_id = cpr.cherry_pick_request_id 
         meta = {}    
@@ -9684,7 +9581,8 @@ class CherryPickRequestResource(DbApiResource):
             
             # Find duplex wells
             if ( not scp.screened_well.reagents.exists() 
-                 or not hasattr(scp.screened_well.reagents.all()[0],'silencingreagent')):
+                 or not hasattr(
+                     scp.screened_well.reagents.all()[0],'silencingreagent')):
                 raise ValidationError(
                     key='screened_well',
                     msg='no silencing reagents found for screened well: %s' 
@@ -9724,10 +9622,12 @@ class CherryPickRequestResource(DbApiResource):
             excludes=['screener_cherry_picks'])
         parent_log.json_field = json.dumps(meta, cls=LimsJSONEncoder)
         parent_log.save()
-        logger.info('set_duplex_lab_cherry_picks: log: %r, %r', parent_log, parent_log.diffs)
+        logger.info('set_duplex_lab_cherry_picks: log: %r, %r', 
+            parent_log, parent_log.diffs)
         
         return self.build_response(
-            request,  {API_RESULT_META: meta }, response_class=HttpResponse, **kwargs)
+            request,  {API_RESULT_META: meta }, 
+            response_class=HttpResponse, **kwargs)
     
     @write_authorization
     @un_cache
@@ -9752,9 +9652,8 @@ class CherryPickRequestResource(DbApiResource):
         param_hash.update(kwargs)
          
         cpr_id = param_hash['cherry_pick_request_id']
-        logger.info(
-            'dispatch_set_lab_cherry_picks for: %r...', cpr_id)
-         
+        logger.info('dispatch_set_lab_cherry_picks for: %r...', cpr_id)
+
         schema = super(CherryPickRequestResource, self).build_schema(
             user=request.user)
          
@@ -9811,21 +9710,25 @@ class CherryPickRequestResource(DbApiResource):
             excludes=['screener_cherry_picks'])
         parent_log.json_field = json.dumps(meta, cls=LimsJSONEncoder)
         parent_log.save()
-        logger.info('set_lab_cherry_picks: log: %r, %r', parent_log, parent_log.diffs)
+        logger.info('set_lab_cherry_picks: log: %r, %r', 
+            parent_log, parent_log.diffs)
         
         return self.build_response(
-            request,  {API_RESULT_META: meta }, response_class=HttpResponse, **kwargs)
+            request,  {API_RESULT_META: meta }, 
+            response_class=HttpResponse, **kwargs)
 
     def _find_copies(self,cpr):
         '''
-        Find and assign copies that are fulfillable (sufficient volume, available) 
-        for the Lab Cherry Picks on the Cherry Pick Request:
-        - well copy
+        Find and assign copies that are fulfillable 
+        (sufficient volume, available) for the Lab Cherry Picks on the 
+        Cherry Pick Request.
+        
         @param cpr Cherry Pick Request with Lab Cherry Picks already created
         '''
         logger.info('find copies for cpr: %d lab cherry picks...', 
             cpr.cherry_pick_request_id)
-        #select the "best" copy for each contiguous plate   
+        
+        # Select the "best" copy for each contiguous plate   
         
         if not cpr.lab_cherry_picks.all().exists():
             raise ValidationError(key='lab_cherry_picks', msg='must be set')
@@ -9837,10 +9740,12 @@ class CherryPickRequestResource(DbApiResource):
                 **{
                     'cherry_pick_request_id': cpr.cherry_pick_request_id,
                     API_PARAM_SHOW_COPY_WELLS: True,
-                    'source_copy_well_volume__gte': cpr.transfer_volume_per_well_approved, 
+                    'source_copy_well_volume__gte': 
+                        cpr.transfer_volume_per_well_approved, 
                     'includes': [
-                        'source_plate_type','destination_plate_type','source_well_id'
-                        'source_copywell_id','-structure_image','-molfile',
+                        'source_plate_type','destination_plate_type',
+                        'source_well_id','source_copywell_id',
+                        '-structure_image','-molfile',
                         '-library_plate_comment_array'],
                 })
             
@@ -9849,13 +9754,16 @@ class CherryPickRequestResource(DbApiResource):
         eligible_lab_cherry_pick_copywells = [
             lcp for lcp in eligible_lab_cherry_pick_copywells
             if not (lcp['source_plate_type']=='cherry_pick_source_plates'
-                    and lcp['source_plate_status']==SCHEMA.VOCAB.plate.status.RETIRED )]   
+                and lcp['source_plate_status']
+                    ==SCHEMA.VOCAB.plate.status.RETIRED )]   
         
         logger.info('found %d eligible copy-wells for %d lab cherry picks', 
             len(eligible_lab_cherry_pick_copywells), 
             cpr.lab_cherry_picks.all().count())
-        copy_wells_well_set = set([lcp['source_well_id'] for lcp in eligible_lab_cherry_pick_copywells])
-        logger.info('lcp candidates found for source wells: %d', len(copy_wells_well_set))
+        copy_wells_well_set = set([lcp['source_well_id'] 
+            for lcp in eligible_lab_cherry_pick_copywells])
+        logger.info('lcp candidates found for source wells: %d', 
+            len(copy_wells_well_set))
         logger.debug('found eligible: %r', eligible_lab_cherry_pick_copywells)
         
         logger.info('Pick the best copy...')
@@ -9870,13 +9778,14 @@ class CherryPickRequestResource(DbApiResource):
             library_short_name = pick_copy['library_short_name']
             copy_id = pick_copy['source_copy_id']
             copy_full_name = '%s:%s' % (library_short_name,copy_name)
-            copy_instance_cache[copy_full_name] = Copy.objects.get(copy_id=copy_id)
-            
-            library_copy_set = copy_sets_by_library.get(library_short_name, set())
+            copy_instance_cache[copy_full_name] = \
+                Copy.objects.get(copy_id=copy_id)
+            library_copy_set = \
+                copy_sets_by_library.get(library_short_name, set())
             library_copy_set.add(copy_full_name)
             copy_sets_by_library[library_short_name] = library_copy_set
-            
-            library_picks = pick_candidates_by_library.get(library_short_name,{})
+            library_picks = \
+                pick_candidates_by_library.get(library_short_name,{})
             well_picks = library_picks.get(source_well_id, set())
             well_picks.add(copy_full_name)
             library_picks[source_well_id] = well_picks
@@ -9886,7 +9795,8 @@ class CherryPickRequestResource(DbApiResource):
         for library_short_name in pick_candidates_by_library.keys():
             
             copy_set = copy_sets_by_library.get(library_short_name,set())
-            well_picks_for_library = pick_candidates_by_library[library_short_name]
+            well_picks_for_library = \
+                pick_candidates_by_library[library_short_name]
             
             minimal_copy_set = lims_utils.find_minimal_satisfying_set(
                 copy_set, well_picks_for_library.values())
@@ -9896,9 +9806,11 @@ class CherryPickRequestResource(DbApiResource):
                 # FIXME: only iterate the lcp's for the library
                 for lcp in cpr.lab_cherry_picks.all():
                     if lcp.source_well_id in well_picks_for_library:
-                        pick_copy_set = well_picks_for_library.get(lcp.source_well_id, None)
+                        pick_copy_set = \
+                            well_picks_for_library.get(lcp.source_well_id, None)
                         if pick_copy_set is None:
-                            logger.info('no pick copy set for well: %r', lcp.source_well_id)
+                            logger.info('no pick copy set for well: %r', 
+                                lcp.source_well_id)
                             continue
                         eligible_copies = set(pick_copy_set) & set(minimal_copy_set)
                         if eligible_copies:
@@ -9910,9 +9822,11 @@ class CherryPickRequestResource(DbApiResource):
                             logger.info('no eligible copies for %r, in %r',
                                 lcp.source_well_id, pick_copy_set)
                     else:
-                        logger.debug('no pick copy set for well %r', lcp.source_well_id)
+                        logger.debug('no pick copy set for well %r', 
+                            lcp.source_well_id)
             else:
-                logger.info('no minimal copy sets found for library: %r', library_short_name)                
+                logger.info('no minimal copy sets found for library: %r', 
+                    library_short_name)                
             
         meta = {}
         if lcp_assigned_count == 0:
@@ -9935,9 +9849,6 @@ class ScreenerCherryPickResource(DbApiResource):
                                              IccblSessionAuthentication())
         resource_name = 'screenercherrypick'
         authorization = CherryPickRequestAuthorization(resource_name)
-        
-        ordering = []
-        filtering = {}
         serializer = LimsSerializer()
         always_return_data = True 
 
@@ -10021,13 +9932,12 @@ class ScreenerCherryPickResource(DbApiResource):
             })
             
         deserialized, deserialize_meta = self.deserialize(request)
-        if self._meta.collection_name in deserialized:
-            deserialized = deserialized[self._meta.collection_name]
+        if API_RESULT_DATA in deserialized:
+            deserialized = deserialized[API_RESULT_DATA]
  
-#         id_attribute = schema['id_attribute']
-
-        original_cpr_data = self.get_cpr_resource()._get_detail_response_internal(**{
-            'cherry_pick_request_id': cpr.cherry_pick_request_id })
+        original_cpr_data = \
+            self.get_cpr_resource()._get_detail_response_internal(
+                **{'cherry_pick_request_id': cpr.cherry_pick_request_id })
         
         original_data = self._get_list_response_internal(**{
             'includes': '*',
@@ -10069,11 +9979,13 @@ class ScreenerCherryPickResource(DbApiResource):
             if not candidate_screened_well_id in original_selections:
                 raise ValidationError(
                     key='screened_well_id',
-                    msg='not found in the current/alternate screener_cherry_picks: %r' 
-                        % candidate_screened_well_id )
+                    msg='not found in the current/alternate '
+                        'screener_cherry_picks: %r' 
+                        % candidate_screened_well_id)
             selection_update['selected'] = parse_val(
                 selection_update['selected'],'selected', 'boolean')
-            selection_updates[selection_update['screened_well_id']]=selection_update
+            selection_updates[selection_update['screened_well_id']] = \
+                selection_update
         # validate only one selection per searched_well
         for screened_well_id,selection_update in selection_updates.items():
             if selection_update['selected'] is True:
@@ -10085,9 +9997,9 @@ class ScreenerCherryPickResource(DbApiResource):
                             if su2['selected'] is True:
                                 raise ValidationError(
                                     key='selected',
-                                    msg=(
-                                        'only one well can be selected for '
-                                        'the searched_well_id: %r' % searched_well_id))
+                                    msg='only one well can be selected for '
+                                        'the searched_well_id: %r' 
+                                        % searched_well_id)
                 if ( searched_well_id in current_selections
                     and searched_well_id not in selection_updates):
                     selection_updates[searched_well_id] = {
@@ -10099,7 +10011,8 @@ class ScreenerCherryPickResource(DbApiResource):
         for scp_data in original_data:
             if scp_data['selected'] is True:
                 for selection_update in selection_updates.values():
-                    if selection_update['searched_well_id']==scp_data['searched_well_id']:
+                    if selection_update['searched_well_id'] \
+                            == scp_data['searched_well_id']:
                         if selection_update['selected'] is True:
                             scp_data['selected'] = False
                             selection_updates[scp_data['screened_well_id']] = \
@@ -10131,7 +10044,8 @@ class ScreenerCherryPickResource(DbApiResource):
                 if screened_well_id in original_scps:
                     if original_scps[screened_well_id].selected is True:
                         messages.append(
-                            'screened_well_id: %r is already selected'  % screened_well_id)
+                            'screened_well_id: %r is already selected'  
+                            % screened_well_id)
                     else:
                         scps_to_reselect.append(screened_well_id)
                 else:
@@ -10235,7 +10149,7 @@ class ScreenerCherryPickResource(DbApiResource):
         try:
             cpr = CherryPickRequest.objects.get(
                 cherry_pick_request_id=cherry_pick_request_id)
-            # NOTE: does not support disinction between Small Molecule and Natural Product
+            # NOTE: no distinction between Small Molecule and Natural Product
             return self.build_response(
                 request, 
                 self.build_schema(
@@ -10246,15 +10160,17 @@ class ScreenerCherryPickResource(DbApiResource):
         except ObjectDoesNotExist, e:
             raise Http404(
                 'Can not build schema - CherryPickRequest ID needed'
-                'no cpr found for cherry_pick_request_id: %r' % cherry_pick_request_id)
+                'no cpr found for cherry_pick_request_id: %r' 
+                % cherry_pick_request_id)
 
     def build_schema(self, library_classification=None, user=None, **kwargs):
+        
         logger.debug('build sreenercherrypick schema for library_classification: %r',
             library_classification)
+        
         schema = deepcopy(
             super(ScreenerCherryPickResource, self).build_schema(user=user, **kwargs))
         original_fields = schema['fields']
-        logger.debug('original_fields: %r', original_fields.keys())
         if library_classification:
             # Add in reagent fields
             sub_data = self.get_reagent_resource(library_classification)\
@@ -10277,11 +10193,13 @@ class ScreenerCherryPickResource(DbApiResource):
         schema['fields'].update(original_fields)
         logger.debug('schema  fields: %r', schema['fields'].keys())
         logger.debug('schema  fields: %r', 
-            [(key, field['visibility']) for key,field in schema['fields'].items()])
+            [(key, field['visibility']) 
+                for key,field in schema['fields'].items()])
         return schema
 
     def build_sqlalchemy_columns(self, fields, base_query_tables=None, 
             custom_columns=None):
+        
         sub_columns = self.get_sr_resource().build_sqlalchemy_columns(fields)
         sub_columns.update(self.get_smr_resource().build_sqlalchemy_columns(fields))
         if custom_columns is not None:
@@ -10489,7 +10407,8 @@ class ScreenerCherryPickResource(DbApiResource):
                     )
                 alternate_searched_well_ids = set([x[0] for x in 
                     conn.execute(_alternates)])
-                stmt = stmt.where(working_scp.c.searched_well_id.in_(alternate_searched_well_ids))
+                stmt = stmt.where(
+                    working_scp.c.searched_well_id.in_(alternate_searched_well_ids))
         
         if show_other_reagents is False and show_alternates is False:
             stmt = stmt.where(working_scp.c.selected==True)
@@ -10546,7 +10465,6 @@ class ScreenerCherryPickResource(DbApiResource):
 class LabCherryPickResource(DbApiResource):        
 
     LCP_COPYWELL_KEY = '{library_short_name}/{source_copy_name}/{source_well_id}'
-    # LCP_COPYWELL_KEY = '{source_copy_name}/{source_well_id}'
 
     class Meta:
 
@@ -10554,9 +10472,6 @@ class LabCherryPickResource(DbApiResource):
                                              IccblSessionAuthentication())
         resource_name = 'labcherrypick'
         authorization = CherryPickRequestAuthorization(resource_name)
-        
-        ordering = []
-        filtering = {}
         serializer = LimsSerializer()
         always_return_data = True 
 
@@ -10629,7 +10544,6 @@ class LabCherryPickResource(DbApiResource):
         set_deselected_to_zero = parse_val(
             param_hash.get(API_PARAM_SET_DESELECTED_TO_ZERO, False),
                 API_PARAM_SET_DESELECTED_TO_ZERO, 'boolean')
-#         id_attribute = schema['id_attribute']
 
         if 'cherry_pick_request_id' not in kwargs:
             raise BadRequestError(key='cherry_pick_request_id', msg='required')
@@ -10651,8 +10565,8 @@ class LabCherryPickResource(DbApiResource):
         #         })
          
         deserialized, deserialize_meta = self.deserialize(request)
-        if self._meta.collection_name in deserialized:
-            deserialized = deserialized[self._meta.collection_name]
+        if API_RESULT_DATA in deserialized:
+            deserialized = deserialized[API_RESULT_DATA]
         
         self.get_cpr_resource().validate_cpr_for_plating(cpr) 
 
@@ -10805,8 +10719,8 @@ class LabCherryPickResource(DbApiResource):
                 lcps_to_deselect)
             # Note: signal update_screening_count=False
             # do not adjust the plate.cplt_screening_count or the 
-            # copywell.cherry_pick_screening_count (see deallocate_cherry_pick_volumes for
-            # rational.
+            # copywell.cherry_pick_screening_count 
+            # (see deallocate_cherry_pick_volumes for rational.
             result_meta_allocate = \
                 self.get_copywell_resource().deallocate_cherry_pick_volumes(
                     cpr, lcps_to_deselect, parent_log,
@@ -10985,7 +10899,8 @@ class LabCherryPickResource(DbApiResource):
         # 20170516 - keep the well_id field; required for the structure_image field
         omit_redundant_fields = [
             'plate_number','well_name','library_well_type',
-            'library_short_name','library_name','mg_ml_concentration', 'molar_concentration']
+            'library_short_name','library_name',
+            'mg_ml_concentration', 'molar_concentration']
         if library_classification:
             # Add in reagent fields
             sub_data = self.get_reagent_resource(library_classification)\
@@ -11111,9 +11026,6 @@ class LabCherryPickResource(DbApiResource):
             custom_columns=None):
         sub_columns = self.get_sr_resource().build_sqlalchemy_columns(fields)
         sub_columns.update(self.get_smr_resource().build_sqlalchemy_columns(fields))
-#         sub_columns['plate_number'] = (literal_column(
-#             "to_char(well.plate_number,'%s')" % PLATE_NUMBER_SQL_FORMAT)
-#             .label('plate_number'))
         if custom_columns is not None:
             sub_columns.update(custom_columns)
         return DbApiResource.build_sqlalchemy_columns(self, 
@@ -11276,7 +11188,8 @@ class LabCherryPickResource(DbApiResource):
             
             _library_comment_apilogs = \
                 ApiLogResource.get_resource_comment_subquery('library')
-            _library_comment_apilogs = _library_comment_apilogs.cte('library_comment_apilogs')
+            _library_comment_apilogs = \
+                _library_comment_apilogs.cte('library_comment_apilogs')
 
             j = join(_lcp,_cpr, 
                 _lcp.c.cherry_pick_request_id == _cpr.c.cherry_pick_request_id)
@@ -11317,11 +11230,6 @@ class LabCherryPickResource(DbApiResource):
                                 _lcp.c.source_well_id)
                         )],
                         else_=None )),
-#                 'source_copywell_id': (
-#                     case([(_lcp.c.copy_id!=None,
-#                             _concat(_copy.c.name, '/', _lcp.c.source_well_id)
-#                         )],
-#                         else_=None )),
                 'source_copy_well_volume': case([
                     (_well.c.library_well_type==WELL_TYPE.EXPERIMENTAL, 
                          func.coalesce(_cw.c.volume, 
@@ -11340,11 +11248,9 @@ class LabCherryPickResource(DbApiResource):
                     select([func.array_to_string(
                         func.array_agg(
                             _concat(                            
-                                cast(_library_comment_apilogs.c.name,
-                                    sqlalchemy.sql.sqltypes.Text),
+                                cast(_library_comment_apilogs.c.name, TEXT),
                                 LIST_DELIMITER_SUB_ARRAY,
-                                cast(_library_comment_apilogs.c.date_time,
-                                    sqlalchemy.sql.sqltypes.Text),
+                                cast(_library_comment_apilogs.c.date_time,TEXT),
                                 LIST_DELIMITER_SUB_ARRAY,
                                 _library_comment_apilogs.c.comment)
                         ), 
@@ -11364,7 +11270,8 @@ class LabCherryPickResource(DbApiResource):
                 j = j.join(_screener_library, 
                     _screener_well.c.library_id==_screener_library.c.library_id)
                 custom_columns['screener_well_id'] = _scp.c.screened_well_id
-                custom_columns['screener_library_short_name'] = _screener_library.c.short_name
+                custom_columns['screener_library_short_name'] = \
+                    _screener_library.c.short_name
             
             # pull in the copy well volume
             if ( show_copy_wells is not True 
@@ -11386,8 +11293,7 @@ class LabCherryPickResource(DbApiResource):
                         temp = (
                             select([distinct(_concat(
                                 _library.c.short_name,'/',_copy.c.name,'/', 
-                                cast(_p.c.plate_number,sqlalchemy.sql.sqltypes.Text))
-                                )])
+                                cast(_p.c.plate_number,TEXT)) )])
                             .select_from(j)
                             .where(_lcp.c.cherry_pick_request_id==cherry_pick_request_id))
                         plate_keys = set([x[0] for x in 
@@ -11411,7 +11317,7 @@ class LabCherryPickResource(DbApiResource):
                         _p.c.plate_id,
                         _concat(
                             _library.c.short_name,'/',_copy.c.name,'/', 
-                            cast(_p.c.plate_number,sqlalchemy.sql.sqltypes.Text)).label('key')])
+                            cast(_p.c.plate_number,TEXT)).label('key')])
                     .select_from(
                         _lcp.join(_well,_well.c.well_id==_lcp.c.source_well_id)
                             .join(_p, _well.c.plate_number==_p.c.plate_number)
@@ -11437,8 +11343,10 @@ class LabCherryPickResource(DbApiResource):
                                 _p.c.status==SCHEMA.VOCAB.plate.status.RETIRED)))
                     
                 _copyplates_available = _copyplates_available.where(
-                    _p.c.status.in_([SCHEMA.VOCAB.plate.status.AVAILABLE,SCHEMA.VOCAB.plate.status.RETIRED]))
-                _copyplates_available = _copyplates_available.cte('copy_plates_available')
+                    _p.c.status.in_([
+                        SCHEMA.VOCAB.plate.status.AVAILABLE,
+                        SCHEMA.VOCAB.plate.status.RETIRED]))
+                _copyplates_available = _copyplates_available.cte('cp_available')
                 
                 j = j.join(_copyplates_available,
                     _lcp.c.lab_cherry_pick_id
@@ -11461,10 +11369,11 @@ class LabCherryPickResource(DbApiResource):
                         temp = (
                             select([distinct(_concat(
                                 _library.c.short_name,'/',_copy.c.name,'/', 
-                                cast(_p.c.plate_number,sqlalchemy.sql.sqltypes.Text))
+                                cast(_p.c.plate_number,TEXT))
                                 )])
                             .select_from(j)
-                            .where(_lcp.c.cherry_pick_request_id==cherry_pick_request_id))
+                            .where(_lcp.c.cherry_pick_request_id
+                                ==cherry_pick_request_id))
                         plate_keys = set([x[0] for x in 
                             conn.execute(temp)])
                         _plate_comment_apilogs = _plate_comment_apilogs.\
@@ -11476,9 +11385,6 @@ class LabCherryPickResource(DbApiResource):
                     'selected_copy_name': case([
                         (_lcp.c.copy_id==_copy.c.copy_id, _copy.c.name )],
                             else_=_original_copy.c.name),
-#                     'source_copywell_id': (
-#                         _concat(_copy.c.name, '/', _lcp.c.source_well_id)
-#                             ),
                     'source_copywell_id': (
                         _concat(_library.c.short_name,'/',_copy.c.name,'/',
                             _lcp.c.source_well_id)
@@ -11497,11 +11403,9 @@ class LabCherryPickResource(DbApiResource):
                 select([func.array_to_string(
                     func.array_agg(
                         _concat(                            
-                            cast(_plate_comment_apilogs.c.name,
-                                sqlalchemy.sql.sqltypes.Text),
+                            cast(_plate_comment_apilogs.c.name,TEXT),
                             LIST_DELIMITER_SUB_ARRAY,
-                            cast(_plate_comment_apilogs.c.date_time,
-                                sqlalchemy.sql.sqltypes.Text),
+                            cast(_plate_comment_apilogs.c.date_time,TEXT),
                             LIST_DELIMITER_SUB_ARRAY,
                             _plate_comment_apilogs.c.comment)
                     ), 
@@ -11509,7 +11413,7 @@ class LabCherryPickResource(DbApiResource):
                 .select_from(_plate_comment_apilogs)
                 .where(_plate_comment_apilogs.c.key== _concat(
                     _library.c.short_name,'/',_copy.c.name,'/', 
-                    cast(_p.c.plate_number,sqlalchemy.sql.sqltypes.Text)))
+                    cast(_p.c.plate_number, TEXT)))
                 )
             
             columns = self.build_sqlalchemy_columns(
@@ -11614,9 +11518,6 @@ class CherryPickPlateResource(DbApiResource):
         resource_name = 'cherrypickassayplate'
         # authorization = CherryPickRequestAuthorization(resource_name)
         authorization = UserGroupAuthorization(resource_name)
-        
-        ordering = []
-        filtering = {}
         serializer = LimsSerializer()
         always_return_data = True 
 
@@ -11727,11 +11628,8 @@ class CherryPickPlateResource(DbApiResource):
             _user_cte = ScreensaverUserResource.get_user_cte().cte('users_cpr')
             _plated_by = _user_cte.alias('plated_by')
             _screened_by = _user_cte.alias('screened_by')
-
-
             _apilog = self.bridge['reports_apilog']
             _diff = self.bridge['reports_logdiff']
-
 
             # specific setup 
             base_query_tables = [
@@ -11761,11 +11659,10 @@ class CherryPickPlateResource(DbApiResource):
                         .where(_apilog.c.ref_resource_name=='cherrypickassayplate')
                         .where(_apilog.c.key==
                             _concat(
-                                cast(_cpap.c.cherry_pick_request_id,
-                                     sqlalchemy.sql.sqltypes.Text),
-                                '/',
-                                cast(_cpap.c.plate_ordinal,sqlalchemy.sql.sqltypes.Text)))
-                        .where(_diff.c.field_key.in_(['plating_date', 'plated_by_name']))
+                                cast(_cpap.c.cherry_pick_request_id,TEXT), '/',
+                                cast(_cpap.c.plate_ordinal,TEXT)))
+                        .where(_diff.c.field_key.in_(
+                            ['plating_date', 'plated_by_name']))
                         .order_by(desc(_apilog.c.date_time))
                         .limit(1)
                     ),
@@ -11777,12 +11674,11 @@ class CherryPickPlateResource(DbApiResource):
                             =='cherrypickassayplate')
                         .where(_apilog.c.key==
                             _concat(
-                                cast(_cpap.c.cherry_pick_request_id,
-                                    sqlalchemy.sql.sqltypes.Text),
+                                cast(_cpap.c.cherry_pick_request_id,TEXT),
                                 '/',
-                                cast(_cpap.c.plate_ordinal,
-                                    sqlalchemy.sql.sqltypes.Text)))
-                        .where(_diff.c.field_key.in_(['screening_date', 'screened_by_name']))
+                                cast(_cpap.c.plate_ordinal,TEXT)))
+                        .where(_diff.c.field_key.in_(
+                            ['screening_date', 'screened_by_name']))
                         .order_by(desc(_apilog.c.date_time))
                         .limit(1)
                     ),
@@ -11812,7 +11708,6 @@ class CherryPickPlateResource(DbApiResource):
             # compile_kwargs={"literal_binds": True}))
             # logger.info('compiled_stmt %s', compiled_stmt)
             
-#             if not order_clauses:
             stmt = stmt.order_by(
                 nullslast(asc(column('cherry_pick_request_id'))),
                 nullslast(asc(column('plate_ordinal'))),)
@@ -11859,8 +11754,8 @@ class CherryPickPlateResource(DbApiResource):
             'patch_list: cpr: %r, screen: %r...', cpr, cpr.screen.facility_id)
          
         deserialized,deserialize_meta = self.deserialize(request)
-        if self._meta.collection_name in deserialized:
-            deserialized = deserialized[self._meta.collection_name]
+        if API_RESULT_DATA in deserialized:
+            deserialized = deserialized[API_RESULT_DATA]
         logger.debug('patch cpaps: %r', deserialized)
         
         assay_plates = { cpap.plate_ordinal:cpap 
@@ -11950,8 +11845,10 @@ class CherryPickPlateResource(DbApiResource):
                 if cpap.plating_date is None:
                     raise ValidationError(
                         key='screening_date',
-                        msg='"plating_date" must be set before "screening_date" can be set')
-                screened_by_username = initializer_dict.get('screened_by_username', None)
+                        msg='"plating_date" must be set before '
+                            '"screening_date" can be set')
+                screened_by_username = initializer_dict.get(
+                    'screened_by_username', None)
                 screened_by_id = initializer_dict.get('screened_by_id', None)
                 if screened_by_username is None and screened_by_id is None:
                     raise ValidationError({
@@ -11960,9 +11857,11 @@ class CherryPickPlateResource(DbApiResource):
                     })
                 try:
                     if screened_by_id is not None:
-                        user = ScreensaverUser.objects.get(screensaver_user_id=screened_by_id)
+                        user = ScreensaverUser.objects.get(
+                            screensaver_user_id=screened_by_id)
                     else:
-                        user = ScreensaverUser.objects.get(username=screened_by_username)
+                        user = ScreensaverUser.objects.get(
+                            username=screened_by_username)
                     
                     if user not in cpr.screen.get_screen_users():
                         raise ValidationError(
@@ -12055,8 +11954,9 @@ class CherryPickPlateResource(DbApiResource):
 
         # Log
         self.get_cherry_pick_resource().clear_cache(request)
-        new_cpr = self.get_cherry_pick_resource()._get_detail_response_internal(**{
-            'cherry_pick_request_id': cpr_id })
+        new_cpr = \
+            self.get_cherry_pick_resource()._get_detail_response_internal(
+                **{'cherry_pick_request_id': cpr_id })
         new_cpap_data = self._get_list_response_internal(**{
             'includes': '*',
             'cherry_pick_request_id': cpr_id })
@@ -12068,8 +11968,10 @@ class CherryPickPlateResource(DbApiResource):
         meta = {
             SCHEMA.API_MSG_RESULT: SCHEMA.API_MSG_SUCCESS }
         if patch_logs:
-            plating_fields = set(['plating_date', 'plated_by_username', 'plating_comments'])
-            screening_fields = set(['screening_date', 'screened_by_username', 'screening_comments'])
+            plating_fields = set([
+                'plating_date', 'plated_by_username', 'plating_comments'])
+            screening_fields = set([
+                'screening_date', 'screened_by_username', 'screening_comments'])
             plated_changed_count = len([
                 x for x in patch_logs if plating_fields & set(x.diffs.keys()) ])
             if plated_changed_count > 0:
@@ -12098,8 +12000,6 @@ class LibraryCopyResource(DbApiResource):
                                              IccblSessionAuthentication())
         resource_name = 'librarycopy'
         authorization = UserGroupAuthorization(resource_name)
-        ordering = []
-        filtering = {}
         serializer = LimsSerializer()
         always_return_data = True 
 
@@ -12194,7 +12094,6 @@ class LibraryCopyResource(DbApiResource):
           
             manual_field_includes = set(param_hash.get('includes', []))
             if is_for_detail:
-#                 manual_field_includes.add('has_copywell_concentrations')
                 manual_field_includes.add('has_copywell_volumes')
 
             (filter_expression, filter_hash, readable_filter_hash) = \
@@ -12204,11 +12103,6 @@ class LibraryCopyResource(DbApiResource):
                 readable_filter_hash, schema, is_for_detail)
             filter_expression = \
                 self._meta.authorization.filter(request.user,filter_expression)
-
-            # if filter_expression is None:
-            #     raise InformationError(
-            #         key='Input filters ',
-            #         msg='Please enter a filter expression to begin')
 
             order_params = param_hash.get('order_by', [])
             field_hash = self.get_visible_fields(
@@ -12300,7 +12194,8 @@ class LibraryCopyResource(DbApiResource):
                 select([
                     _p.c.copy_id, 
                     _concat_with_sep(
-                        (_pl.c.room,_pl.c.freezer,_pl.c.shelf,_pl.c.bin),'-').label('location'),
+                        (_pl.c.room,_pl.c.freezer,_pl.c.shelf,_pl.c.bin),'-'
+                        ).label('location'),
                     func.count(None).label('count')])
                 .select_from(_pl.join(
                     _p, _pl.c.plate_location_id==_p.c.plate_location_id))
@@ -12375,7 +12270,6 @@ class LibraryCopyResource(DbApiResource):
                 custom_columns=custom_columns)
 
             # build the query statement
-
             
             j = join(_c, _l, _c.c.library_id == _l.c.library_id)
             if set(['avg_remaining_volume','min_remaining_volume',
@@ -12714,9 +12608,6 @@ class PublicationResource(DbApiResource):
         if is_data_interchange:
             use_vocab = False
             use_titles = False
-        
-        logger.info('params: %r', param_hash.keys())
-        
         is_for_detail = kwargs.pop('is_for_detail', False)
         screen_facility_id = param_hash.pop('screen_facility_id', None)
         if screen_facility_id:
@@ -12899,7 +12790,6 @@ class PublicationResource(DbApiResource):
         if attached_file:
             logger.info('create attached file for publication: %r', publication)
             
-            # af_request = RequestFactory().generic('POST', '.', HTTP_ACCEPT=JSON_MIMETYPE )
             af_request = HttpRequest()
             af_request.META['HTTP_ACCEPT'] = JSON_MIMETYPE
             af_request.user = request.user
@@ -12915,13 +12805,11 @@ class PublicationResource(DbApiResource):
             val = getattr(publication, id_field,None)
             if val:
                 kwargs_for_log['%s' % id_field] = val
-        logger.info('get new data: %r', kwargs_for_log)
         new_data = self._get_detail_response_internal(**kwargs_for_log)
         log = self.log_patch(
             request, None, new_data, full_create_log=True, **kwargs_for_log)
         if log:
             log.save()
-        logger.info('created log: %r, %r', log, log.diffs)
         return self.build_response(request, new_data, status_code=201)
 
     def log_to_screen(self, screen, publication, request, is_delete=False):
@@ -12982,7 +12870,6 @@ class PublicationResource(DbApiResource):
             except Exception as e:
                 logger.exception('original state not obtained')
                 raise
-#                 original_data = {}
 
         publication.delete()
 
@@ -13163,14 +13050,12 @@ class AttachedFileResource(DbApiResource):
             - attached file is not editable, so no logging of former state
             - custom deserialization of the attached file from form parameters
         '''
-        logger.info('post attached file')
         schema = kwargs.pop('schema', None)
         if not schema:
             raise Exception('schema not initialized')
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
         fields = schema['fields']
-#         id_attribute = schema['id_attribute']
         initializer_dict = {}
         for key in fields.keys():
             if param_hash.get(key, None) is not None:
@@ -13212,7 +13097,8 @@ class AttachedFileResource(DbApiResource):
                 initializer_dict['created_by_username'])
             raise ValidationError(
                 key='created_by_username',
-                msg='user: %r does not exist' % initializer_dict['created_by_username'])
+                msg='user: %r does not exist' 
+                    % initializer_dict['created_by_username'])
         
         user = None
         if 'username' in initializer_dict:
@@ -13321,6 +13207,7 @@ class AttachedFileResource(DbApiResource):
     @un_cache        
     @transaction.atomic
     def delete_detail(self, request, **kwargs):
+
         schema = kwargs.pop('schema', None)
         if not schema:
             raise Exception('schema not initialized')
@@ -13380,6 +13267,7 @@ class AttachedFileResource(DbApiResource):
         return self.build_list_response(request, **kwargs)
 
     def build_list_response(self, request, **kwargs):
+        
         schema = kwargs.pop('schema', None)
         if not schema:
             raise Exception('schema not initialized')
@@ -13473,7 +13361,6 @@ class AttachedFileResource(DbApiResource):
                 isouter=True)
             
             # This entire query doesn't fit the pattern, construct it manually
-            # bleah
             custom_columns = {
                 'user_fullname': literal_column(
                     "screensaver_user.last_name || ', ' || screensaver_user.first_name"),
@@ -13485,11 +13372,9 @@ class AttachedFileResource(DbApiResource):
                     select([func.array_to_string(
                         func.array_agg(
                             _concat(                            
-                                cast(_comment_apilogs.c.name,
-                                    sqlalchemy.sql.sqltypes.Text),
+                                cast(_comment_apilogs.c.name, TEXT),
                                 LIST_DELIMITER_SUB_ARRAY,
-                                cast(_comment_apilogs.c.date_time,
-                                    sqlalchemy.sql.sqltypes.Text),
+                                cast(_comment_apilogs.c.date_time, TEXT),
                                 LIST_DELIMITER_SUB_ARRAY,
                                 _comment_apilogs.c.comment)
                         ), 
@@ -13497,7 +13382,7 @@ class AttachedFileResource(DbApiResource):
                     .select_from(_comment_apilogs)
                     .where(
                         _comment_apilogs.c.key == 
-                        cast(_af.c.attached_file_id,sqlalchemy.sql.sqltypes.TEXT))),
+                        cast(_af.c.attached_file_id,TEXT))),
                 'lab_name': lab_head_table.c.lab_name_full,
                 'lab_head_id': lab_head_table.c.screensaver_user_id,
                 'lab_head_username': lab_head_table.c.username,
@@ -13804,7 +13689,7 @@ class ActivityResource(DbApiResource):
                     == literal_column('screen.screen_id'))
                 ),
             'cherry_pick_request_id': cast(
-                literal_column("null"),sqlalchemy.sql.sqltypes.Numeric),
+                literal_column("null"), INTEGER),
         }
         
         return (j, custom_columns)
@@ -13813,10 +13698,9 @@ class ActivityResource(DbApiResource):
     # TODO: 20180924 - get_query was created for the LibraryScreening subclass,
     # but it is not needed, see get_join_and_custom_columns
     def get_query(self, param_hash, user):
+
         # general setup
         schema = self.build_schema(user=user)
-        logger.info('activity get_query, schema: %r, %r', 
-            schema['key'], schema['fields'].keys())
         
         manual_field_includes = set(param_hash.get('includes', []))
         # for join to screen query (TODO: only include if screen fields rqst'd)
@@ -14020,8 +13904,6 @@ class ActivityResource(DbApiResource):
             # NOTE: make the log uri more robust, with Screen id as well
             log.uri = '/'.join(map(str,[
                 log.ref_resource_name,'screen', screen_facility_id, log.key]))
-        
-        logger.info('log uri: %r, %r', log.uri, log)
 
     @write_authorization
     @un_cache
@@ -14042,723 +13924,6 @@ class ActivityResource(DbApiResource):
             raise Exception(
                 'Activity delete action requires an activity_id %s' 
                 % kwargs)
-        
-# class ActivityResourceOld(DbApiResource):
-#     '''
-#     Activity Resource is a combination of the LabActivity and the ServiceActivity
-#     
-#     NOTE: 20170523
-#     ActivityResource needs to be reworked; the current design is from the 
-#     legacy Screensaver 1; 
-#     Activity is both a logging facility and a join class between User, Screen, 
-#     and CherryPickRequest.
-#     Refactor to make Activity a Reporting resource that logs:
-#     - performed by
-#     - serviced resource: Screen, User
-#     - serviced context: Screen, User, CherryPickRequest
-#     - referenced resources: Equipment
-#     - 
-#     '''
-# 
-#     class Meta:
-# 
-#         queryset = Activity.objects.all()
-#         authentication = MultiAuthentication(IccblBasicAuthentication(),
-#                                              IccblSessionAuthentication())
-#         resource_name = 'activity'
-#         authorization = ActivityResourceAuthorization(resource_name)
-#         serializer = LimsSerializer()
-#         ordering = []
-#         filtering = {}
-#         always_return_data = True 
-#         
-#     def __init__(self, **kwargs):
-# 
-#         self.service_activity_resource = None
-#         self.screen_resource = None
-#         self.su_resource = None
-#         super(ActivityResource, self).__init__(**kwargs)
-# 
-#     def prepend_urls(self):
-#         
-#         return [
-#             url(r"^(?P<resource_name>%s)/schema%s$" 
-#                 % (self._meta.resource_name, TRAILING_SLASH),
-#                 self.wrap_view('get_schema'), name="api_get_schema"),
-#             url(r"^(?P<resource_name>%s)"
-#                 r"/(?P<activity_id>[\d]+)%s$" 
-#                     % (self._meta.resource_name, TRAILING_SLASH),
-#                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
-#         ]
-#     
-#     def get_su_resource(self):
-#         if self.su_resource is None:
-#             self.su_resource = ScreensaverUserResource()
-#         return self.su_resource
-# 
-#     def get_service_activity_resource(self):
-#         if self.service_activity_resource is None:
-#             self.service_activity_resource = ServiceActivityResource()
-#         return self.service_activity_resource
-# 
-#     def get_screen_resource(self):
-#         if self.screen_resource is None:
-#             self.screen_resource = ScreenResource()
-#         return self.screen_resource
-# 
-#     def build_schema(self, user=None, **kwargs):
-#          
-#         schema = super(ActivityResource, self).build_schema(user=user, **kwargs)
-#         return schema
-# 
-#     @read_authorization
-#     def get_detail(self, request, **kwargs):
-#  
-#         activity_id = kwargs.pop('activity_id', None)
-#         if not activity_id:
-#             raise Http404('must provide an activity_id parameter')
-#         else:
-#             kwargs['activity_id__eq'] = activity_id
-#  
-#         kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
-#         kwargs['is_for_detail'] = True
-#         return self.build_list_response(request, **kwargs)
-#         
-#     @read_authorization
-#     def get_list(self, request, **kwargs):
-# 
-#         kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
-#         return self.build_list_response(request, **kwargs)
-# 
-#     def get_custom_columns(self, alias_qualifier):
-#         '''
-#         Convenience method for subclasses: reusable custom columns
-#         @param alias_qualifier a sql compatible string used to name subqueries
-#             so that this method may be called multiple times to compose a query
-#         '''
-#         _screen = self.bridge['screen']
-#         _activity = self.bridge['activity']
-#         _su = self.bridge['screensaver_user']
-#         # perform some hacks to speed up the query
-#         _performed_by_users_cte = \
-#             ScreensaverUserResource.get_user_cte()\
-#             .where(
-#                 exists(select([None]).select_from(_activity)
-#                     .where(_su.c.screensaver_user_id==_activity.c.performed_by_id)))\
-#             .cte('performers_%s' % alias_qualifier)
-#         _performed_by = _performed_by_users_cte.alias('performed_by_%s' % alias_qualifier)
-#         _performed_by1 = _performed_by_users_cte.alias('performed_by1_%s' % alias_qualifier)
-#         _performed_by2 = _performed_by_users_cte.alias('performed_by2_%s' % alias_qualifier)
-#         _created_by_users_cte = \
-#             ScreensaverUserResource.get_user_cte()\
-#             .where(
-#                 exists(select([None]).select_from(_activity)
-#                     .where(_su.c.screensaver_user_id==_activity.c.created_by_id)))\
-#             .cte('creators_%s' % alias_qualifier)
-#         _created_by = _created_by_users_cte.alias('created_by_%s' % alias_qualifier)
-#         _created_by1 = _created_by_users_cte.alias('created_by1_%s' % alias_qualifier)
-#         _lhsu = _su.alias('lhsu_%s' % alias_qualifier)
-#         _sfs = self.bridge['screen_funding_supports']
-#         
-#         lab_head_table = \
-#             ScreensaverUserResource.get_lab_head_cte(alias_qualifier)\
-#                 .cte('lab_heads_%s' % alias_qualifier)
-#         return {
-#             'performed_by_name': (
-#                 select([_performed_by1.c.name])
-#                     .select_from(_performed_by1)
-#                     .where(_performed_by1.c.screensaver_user_id 
-#                         == _activity.c.performed_by_id)
-#                 ),
-#             'performed_by_username': (
-#                 select([_performed_by.c.username])
-#                     .select_from(_performed_by)
-#                     .where(_performed_by.c.screensaver_user_id 
-#                         == _activity.c.performed_by_id)
-#                 ),
-#             'performed_by_user_id': (
-#                 select([_performed_by2.c.screensaver_user_id])
-#                     .select_from(_performed_by2)
-#                     .where(_performed_by2.c.screensaver_user_id 
-#                         == _activity.c.performed_by_id)
-#                 ),
-#             'created_by_name': (
-#                 select([_created_by1.c.name])
-#                     .select_from(_created_by1)
-#                     .where(_created_by1.c.screensaver_user_id 
-#                         == _activity.c.created_by_id)
-#                 ),
-#             'created_by_username': (
-#                 select([_created_by.c.username])
-#                     .select_from(_created_by)
-#                     .where(_created_by.c.screensaver_user_id 
-#                         == _activity.c.created_by_id)
-#                 ),
-#             'screen_lab_affiliation': (
-#                 select([lab_head_table.c.lab_affiliation])
-#                 .select_from(lab_head_table)
-#                 .where(lab_head_table.c.screensaver_user_id==_screen.c.lab_head_id)),
-#             'screen_lab_name': (
-#                 select([lab_head_table.c.lab_name_full])
-#                 .select_from(lab_head_table)
-#                 .where(lab_head_table.c.screensaver_user_id==_screen.c.lab_head_id)),
-#             'screen_lab_head_id': (
-#                 select([lab_head_table.c.screensaver_user_id])
-#                 .select_from(lab_head_table)
-#                 .where(lab_head_table.c.screensaver_user_id==_screen.c.lab_head_id)),
-#             'screen_funding_supports':
-#                 select([func.array_to_string(
-#                     func.array_agg(literal_column('funding_support')
-#                     ), LIST_DELIMITER_SQL_ARRAY)])
-#                     .select_from(
-#                         select([_sfs.c.funding_support])
-#                             .select_from(_sfs)
-#                             .order_by(_sfs.c.funding_support)
-#                             .where(_sfs.c.screen_id 
-#                                 == literal_column('screen.screen_id'))
-#                             .alias('inner')),
-#             'screen_lead_screener_name': (
-#                 select([_concat(_su.c.first_name, ' ', _su.c.last_name)])
-#                     .select_from(_su)
-#                     .where(_su.c.screensaver_user_id 
-#                         == _screen.c.lead_screener_id)),
-#             'screen_lead_screener_id': (
-#                 select([_su.c.screensaver_user_id])
-#                     .select_from(_su)
-#                     .where(_su.c.screensaver_user_id 
-#                         == _screen.c.lead_screener_id)),
-#             'screen_date_of_last_activity': literal_column(
-#                 '( (select date_of_activity '
-#                 '  from activity '
-#                 '  join lab_activity la using(activity_id) '
-#                 '  where la.screen_id=screen.screen_id '
-#                 '  and not exists(select null from cherry_pick_liquid_transfer cplt'
-#                 '     where cplt.activity_id = activity.activity_id) '
-#                 '  UNION ALL'
-#                 '  select date_of_activity '
-#                 '  from activity '
-#                 '  join service_activity sa using(activity_id) '
-#                 '  where sa.serviced_screen_id=screen.screen_id )'
-#                 '  order by date_of_activity desc LIMIT 1 )'),
-#         }
-# 
-#     def get_query(self, param_hash, user):
-#         # general setup
-#         schema = self.build_schema(user=user)
-#         logger.info('activity get_query, schema: %r, %r', 
-#             schema['key'], schema['fields'].keys())
-#         
-#         manual_field_includes = set(param_hash.get('includes', []))
-#         # for join to screen query (TODO: only include if screen fields rqst'd)
-#         manual_field_includes.add('screen_id')
-#         manual_field_includes.add('activity_class')
-#         # for join to cherrypickrequest (TODO: req'd to complete activity id link)
-#         manual_field_includes.add('cherry_pick_request_id')
-#         param_hash['includes'] = list(manual_field_includes)
-#         
-#         (filter_expression, filter_hash, readable_filter_hash) = \
-#             SqlAlchemyResource.build_sqlalchemy_filters(
-#                 schema, param_hash=param_hash)
-#         filename = self._get_filename(readable_filter_hash, schema)
-#         
-#         # NOTE: try "filter_in_sql" for performance
-#         # NOTE: filters are done in the subquery clauses
-#         # filter_expression = \
-#         #     self._meta.authorization.filter(user,filter_expression)
-#               
-#         order_params = param_hash.get('order_by', [])
-#         order_params.append('-date_of_activity')
-#         field_hash = self.get_visible_fields(
-#             schema['fields'], filter_hash.keys(), manual_field_includes,
-#             param_hash.get('visibilities'),
-#             exact_fields=set(param_hash.get('exact_fields', [])),
-#             order_params=order_params)
-#         order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
-#             order_params, field_hash)
-# 
-#         # specific setup
-#         
-#         _activity = self.bridge['activity']
-#         # Create a UNION query of each subclass query:
-#         (field_hash_sa, columns_sa, stmt_sa, count_stmt_sa, filenamesa) = (
-#             self.get_service_activity_resource().get_query(param_hash, user))
-#         # if a field is not present in the subquery, create an empty field            
-#         sa_columns = []
-#         for key, field in field_hash.items():
-#             if field['scope'] == 'fields.activity':
-#                 if key not in columns_sa:
-#                     if field['data_type'] == 'string':
-#                         sa_columns.append(cast(literal_column("null"), 
-#                             sqlalchemy.sql.sqltypes.Text).label(key))
-#                     else:
-#                         sa_columns.append(literal_column("null").label(key))
-#                 else:
-#                     sa_columns.append(literal_column(key))
-#         stmt_sa = stmt_sa.cte('serviceactivities')
-#         stmt1 = select(sa_columns).select_from(stmt_sa)
-# 
-#         (field_hash_la, columns_la, stmt_la, count_stmt_la) = (
-#             self.get_lab_activity_query(param_hash, user))
-#         # if a field is not present in the subquery, create an empty field            
-#         la_columns = []
-#         for key, field in field_hash.items():
-#             if field['scope'] == 'fields.activity':
-#                 if key not in columns_la:
-#                     logger.info('create dummy col for %r', key)
-#                     if field['data_type'] == 'string':
-#                         la_columns.append(cast(literal_column("null"), 
-#                             sqlalchemy.sql.sqltypes.Text).label(key))
-#                     else: 
-#                         la_columns.append(literal_column("null").label(key))
-#                 else:
-#                     la_columns.append(literal_column(key))
-#                     
-#         stmt_la = stmt_la.cte('labactivities')
-#         stmt2 = select(la_columns).select_from(stmt_la)
-#         
-#         stmt = stmt1.union_all(stmt2)
-#         (stmt, count_stmt) = self.wrap_statement(
-#             stmt, order_clauses, filter_expression)
-# 
-# #         if logger.isEnabledFor(logging.DEBUG):
-#         compiled_stmt = str(stmt.compile(
-#             dialect=postgresql.dialect(),
-#             compile_kwargs={"literal_binds": True}))
-#         logger.info('compiled_stmt %s', compiled_stmt)
-# 
-# 
-#         columns = { key:literal_column(key) for key in field_hash.keys()}
-#         return (field_hash, columns, stmt, count_stmt, filename)
-#     
-#     def get_custom_lab_activity_columns(self, alias_qualifier):
-# 
-#         _library_screening = self.bridge['library_screening']
-#         _cps = self.bridge['cherry_pick_screening']
-#         # _cplt = self.bridge['cherry_pick_liquid_transfer']
-#         _screen = self.bridge['screen']
-#         
-#         activity_type_column = cast(case([
-#             (_library_screening.c.activity_id != None,
-#                case([(_library_screening.c.is_for_external_library_plates,
-#                         'externallibraryscreening')],
-#                     else_='libraryscreening')),
-#             (_cps.c.activity_id != None,
-#                 'cherrypickscreening')
-#             ],
-#             else_='cplt'), sqlalchemy.sql.sqltypes.Text)
-# 
-#         return { 
-#             'serviced_user_id': cast(
-#                 literal_column("null"),sqlalchemy.sql.sqltypes.Numeric),
-#             'serviced_user': cast(
-#                 literal_column("null"),sqlalchemy.sql.sqltypes.Text),
-#             'serviced_username': cast(
-#                 literal_column("null"),sqlalchemy.sql.sqltypes.Text),
-#             'funding_support': cast(
-#                 literal_column("null"),sqlalchemy.sql.sqltypes.Text),
-#             'cherry_pick_request_id': _cps.c.cherry_pick_request_id,
-#             # 20171108 - Do not show CPLT activities in the general activity report
-#             # 'cherry_pick_request_id': 
-#             #     cast(func.coalesce(
-#             #             _cps.c.cherry_pick_request_id, 
-#             #             _cplt.c.cherry_pick_request_id, None), 
-#             #         sqlalchemy.sql.sqltypes.Text),
-#             'type': activity_type_column,
-#             'activity_class': activity_type_column,
-#             }
-#         
-#     def get_lab_activity_query(self, param_hash, user):
-# 
-#         # general setup
-#         # schema for labactivity part of the query should only be the activity fields
-#         # (exclude the screen.fields)
-#         schema = deepcopy(self.build_schema(user=user))
-#         field_hash = schema['fields']
-#         field_hash = { key:val for key, val in field_hash.items() 
-#             if val['scope'] == 'fields.activity'}  
-#         schema['fields'] = field_hash
-#         
-#         manual_field_includes = set(param_hash.get('includes', []))
-#         manual_field_includes.add('screen_id')
-#         
-#         (filter_expression, filter_hash, readable_filter_hash) = \
-#             SqlAlchemyResource.build_sqlalchemy_filters(
-#                 schema, param_hash=param_hash)
-#         filter_expression = \
-#             self._meta.authorization.filter(user,filter_expression)
-#               
-#         order_params = param_hash.get('order_by', [])
-#         field_hash = self.get_visible_fields(
-#             schema['fields'], filter_hash.keys(), manual_field_includes,
-#             param_hash.get('visibilities'),
-#             exact_fields=set(param_hash.get('exact_fields', [])),
-#             order_params=order_params)
-#         order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
-#             order_params, field_hash)
-#          
-#         # specific setup
-#         _sfs = self.bridge['screen_funding_supports']
-#         _a = self.bridge['activity']
-#         _la = self.bridge['lab_activity']
-#         _screening = self.bridge['screening']
-#         _screen = self.bridge['screen']
-# 
-#         j = _a
-#         j = j.join(_la, _a.c.activity_id == _la.c.activity_id)
-#         j = j.join(_screen, _la.c.screen_id == _screen.c.screen_id)
-# 
-#         # TODO: delegate to sub_classes (when built)
-#         _library_screening = self.bridge['library_screening']
-#         _cps = self.bridge['cherry_pick_screening']
-#         # 20171108 - Do not show CPLT activities in general report
-#         _cplt = self.bridge['cherry_pick_liquid_transfer']
-#         j = j.join(
-#             _library_screening,
-#             _la.c.activity_id == _library_screening.c.activity_id, isouter=True)
-#         j = j.join(_cps, _la.c.activity_id == _cps.c.activity_id, isouter=True)
-#         # j = j.join(_cplt, _la.c.activity_id == _cplt.c.activity_id, isouter=True)
-#                 
-#         custom_columns = self.get_custom_columns('la')
-#         custom_columns.update(self.get_custom_lab_activity_columns('lab_activity'))
-#         
-#         base_query_tables = ['activity', 'lab_activity', 'screening', 'screen'] 
-#         columns = self.build_sqlalchemy_columns(
-#             field_hash.values(), base_query_tables=base_query_tables,
-#             custom_columns=custom_columns)
-#         
-#         stmt = select(columns.values()).select_from(j)
-#         
-#         stmt = stmt.where(~exists(
-#             select([None]).select_from(_cplt).where(_cplt.c.activity_id==_a.c.activity_id)))
-#         # stmt = self._meta.authorization.filter_in_sql(
-#         #     user, stmt, screen_table=_screen)
-#         # general setup
-#          
-#         (stmt, count_stmt) = self.wrap_statement(
-#             stmt, order_clauses, filter_expression)
-#         
-#         if logger.isEnabledFor(logging.DEBUG):
-#             compiled_stmt = str(stmt.compile(
-#                 dialect=postgresql.dialect(),
-#                 compile_kwargs={"literal_binds": True}))
-#             logger.info('compiled_stmt %s', compiled_stmt)
-#         
-#         return (field_hash, columns, stmt, count_stmt)
-# 
-#     def build_list_response(self, request, **kwargs):
-#         schema = kwargs.pop('schema', None)
-#         if not schema:
-#             raise Exception('schema not initialized')
-# 
-#         param_hash = self._convert_request_to_dict(request)
-#         param_hash.update(kwargs)
-#         is_data_interchange = param_hash.get(HTTP_PARAM_DATA_INTERCHANGE, False)
-#         use_vocab = param_hash.get(HTTP_PARAM_USE_VOCAB, False)
-#         use_titles = param_hash.get(HTTP_PARAM_USE_TITLES, False)
-#         if is_data_interchange:
-#             use_vocab = False
-#             use_titles = False
-#         is_for_detail = kwargs.pop('is_for_detail', False)
-#         
-#         (field_hash, columns, stmt, count_stmt, filename) = \
-#             self.get_query(param_hash, request.user)
-#         
-#         rowproxy_generator = None
-#         if use_vocab is True:
-#             rowproxy_generator = \
-#                 DbApiResource.create_vocabulary_rowproxy_generator(field_hash)
-#             # use "use_vocab" as a proxy to also adjust siunits for viewing
-#             rowproxy_generator = DbApiResource.create_number_format_generator(
-#                 field_hash, rowproxy_generator)
-#         rowproxy_generator = \
-#            self._meta.authorization.get_row_property_generator(
-#                request.user, field_hash, rowproxy_generator)
-# 
-#         title_function = None
-#         if use_titles is True:
-#             def title_function(key):
-#                 return field_hash[key]['title']
-#         if is_data_interchange:
-#             title_function = DbApiResource.datainterchange_title_function(
-#                 field_hash,schema['id_attribute'])
-#         
-#         return self.stream_response_from_statement(
-#             request, stmt, count_stmt, filename,
-#             field_hash=field_hash,
-#             param_hash=param_hash,
-#             is_for_detail=is_for_detail,
-#             rowproxy_generator=rowproxy_generator,
-#             title_function=title_function, meta=kwargs.get('meta', None),
-#             use_caching=True)
-             
-
-# class ServiceActivityResource(ActivityResource):    
-# 
-#     class Meta:
-# 
-#         queryset = ServiceActivity.objects.all()
-#         authentication = MultiAuthentication(IccblBasicAuthentication(),
-#                                              IccblSessionAuthentication())
-#         resource_name = 'serviceactivity'
-#         authorization = ActivityResourceAuthorization(resource_name)
-#         ordering = []
-#         filtering = {}
-#         serializer = LimsSerializer()
-#         max_limit = 10000
-#         always_return_data = True
-# 
-#     def __init__(self, **kwargs):
-#         super(ServiceActivityResource, self).__init__(**kwargs)
-# 
-#     def prepend_urls(self):
-# 
-#         return [
-#             url(r"^(?P<resource_name>%s)/schema%s$" 
-#                 % (self._meta.resource_name, TRAILING_SLASH),
-#                 self.wrap_view('get_schema'), name="api_get_schema"),
-#             url((r"^(?P<resource_name>%s)/" 
-#                  r"(?P<activity_id>([\d]+))%s$")
-#                     % (self._meta.resource_name, TRAILING_SLASH),
-#                 self.wrap_view('dispatch_detail'), name="api_dispatch_detail"),
-#             url(r"^(?P<resource_name>%s)/for_user/(?P<serviced_user_id>([\d]+))%s$" 
-#                     % (self._meta.resource_name, TRAILING_SLASH),
-#                 self.wrap_view('dispatch_list'), name="api_dispatch_list"),
-#             url(r"^(?P<resource_name>%s)/for_user/(?P<serviced_user_id>([\d]+))%s$" 
-#                     % (self._meta.resource_name, TRAILING_SLASH),
-#                 self.wrap_view('dispatch_list'), name="api_dispatch_list"),
-#         ]    
-# 
-#     @write_authorization
-#     @transaction.atomic
-#     def patch_obj(self, request, deserialized, **kwargs):
-# 
-#         schema = kwargs.pop('schema', None)
-#         if schema is None:
-#             raise Exception('schema not initialized')
-#         fields = schema['fields']
-# 
-#         # NOTE: parse params only if needed for client overrides
-#         # param_hash = self._convert_request_to_dict(request)
-#         # param_hash.update(kwargs)
-#         # logger.debug('param_hash: %r', param_hash)
-# 
-#         id_kwargs = self.get_id(deserialized, schema=schema, **kwargs)
-# 
-#         logger.info('patch ServiceActivity: %r', deserialized)
-#         
-#         patch = bool(id_kwargs)
-#         initializer_dict = self.parse(deserialized, create=not patch, schema=schema)
-#         errors = self.validate(initializer_dict, schema=schema, patch=patch)
-#         if errors:
-#             raise ValidationError(errors)
-#         
-#         activity_type = deserialized.get('type', None)
-#         if activity_type:
-#             initializer_dict['service_activity_type'] = activity_type
-# 
-#         serviced_user_id = deserialized.get('serviced_user_id', None)
-#         performed_by_user_id = deserialized.get('performed_by_user_id', None)
-#         serviced_screen_facility_id = deserialized.get('screen_facility_id', None)
-#         
-#         if not patch:
-#             if serviced_user_id is None and serviced_screen_facility_id is None:
-#                 msg = 'Either serviced user or serviced screen_facility_id is required'
-#                 raise ValidationError({
-#                     'serviced_user_id': msg,
-#                     'screen_facility_id': msg
-#                     })
-#             if not activity_type:
-#                 raise ValidationError(
-#                     key='type',
-#                     msg='required')
-#             if not performed_by_user_id:
-#                 raise ValidationError(
-#                     key='performed_by_user_id',
-#                     msg='required')
-# 
-#         if serviced_user_id:
-#             try:
-#                 serviced_user = ScreensaverUser.objects.get(
-#                     screensaver_user_id=serviced_user_id)
-#                 initializer_dict['serviced_user'] = serviced_user
-#             except ObjectDoesNotExist:
-#                 raise ValidationError(
-#                     key='serviced_user_id',
-#                     msg='id does not exist: %r' % serviced_user_id)
-#         if serviced_screen_facility_id:
-#             try:
-#                 serviced_screen = Screen.objects.get(
-#                     facility_id=serviced_screen_facility_id)
-#                 initializer_dict['serviced_screen'] = serviced_screen
-#             except ObjectDoesNotExist:
-#                 raise ValidationError(
-#                     key='screen_facility_id',
-#                     msg='screen does not exist: %r' % serviced_screen_facility_id)
-#         if performed_by_user_id:
-#             performed_by = \
-#                 self.get_su_resource()._get_detail_response_internal(
-#                 exact_fields=['screensaver_user_id','is_staff'],
-#                 screensaver_user_id=performed_by_user_id)
-#             if not performed_by: 
-#                 raise ValidationError(
-#                     key='performed_by_user_id',
-#                     msg='No such screensaver_user_id: %r' % performed_by_user_id)
-#             if performed_by.get('is_staff',False) != True:
-#                 raise ValidationError(
-#                     key='performed_by_user_id',
-#                     msg='Must be a staff user')
-# 
-#         service_activity = None
-#         if patch:
-#             try:
-#                 service_activity = ServiceActivity.objects.get(
-#                     pk=id_kwargs['activity_id'])
-#             except ObjectDoesNotExist:
-#                 raise Http404(
-#                     'ServiceActivity does not exist for: %r', id_kwargs)
-#         else:
-#             # Set the created_by field:
-#             # NOTE: deprecate for SS V2
-#             try:
-#                 adminuser = ScreensaverUser.objects.get(username=request.user.username)
-#             except ObjectDoesNotExist as e:
-#                 logger.error('admin user: %r does not exist', request.user.username )
-#                 raise
-#             
-#             service_activity = ServiceActivity()
-#             service_activity.created_by = adminuser
-#         
-#         service_activity.performed_by_id = performed_by_user_id
-#         
-#         model_field_names = [
-#             x.name for x in service_activity._meta.get_fields()]
-#         for key, val in initializer_dict.items():
-#             if key in model_field_names:
-#                 setattr(service_activity, key, val)
-# 
-#         service_activity.save()
-#         logger.info('saved service_activity: %r', service_activity)
-#         return { API_RESULT_OBJ: service_activity }
-# 
-#     def make_log_key(self, log, attributes, id_attribute=None, schema=None, **kwargs):
-# 
-#         logger.debug('make_log_key: %r, %r, %r', attributes, id_attribute, kwargs)
-#         
-#         if attributes:
-#             ActivityResource.make_log_key(
-#                 self, log, attributes, id_attribute=id_attribute, 
-#                 schema=schema, **kwargs)
-#             logger.info('log key: %r, %r', log.key, log)
-#     
-#             keys = []
-#             # Always create the service activity log for the user, if available 
-#             if attributes.get('serviced_user_id', None):
-#                 keys.append('screensaveruser')
-#                 keys.append(str(attributes['serviced_user_id']))
-#             elif attributes.get('screen_facility_id', None):
-#                 keys.append('screen')
-#                 keys.append(attributes['screen_facility_id'])
-#             keys.append(self._meta.resource_name)
-#             log.uri = '%s/%s' % ('/'.join(keys), log.key)
-#         
-#             logger.info('log uri: %r, %r', log.uri, log)
-# 
-#     @write_authorization
-#     @un_cache
-#     @transaction.atomic
-#     def delete_obj(self, request, deserialized, **kwargs):
-# 
-#         activity_id = kwargs.get('activity_id', None)
-#         if activity_id:
-#             try:
-#                 sa = ServiceActivity.objects.get(
-#                     activity_id=activity_id)
-#                 sa.delete()
-#             except ObjectDoesNotExist:
-#                 logger.warn('no such ServiceActivity: %s' % activity_id)
-#                 raise Exception(
-#                     'ServiceActivity for activity_id: %s not found' % activity_id)
-#         else:
-#             raise Exception(
-#                 'ServiceActivity delete action requires an activity_id %s' 
-#                 % kwargs)
-#         
-#     def get_query(self, param_hash, user):
-# 
-#         schema = self.build_schema(user=user)
-#         logger.debug('serviceactivity query: %r', schema['fields'].keys())
-#         # general setup
-#         alias_qualifier = 'sa'
-#         manual_field_includes = set(param_hash.get('includes', []))
-#         # for join to screen query (TODO: only include if screen fields rqst'd)
-#         manual_field_includes.add('screen_id')
-#         
-#         (filter_expression, filter_hash, readable_filter_hash) = \
-#             SqlAlchemyResource.build_sqlalchemy_filters(
-#                 schema, param_hash=param_hash)
-#         filename = self._get_filename(readable_filter_hash, schema)
-#         filter_expression = \
-#             self._meta.authorization.filter(user,filter_expression)
-# 
-#               
-#         order_params = param_hash.get('order_by', [])
-#         order_params.append('-date_of_activity')
-#         field_hash = self.get_visible_fields(
-#             schema['fields'], filter_hash.keys(), manual_field_includes,
-#             param_hash.get('visibilities'),
-#             exact_fields=set(param_hash.get('exact_fields', [])),
-#             order_params=order_params)
-#         order_clauses = SqlAlchemyResource.build_sqlalchemy_ordering(
-#             order_params, field_hash)
-#          
-#         # specific setup
-#         _a = self.bridge['activity']
-#         _sa = self.bridge['service_activity']
-#         _screen = self.bridge['screen']
-#         _user_cte = ScreensaverUserResource.get_user_cte().cte('users_serviced_sa')
-#         _serviced = _user_cte.alias('serviced_user')
-#         
-#         j = _a
-#         j = j.join(_sa, _a.c.activity_id == _sa.c.activity_id)
-#         j = j.join(
-#             _serviced,
-#             _sa.c.serviced_user_id == _serviced.c.screensaver_user_id, isouter=True)
-#         j = j.join(
-#             _screen,
-#             _sa.c.serviced_screen_id == _screen.c.screen_id, isouter=True)
-#         
-#         # Get custom columns from the parent (ActivityResource); the
-#         # ServiceActivity query rows contain the needed activity and screen ids
-#         custom_columns = \
-#             super(ServiceActivityResource, self).get_custom_columns('sa')
-#         custom_columns.update({
-#             'activity_class': cast(
-#                 literal_column("'serviceactivity'"), 
-#                 sqlalchemy.sql.sqltypes.Text),
-#             'serviced_user': _serviced.c.name,
-#             'serviced_username': _serviced.c.username,
-#             'serviced_user_id': _serviced.c.screensaver_user_id,
-#             })
-# 
-#         base_query_tables = ['activity', 'service_activity', 'screen'] 
-#         columns = self.build_sqlalchemy_columns(
-#             field_hash.values(), base_query_tables=base_query_tables,
-#             custom_columns=custom_columns)
-#         
-#         stmt = select(columns.values()).select_from(j)
-#         # stmt = self._meta.authorization.filter_in_sql(
-#         #     user, stmt, serviced_user_table=_serviced, screen_table=_screen)
-#         # general setup
-#          
-#         (stmt, count_stmt) = self.wrap_statement(
-#             stmt, order_clauses, filter_expression)
-# 
-#         # compiled_stmt = str(stmt.compile(
-#         #     dialect=postgresql.dialect(),
-#         #     compile_kwargs={"literal_binds": True}))
-#         # logger.info('compiled_stmt %s', compiled_stmt)
-#         
-#         return (field_hash, columns, stmt, count_stmt, filename)
 
 
 class LibraryScreeningResource(ActivityResource):
@@ -14767,7 +13932,8 @@ class LibraryScreeningResource(ActivityResource):
     MIN_WELL_VOL_SMALL_MOLECULE = Decimal('0.0000069') # 6.9 uL
     MIN_WELL_VOL_RNAI = Decimal(0)
     
-    ALLOWED_LIBRARY_SCREENING_STATUS = (SCHEMA.VOCAB.library.screening_status.ALLOWED,)
+    ALLOWED_LIBRARY_SCREENING_STATUS = (
+        SCHEMA.VOCAB.library.screening_status.ALLOWED,)
     WARN_LIBRARY_SCREENING_STATUS = (
         SCHEMA.VOCAB.library.screening_status.REQUIRES_PERMISSION,
         SCHEMA.VOCAB.library.screening_status.NOT_RECOMMENDED,
@@ -14783,7 +13949,8 @@ class LibraryScreeningResource(ActivityResource):
     # ERROR_PLATE_STATUS = [
     #     'discarded', 'given_away','not_specified', 'not_available', 
     #     'not_created', 'discarded_volume_transferred', 'lost']
-    ALLOWED_COPY_USAGE_TYPE = (SCHEMA.VOCAB.copy.usage_type.LIBRARY_SCREENING_PLATES,)
+    ALLOWED_COPY_USAGE_TYPE = (
+        SCHEMA.VOCAB.copy.usage_type.LIBRARY_SCREENING_PLATES,)
     # NOTE: all other copy usage types are errors
     SCREENING_COUNT_THRESHOLD = 12
 
@@ -14806,10 +13973,7 @@ class LibraryScreeningResource(ActivityResource):
         resource_name = 'libraryscreening'
         alt_resource_name = 'externallibraryscreening'
         authorization = ActivityResourceAuthorization(resource_name)
-        ordering = []
-        filtering = {}
         serializer = LimsSerializer()
-        max_limit = 10000
         always_return_data = True
 
     def __init__(self, **kwargs):
@@ -14920,8 +14084,6 @@ class LibraryScreeningResource(ActivityResource):
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
         
-        logger.info('params: %r', param_hash)
-        
         facility_id = param_hash.get('facility_id', None)
         activity_id = param_hash.get('activity_id', None)
         plate_search_data = param_hash.get(SCHEMA.API_PARAM_SEARCH, None)
@@ -14958,7 +14120,8 @@ class LibraryScreeningResource(ActivityResource):
             if self._meta.authorization.has_activity_read_authorization(
                 request.user, activity_id) is False:
                 raise PermissionDenied
-            library_screening = LibraryScreening.objects.get(activity_id=activity_id)
+            library_screening = \
+                LibraryScreening.objects.get(activity_id=activity_id)
         
         searched_plate_ids = []
         plate_search_errors = []
@@ -15063,7 +14226,9 @@ class LibraryScreeningResource(ActivityResource):
         '''    
 
         LSR = self
-        logger.info('get_plate_range_search_table for ids: %r ...', searched_plate_ids)
+        logger.info(
+            'get_plate_range_search_table for ids: %r ...', searched_plate_ids)
+        
         class ErrorDict():
             ''' Track errors and warnings for each plate range
             '''
@@ -15212,7 +14377,7 @@ class LibraryScreeningResource(ActivityResource):
                     _assay_plates_query.c.activity_id,
                     _concat(
                         _l.c.short_name, '/', _c.c.name, '/', 
-                        cast(_p.c.plate_number, sqlalchemy.sql.sqltypes.Text)
+                        cast(_p.c.plate_number, TEXT)
                     ).label('plate_key'),
                     _l.c.short_name.label('library_short_name'),
                     _l.c.screening_status.label('library_screening_status'),
@@ -15248,7 +14413,7 @@ class LibraryScreeningResource(ActivityResource):
                     literal_column('0').label('activity_id'),
                     _concat(
                         _l.c.short_name, '/', _c.c.name, '/', 
-                        cast(_p.c.plate_number, sqlalchemy.sql.sqltypes.Text)
+                        cast(_p.c.plate_number, TEXT)
                     ).label('plate_key'),
                     _l.c.short_name.label('library_short_name'),
                     _l.c.screening_status.label('library_screening_status'),
@@ -15315,7 +14480,8 @@ class LibraryScreeningResource(ActivityResource):
                     if new_row:
                         new_row['plate_locations'] = [x for x in plate_locations]
                         new_row['plate_keys'] = [x for x in plate_keys]
-                        sum_vol = sum([Decimal(x) for x in plate_volumes])/Decimal(len(plate_volumes))
+                        sum_vol = sum([Decimal(x) 
+                            for x in plate_volumes])/Decimal(len(plate_volumes))
                         sum_vol = u'{} {}L'.format(
                                 si_unit.convert_decimal(
                                     sum_vol,1e-6, 2),
@@ -15350,7 +14516,8 @@ class LibraryScreeningResource(ActivityResource):
             if librarycopy:
                 new_row['plate_locations'] = [x for x in plate_locations]
                 new_row['plate_keys'] = [x for x in plate_keys]
-                sum_vol = sum([Decimal(x) for x in plate_volumes])/Decimal(len(plate_volumes))
+                sum_vol = sum([Decimal(x) 
+                    for x in plate_volumes])/Decimal(len(plate_volumes))
                 sum_vol = u'{} {}L'.format(
                         si_unit.convert_decimal(
                             sum_vol,1e-6, 2),
@@ -15374,7 +14541,6 @@ class LibraryScreeningResource(ActivityResource):
 
     def get_plate_comments_for_plate_range_data(self, _data, join_query):
         
-        logger.info('get plate comments...')
         for _dict in _data:
             _dict['plate_comment_array'] = set()
         _comment_apilogs = \
@@ -15392,11 +14558,9 @@ class LibraryScreeningResource(ActivityResource):
                 _comment_apilogs.c.key,
                 func.array_agg(
                     _concat(                            
-                        cast(_comment_apilogs.c.name,
-                            sqlalchemy.sql.sqltypes.Text),
+                        cast(_comment_apilogs.c.name, TEXT),
                         LIST_DELIMITER_SUB_ARRAY,
-                        cast(_comment_apilogs.c.date_time,
-                            sqlalchemy.sql.sqltypes.Text),
+                        cast(_comment_apilogs.c.date_time, TEXT),
                         LIST_DELIMITER_SUB_ARRAY,
                         '(',_comment_apilogs.c.key, ') ',
                         _comment_apilogs.c.comment)
@@ -15415,54 +14579,8 @@ class LibraryScreeningResource(ActivityResource):
                         _dict['plate_comment_array'].update(comment_array)
         for _dict in _data:
             _dict['plate_comment_array'] = list(_dict['plate_comment_array'])            
-
-        logger.info('plate comments generated')
-
-    def get_plate_comments_for_plate_range_data_bak(self, _data):
-        
-        logger.info('get plate comments...')
-        cumulative_plate_keys = set()
-        for _dict in _data:
-            _dict['plate_comment_array'] = set()
-            cumulative_plate_keys.update(_dict['plate_keys'])
-        logger.info('cumulative_plate_keys: %r', cumulative_plate_keys)
-        _comment_apilogs = \
-            ApiLogResource.get_resource_comment_subquery('librarycopyplate').cte('logs')
-        query = (
-            select([
-                _comment_apilogs.c.key,
-                func.array_agg(
-                    _concat(                            
-                        cast(_comment_apilogs.c.name,
-                            sqlalchemy.sql.sqltypes.Text),
-                        LIST_DELIMITER_SUB_ARRAY,
-                        cast(_comment_apilogs.c.date_time,
-                            sqlalchemy.sql.sqltypes.Text),
-                        LIST_DELIMITER_SUB_ARRAY,
-                        '(',_comment_apilogs.c.key, ') ',
-                        _comment_apilogs.c.comment)
-                    )
-            ])
-            .select_from(_comment_apilogs)
-            .group_by(_comment_apilogs.c.key)
-            .where(_comment_apilogs.c.key.in_(cumulative_plate_keys))
-        )
-        
-        with get_engine().connect() as conn:
-            for x in conn.execute(query):
-                key = x[0]
-                comment_array = x[1]
-                for _dict in _data:
-                    if key in _dict['plate_keys']:
-                        _dict['plate_comment_array'].update(comment_array)
-        for _dict in _data:
-            _dict['plate_comment_array'] = list(_dict['plate_comment_array'])            
-
-        logger.info('plate comments generated')
 
     def get_library_comments(self, library_keys):
-
-        logger.info('get library comments...')
 
         _comment_apilogs = \
             ApiLogResource.get_resource_comment_subquery('library').cte('logs')
@@ -15471,11 +14589,9 @@ class LibraryScreeningResource(ActivityResource):
                 _comment_apilogs.c.key,
                 func.array_agg(
                     _concat(                            
-                        cast(_comment_apilogs.c.name,
-                            sqlalchemy.sql.sqltypes.Text),
+                        cast(_comment_apilogs.c.name, TEXT),
                         LIST_DELIMITER_SUB_ARRAY,
-                        cast(_comment_apilogs.c.date_time,
-                            sqlalchemy.sql.sqltypes.Text),
+                        cast(_comment_apilogs.c.date_time, TEXT),
                         LIST_DELIMITER_SUB_ARRAY,
                         _comment_apilogs.c.comment)
                     )
@@ -15489,7 +14605,6 @@ class LibraryScreeningResource(ActivityResource):
             comments = defaultdict(list)
             for x in conn.execute(query):
                 comments[x[0]] = x[1]
-            logger.info('library comments generated')
             return comments
 
     def get_query(self, schema, param_hash, user):
@@ -15580,7 +14695,7 @@ class LibraryScreeningResource(ActivityResource):
                 .select_from(_p.join(_c,_p.c.copy_id==_c.c.copy_id)
                     .join(_ap,_p.c.plate_id==_ap.c.plate_id)))
             
-            logger.info('try to grep library_plates_screened_search: %r', 
+            logger.debug('try to grep library_plates_screened_search: %r', 
                 library_plates_screened_search)
             if isinstance(library_plates_screened_search, six.types.StringTypes):
                 # FIXME: lines should be split using the PLATE_SEARCH_LINE_SPLITTING_PATTERN
@@ -15590,15 +14705,15 @@ class LibraryScreeningResource(ActivityResource):
                 library_plates_screened_search = (library_plates_screened_search,)
             or_clause = []
             for lps_search in library_plates_screened_search:
-                logger.info('try: %r', lps_search)
+                logger.debug('try: %r', lps_search)
                 copy_plate_pattern = re.compile(r'([^\/]+)\/(\d+)')
                 match = copy_plate_pattern.match(lps_search)
                 if match: 
-                    logger.info('found match %r for %r', match, lps_search)
+                    logger.debug('found match %r for %r', match, lps_search)
                     or_clause.append(and_(
                         _c.c.name==match.group(1),_p.c.plate_number==match.group(2)))
             if or_clause:
-                logger.info('library_copy_plate pattern subquery')
+                logger.debug('library_copy_plate pattern subquery')
                 copy_plate_query = copy_plate_query.where(or_(*or_clause))
                 copy_plate_query = copy_plate_query.alias('cp_query')
                 stmt = stmt.where(exists(
@@ -15650,7 +14765,7 @@ class LibraryScreeningResource(ActivityResource):
             rowproxy_generator = DbApiResource.create_number_format_generator(
                 field_hash, rowproxy_generator)
         
-        # create a generator to wrap the cursor and expand the library_plates_screened
+        # create a generator to expand the library_plates_screened
         def create_lcp_gen(generator):
             bridge = self.bridge
             _library = self.bridge['library']
@@ -15784,9 +14899,6 @@ class LibraryScreeningResource(ActivityResource):
 
         # NOTE: 20170321 not creating a screen "parent" log;
         # libraryScreening activities will stand on their own
-        # original_screen_data = self.get_screen_resource()._get_detail_response_internal(**{
-        #     'facility_id': original_data['screen_facility_id']})
-
         original_data = self._get_detail_response_internal(**kwargs_for_log)
         logger.debug('original libraryscreening data: %r', original_data)
         
@@ -15833,9 +14945,6 @@ class LibraryScreeningResource(ActivityResource):
 
         # NOTE: 20170321 not creating a screen "parent" log;
         # libraryScreening activities will stand on their own
-        # original_screen_data = self.get_screen_resource()._get_detail_response_internal(**{
-        #     'facility_id': original_data['screen_facility_id']})
-
         original_data = None
         if kwargs_for_log:
             # A full id exists, query for the existing state
@@ -15855,7 +14964,6 @@ class LibraryScreeningResource(ActivityResource):
         patch_result = self.patch_obj(request, deserialized, log=log, **kwargs)
         obj = patch_result[API_RESULT_OBJ]
         plate_meta = patch_result[API_RESULT_META]
-        logger.info('patch meta: %r', plate_meta)
 
         id_attribute = schema['id_attribute']
         for id_field in id_attribute:
@@ -15914,7 +15022,6 @@ class LibraryScreeningResource(ActivityResource):
 
         param_hash = self._convert_request_to_dict(request)
         param_hash.update(kwargs)
-        logger.debug('param_hash: %r', param_hash)
 
         # FIXME: parse and validate only editable fields
 
@@ -15949,7 +15056,6 @@ class LibraryScreeningResource(ActivityResource):
         library_screening = None
         if patch:
             try:
-                logger.info('%r', id_kwargs)
                 library_screening = LibraryScreening.objects.get(
                     pk=id_kwargs['activity_id'])
                 current_volume_transferred_per_well = \
@@ -16036,13 +15142,14 @@ class LibraryScreeningResource(ActivityResource):
                             library_screening)
             
                 ls_log.json_field = json.dumps(plate_meta)
-                logger.info('parent_log: %r', ls_log)
+
             self.create_screen_screening_statistics(library_screening.screen)
             self.create_screened_experimental_well_count(library_screening)
         
         return { API_RESULT_OBJ: library_screening, API_RESULT_META: plate_meta}
         
     def create_screened_experimental_well_count(self, library_screening):
+
         # TODO: this should be dynamic
         with get_engine().connect() as conn:
             sql = (
@@ -16638,8 +15745,6 @@ class RawDataTransformerResource(DbApiResource):
                                              IccblSessionAuthentication())
         resource_name = 'rawdatatransform'
         authorization = UserGroupAuthorization(resource_name)
-        ordering = []
-        filtering = {}
         serializer = LimsSerializer()
         always_return_data = True 
         
@@ -16687,7 +15792,8 @@ class RawDataTransformerResource(DbApiResource):
             screen = Screen.objects.get(facility_id=screen_facility_id)
         cpr = None
         if cherry_pick_request_id:
-            cpr = CherryPickRequest.objects.get(cherry_pick_request_id=cherry_pick_request_id)
+            cpr = CherryPickRequest.objects.get(
+                cherry_pick_request_id=cherry_pick_request_id)
             
         # TODO: 20180227 - verify rebuild of schema
         schema = kwargs.pop('schema')
@@ -16729,6 +15835,7 @@ class RawDataTransformerResource(DbApiResource):
         return self.build_response(request, _data)
         
     def build_schema(self, user=None, **kwargs):
+        
         schema = DbApiResource.build_schema(self, user=user, **kwargs)    
     
         extra_fields = self.get_field_resource()._build_fields(
@@ -16761,9 +15868,6 @@ class RawDataTransformerResource(DbApiResource):
         if is_data_interchange:
             use_vocab = False
             use_titles = False
-        
-        logger.info('params: %r', param_hash.keys())
-        
         is_for_detail = kwargs.pop('is_for_detail', False)
         
         try:
@@ -16779,7 +15883,6 @@ class RawDataTransformerResource(DbApiResource):
 
             filter_expression = \
                 self._meta.authorization.filter(request.user,filter_expression)
-
                   
             order_params = param_hash.get('order_by', [])
             field_hash = self.get_visible_fields(
@@ -16812,9 +15915,7 @@ class RawDataTransformerResource(DbApiResource):
                 _cpr, _rawdatatransform.c.cherry_pick_request_id==_cpr.c.cherry_pick_request_id,
                 isouter=True)
             
-            custom_columns = {
-#                 'lookup_pmid': literal_column("'lookup_pmid'"),
-                }
+            custom_columns = {}
 
             base_query_tables = ['raw_data_transform', 'screen','cherry_pick_request' ] 
             columns = self.build_sqlalchemy_columns(
@@ -16867,7 +15968,9 @@ class RawDataTransformerResource(DbApiResource):
     @transaction.atomic
     def post_detail(self, request, **kwargs):
         '''
-        Parse raw data input files containing plate read data:
+        Parse raw data input files:
+        
+        - Input files contain matrices of plate read data.
         - Input matrices are collated based on the specified ordering of
         plates, conditions, readouts, and replicates.
         - Input matrix values are associated with library or cherry pick well
@@ -16879,9 +15982,6 @@ class RawDataTransformerResource(DbApiResource):
         - Parsed data is returned in Excel spreadsheet format but not stored in 
         the database.
         '''
-        
-        logger.info('post_detail...')
-        
         schema = kwargs.pop('schema', None)
         if not schema:
             raise Exception('schema not initialized')
@@ -16891,21 +15991,26 @@ class RawDataTransformerResource(DbApiResource):
 
         if len(request.FILES) == 0:
             raise ValidationError(key='input_file', msg='Required')
-        logger.info('request.FILES: %r', request.FILES.keys())
+        if DEBUG_RDT:
+            logger.info('request.FILES: %r', request.FILES.keys())
         
         fields = schema['fields']
         initializer_dict = self.parse(param_hash, fields=fields)
-        logger.info('initializer: %r', initializer_dict)
+        if DEBUG_RDT:
+            logger.info('initializer: %r', initializer_dict)
         
         errors = self.validate(initializer_dict, patch=False, schema=schema)
         if errors:
             raise ValidationError(errors)
         # Expand plate ranges
         plate_ranges = initializer_dict['plate_ranges']
-        logger.info('plate ranges: %r', plate_ranges)
+        if DEBUG_RDT:
+            logger.info('plate ranges: %r', plate_ranges)
         lcp_resource = self.get_lcp_resource()
         parsed_searches = lcp_resource.parse_plate_copy_search(plate_ranges)
-        logger.info('parsed_searches: %r', parsed_searches[0]['plate_numbers_in_order_listed'])
+        if DEBUG_RDT:
+            logger.info('parsed_searches: %r', 
+                parsed_searches[0]['plate_numbers_in_order_listed'])
         (plates,errors) = lcp_resource.find_plates(parsed_searches)
         plate_numbers = parsed_searches[0]['plate_numbers_in_order_listed']
         if errors:
@@ -16925,7 +16030,8 @@ class RawDataTransformerResource(DbApiResource):
                 key='plate_ranges', 
                 msg='plates specified more than once: %s' 
                     % ', '.join([str(x) for x in duplicate_plates]))
-        logger.info('plate_numbers: %r', plate_numbers)
+        if DEBUG_RDT:
+            logger.info('plate_numbers: %r', plate_numbers)
         
         screen_facility_id = initializer_dict.pop('screen_facility_id', None)
         cherry_pick_request_id = \
@@ -16998,8 +16104,9 @@ class RawDataTransformerResource(DbApiResource):
             exact_well_fields = [
                 'library_well_type','well_id','plate_number','well_name']
             exact_well_fields.extend(rnai_columns_to_write)
-            logger.info('get well information: %r, fields: %r ...',
-                plate_numbers, exact_well_fields)
+            if DEBUG_RDT:
+                logger.info('get well information: %r, fields: %r ...',
+                    plate_numbers, exact_well_fields)
             wells = self.get_reagent_resource(screen.screen_type)\
                 ._get_list_response_internal(**{
                     'plate_number__in': plate_numbers,
@@ -17008,8 +16115,9 @@ class RawDataTransformerResource(DbApiResource):
             if not wells:
                 raise ProgrammingError(
                     'no wells found for the plates: %r', plate_numbers)
-            logger.info('retrieved %d wells for transformation', len(wells))
-            logger.info('sample well keys: %r', wells[0].keys())
+            if DEBUG_RDT:
+                logger.info('retrieved %d wells for transformation', len(wells))
+                logger.info('sample well keys: %r', wells[0].keys())
             wells = { well['well_id']: well for well in wells }
             control_well_named_ranges = self.get_control_wells(rdt)
             
@@ -17033,9 +16141,10 @@ class RawDataTransformerResource(DbApiResource):
             if not lcp_copywells:
                 raise ProgrammingError('No lab cherry picks found for cpr: %r', 
                     cpr.cherry_pick_request_id)
-            logger.info('retrieved %d lcp_copywells for transformation', 
-                len(lcp_copywells))
-            logger.info('sample lcp well keys: %r', lcp_copywells[0].keys())
+            if DEBUG_RDT:
+                logger.info('retrieved %d lcp_copywells for transformation', 
+                    len(lcp_copywells))
+                logger.info('sample lcp well keys: %r', lcp_copywells[0].keys())
             lcp_copywells = { 
                 lims_utils.well_id(
                     lcp['cherry_pick_plate_number'],lcp['destination_well']):lcp
@@ -17045,7 +16154,8 @@ class RawDataTransformerResource(DbApiResource):
             
         # Read in the input matrices
         input_file_fields = schema['input_file_fields']
-        logger.info('input_file_fields: %r', input_file_fields.keys())
+        if DEBUG_RDT:
+            logger.info('input_file_fields: %r', input_file_fields.keys())
         
         vocab_scope = input_file_fields['readout_type']['vocabulary_scope_ref']
         readout_vocab = self.get_vocab_resource()._get_vocabularies_by_scope(vocab_scope)
@@ -17053,8 +16163,9 @@ class RawDataTransformerResource(DbApiResource):
             logger.warn('no vocabulary found for scope: %r, field: %r', 
                 vocab_scope, 'readout_type')
         def read_input_matrices(rdt, ordinal, filekey, input_file):
-            logger.info('read matrices for file: %d, %s', ordinal, filekey)
-            logger.info('data file: %r', input_file)
+            if DEBUG_RDT:
+                logger.info('read matrices for file: %d, %s', ordinal, filekey)
+                logger.info('data file: %r', input_file)
             input_file_initializer = {
                 'ordinal': ordinal
                 }
@@ -17065,7 +16176,8 @@ class RawDataTransformerResource(DbApiResource):
                         field = input_file_fields[field_key]
                         input_file_initializer[field_key] = \
                             parse_val(val, field_key, field['data_type'])
-            logger.info('input_file_initializer: %r', input_file_initializer)
+            if DEBUG_RDT:
+                logger.info('input_file_initializer: %r', input_file_initializer)
 
             errors = self.validate(input_file_initializer, 
                 patch=False, 
@@ -17099,14 +16211,16 @@ class RawDataTransformerResource(DbApiResource):
                     filekey: msg, 'assay_plate_size': msg })
             
             collation = Collation.get_value(rdif.collation_order)
-            logger.info('read collation: %r', collation)
+            if DEBUG_RDT:
+                logger.info('read collation: %r', collation)
             conditions = re.split(r'[\s,]+', rdif.conditions) \
                 if rdif.conditions else ['C1',]
             replicates = [chr(ord('A')+x) for x in range(0,rdif.replicates)]
             readouts = re.split(r'[\s,]+', rdif.readouts) \
                 if rdif.readouts else ['read1',]
-            logger.info('conditions: %r, readouts: %r, replicates: %r',
-                conditions, readouts, replicates)
+            if DEBUG_RDT:
+                logger.info('conditions: %r, readouts: %r, replicates: %r',
+                    conditions, readouts, replicates)
 
             # Determine the plates to read and validate relative sizes
             
@@ -17129,8 +16243,9 @@ class RawDataTransformerResource(DbApiResource):
                 raise ValidationError(key=filekey, msg=msg)
             
             plates_required = transformed_matrix_count/collation_count
-            logger.info('collation count: %d, plates required: %d',
-                collation_count, plates_required)
+            if DEBUG_RDT:
+                logger.info('collation count: %d, plates required: %d',
+                    collation_count, plates_required)
             if plates_required != len(plate_numbers):
                 logger.info(str((len(matrices), transformed_matrix_count,
                     collation_count, plates_required, len(plate_numbers))))
@@ -17143,12 +16258,14 @@ class RawDataTransformerResource(DbApiResource):
             
             counter = plate_matrix_transformer.create_matrix_counter(
                 collation, plate_numbers, conditions, replicates, readouts)
-            logger.info('counter: %r', counter)
+            if DEBUG_RDT:
+                logger.info('counter: %r', counter)
 
             if aps != lps:
                 matrices = plate_matrix_transformer.transform(
                     matrices, counter, aps,lps)
-                logger.info('transformed matrices: %d', len(matrices))
+                if DEBUG_RDT:
+                    logger.info('transformed matrices: %d', len(matrices))
 
             rdif.raw_data_transform = rdt
             rdif.save()
@@ -17172,7 +16289,8 @@ class RawDataTransformerResource(DbApiResource):
             
                 input_file_data = []
                 for ordinal, filekey in enumerate(sorted(request.FILES.keys())):
-                    logger.info('read file: %d, %r', ordinal, filekey)
+                    if DEBUG_RDT:
+                        logger.info('read file: %d, %r', ordinal, filekey)
                     input_file = request.FILES[filekey]
             
                     (matrices, rdif, counter) = \
@@ -17190,16 +16308,20 @@ class RawDataTransformerResource(DbApiResource):
                         _matrix_read_meta['Matrices read (1536 well)'] = len(matrices)/4
                     elif aps < lps:
                         _matrix_read_meta['Matrices read (96 well)'] = len(matrices)*4
-                    logger.info('read matrices: %d', len(matrices))
+                    if DEBUG_RDT:
+                        logger.info('read matrices: %d', len(matrices))
                     
                     for k,v in counter.counter_hash.items():
                         _matrix_read_meta[k.title() + 's'] = ', '.join([str(x) for x in v])
                     _meta['File %d' % (rdif.ordinal+1)] = _matrix_read_meta
-                    logger.info('Raw data transform file read meta: %r', _matrix_read_meta)
+                    if DEBUG_RDT:
+                        logger.info('Raw data transform file read meta: %r', 
+                            _matrix_read_meta)
                     
                 if screen:
                     self.write_screen_xlsx(
-                        rdt, plate_numbers, input_file_data, workbook, wells, rnai_columns_to_write)
+                        rdt, plate_numbers, input_file_data, workbook, 
+                        wells, rnai_columns_to_write)
                 elif cpr:
                     self.write_cpr_xlsx(
                         rdt, plate_numbers, input_file_data, workbook, lcp_copywells, 
@@ -17213,7 +16335,8 @@ class RawDataTransformerResource(DbApiResource):
             
             rdt.temp_output_filename = temp_file.name
             rdt.save()
-            logger.info('wrote temp file: %r', temp_file.name)
+            if DEBUG_RDT:
+                logger.info('wrote temp file: %r', temp_file.name)
         
         _meta[SCHEMA.API_MSG_RESULT] = SCHEMA.API_MSG_SUCCESS
         
@@ -17233,7 +16356,8 @@ class RawDataTransformerResource(DbApiResource):
         - check for control labels assigned to experimental wells
         '''
         
-        logger.info('get_control_wells: %r', rdt)
+        if DEBUG_RDT:
+            logger.info('get_control_wells: %r', rdt)
         aps = rdt.assay_plate_size
         lps = rdt.library_plate_size
         combined_errors = defaultdict(dict)
@@ -17248,10 +16372,12 @@ class RawDataTransformerResource(DbApiResource):
             if errors:
                 combined_errors[cfield][self.ERROR_CONTROL_PARSE] = errors
             assay_control_named_ranges[cfield] = named_ranges
-            logger.info('control_well_field: %r, %r, named_well_ranges: %r',
-                cfield, getattr(rdt, cfield), named_ranges)
+            if DEBUG_RDT:
+                logger.info('control_well_field: %r, %r, named_well_ranges: %r',
+                    cfield, getattr(rdt, cfield), named_ranges)
 
-        logger.info('assay control named ranges: %r', assay_control_named_ranges)
+        if DEBUG_RDT:
+            logger.info('assay control named ranges: %r', assay_control_named_ranges)
 
         (library_control_named_ranges, errors) = \
             lims_utils.parse_named_well_ranges(
@@ -17259,8 +16385,9 @@ class RawDataTransformerResource(DbApiResource):
         if errors:
             error_hash = combined_errors['library_controls']
             error_hash[self.ERROR_CONTROL_PARSE] = errors
-        logger.info('library_control_named_ranges: %r', 
-            library_control_named_ranges)
+        if DEBUG_RDT:
+            logger.info('library_control_named_ranges: %r', 
+                library_control_named_ranges)
         
         # Check for duplicated control wells between types:
         DUP_ERROR = self.ERROR_CONTROL_DUPLICATES
@@ -17388,7 +16515,8 @@ class RawDataTransformerResource(DbApiResource):
                                     well['well_id'])
                             break
         
-        logger.info('control_well_exceptions: %r', control_well_exceptions)    
+        if DEBUG_RDT:
+            logger.info('control_well_exceptions: %r', control_well_exceptions)    
         for ctype, well_exception_dict in control_well_exceptions.items():
             if not well_exception_dict:
                 continue
@@ -17407,7 +16535,6 @@ class RawDataTransformerResource(DbApiResource):
         Write the plate matrices directly to a spreadsheet, in collation order:
         - merge in lab_cherry_pick data.
         '''
-        DEBUG = False or logger.isEnabledFor(logging.DEBUG)
         logger.info('write cpr worksheet for %r...', rdt)
 
         cpr_id = rdt.cherry_pick_request.cherry_pick_request_id
@@ -17465,16 +16592,19 @@ class RawDataTransformerResource(DbApiResource):
             
             current_col = len(headers)
             for (matrices, rdif, counter) in input_file_data:
-                for i,counter_readout in enumerate(counter.iterate_counter_columns()): 
+                for i,counter_readout in \
+                        enumerate(counter.iterate_counter_columns()): 
                     collation_string = \
                         '{readout}_{condition}_{replicate}'.format(
                             **counter_readout).title()
                     if rdif.readout_title:
-                        collation_string = '%s_%s' % (rdif.readout_title, collation_string)
+                        collation_string = '%s_%s' % (
+                            rdif.readout_title, collation_string)
                     else:
-                        collation_string = '%s_%s' % (rdif.readout_type, collation_string)
+                        collation_string = '%s_%s' % (
+                            rdif.readout_type, collation_string)
                         
-                    if DEBUG:
+                    if DEBUG_RDT:
                         logger.info('write collation_string: col: %d, %s', 
                             current_col, collation_string)
                     sheet.write_string(0,current_col+i,collation_string )
@@ -17514,7 +16644,7 @@ class RawDataTransformerResource(DbApiResource):
                     wellname = lims_utils.get_well_name(rownum, colnum)
                     well_id = lims_utils.well_id(plate, wellname)
                     lcp_well = lcp_well_hash.get(well_id, None)
-                    if DEBUG:
+                    if DEBUG_RDT:
                         logger.info('write row: %d: %r', output_row, well_id)
                         logger.info('found lcp well: %r', lcp_well)
                     
@@ -17557,11 +16687,13 @@ class RawDataTransformerResource(DbApiResource):
                     current_col += 1
 
                     for j,(matrices, rdif, counter) in enumerate(input_file_data):
-                        for i,counter_readout in enumerate(counter.iterate_counter_columns()): 
-                            matrix_index = counter.get_index(dict(counter_readout, plate=plate))
+                        for i,counter_readout in \
+                                enumerate(counter.iterate_counter_columns()): 
+                            matrix_index = counter.get_index(
+                                dict(counter_readout, plate=plate))
                             matrix = matrices[matrix_index]
                             val = matrix[rownum][colnum]
-                            if DEBUG:
+                            if DEBUG_RDT:
                                 logger.info('write output_row: %d, col: %d,  val: %r', 
                                     output_row, current_col+i, str(val))
                             sheet.write_number(output_row, current_col+i, val)
@@ -17629,7 +16761,6 @@ class RawDataTransformerResource(DbApiResource):
         - merge in library well data.
         
         '''
-        DEBUG = False or logger.isEnabledFor(logging.DEBUG)
 
         aps = rdt.assay_plate_size
         lps = rdt.library_plate_size
@@ -17676,15 +16807,18 @@ class RawDataTransformerResource(DbApiResource):
                         
             current_col = len(headers)
             for (matrices, rdif, counter) in input_file_data:
-                for i,counter_readout in enumerate(counter.iterate_counter_columns()): 
+                for i,counter_readout in \
+                        enumerate(counter.iterate_counter_columns()): 
                     collation_string = \
                         '{readout}_{condition}_{replicate}'.format(
                             **counter_readout).title()
                     if rdif.readout_title:
-                        collation_string = '%s_%s' % (rdif.readout_title, collation_string)
+                        collation_string = '%s_%s' % (
+                            rdif.readout_title, collation_string)
                     else:
-                        collation_string = '%s_%s' % (rdif.readout_type, collation_string)
-                    if DEBUG:
+                        collation_string = '%s_%s' % (
+                            rdif.readout_type, collation_string)
+                    if DEBUG_RDT:
                         logger.info('write collation_string: col: %d, %s', 
                             current_col, collation_string)
                     sheet.write_string(0,current_col+i,collation_string )
@@ -17716,7 +16850,7 @@ class RawDataTransformerResource(DbApiResource):
                     well_id = lims_utils.well_id(plate, wellname)
                     
                     well = library_well_hash[well_id]
-                    if DEBUG:
+                    if DEBUG_RDT:
                         logger.info('write row: %d: %r', output_row, wellname)
                     sheet.write_string(output_row,current_col,str(plate))
                     current_col += 1
@@ -17748,11 +16882,13 @@ class RawDataTransformerResource(DbApiResource):
                     current_col += 1
                     
                     for (matrices, rdif, counter) in input_file_data:
-                        for i,counter_readout in enumerate(counter.iterate_counter_columns()): 
-                            matrix_index = counter.get_index(dict(counter_readout, plate=plate))
+                        for i,counter_readout in \
+                                enumerate(counter.iterate_counter_columns()): 
+                            matrix_index = counter.get_index(
+                                dict(counter_readout, plate=plate))
                             matrix = matrices[matrix_index]
                             val = matrix[rownum][colnum]
-                            if DEBUG:
+                            if DEBUG_RDT:
                                 logger.info('write output_row: %d, col: %d,  val: %r', 
                                     output_row, current_col+i, str(val))
                             sheet.write_number(output_row, current_col+i, val)
@@ -17812,8 +16948,6 @@ class ScreenResource(DbApiResource):
                                              IccblSessionAuthentication())
         resource_name = 'screen'
         authorization = ScreenAuthorization(resource_name)
-        ordering = []
-        filtering = {}
         serializer = LimsSerializer()
         always_return_data = True 
         
@@ -17975,13 +17109,13 @@ class ScreenResource(DbApiResource):
         Note: bypasses the "dispatch" framework call
         -- must be authenticated and authorized
         '''
-        logger.info('screen plate range search view')
         return self.get_library_screening_resource().\
             dispatch_plate_range_search_view(request, **kwargs)
     
     def build_schema(self, user=None, **kwargs):
         
-        logger.info('build screen schema for user: %r, %r', user, kwargs)
+        if DEBUG_SCREEN_ACCESS:
+            logger.info('build screen schema for user: %r, %r', user, kwargs)
         schema = DbApiResource.build_schema(self, user=user, **kwargs)
         
         if self._meta.authorization.is_restricted_view(user):
@@ -18025,8 +17159,9 @@ class ScreenResource(DbApiResource):
         
         is_restricted_view = self._meta.authorization.is_restricted_view(
             request.user)
-        logger.info('is_restricted: %r: %r: %r', resource_name, request.user, 
-            is_restricted_view)
+        if DEBUG_SCREEN_ACCESS:
+            logger.info('is_restricted: %r: %r: %r', resource_name, request.user, 
+                is_restricted_view)
                 
         if request.method.lower() != 'get':
             return self.dispatch('detail', request, **kwargs)
@@ -18036,17 +17171,12 @@ class ScreenResource(DbApiResource):
         _data = screen_cache.get(cache_key)
         
         if not _data:
-            logger.info('cache key not set: %s', cache_key)
+            logger.debug('cache key not set: %s', cache_key)
             _data = self._get_detail_response_internal(
                 user=request.user, **kwargs)
             if not _data:
                 raise Http404('no screen found for facility_id: %r' % facility_id)
             else:
-                # response = self.dispatch('detail', request, format='json', **kwargs )
-                # if response.status_code == 200:
-                #     _data = self._meta.serializer.deserialize(
-                #         JSON_MIMETYPE, 
-                #         response['Content-Type'])
                 if _data.get('user_access_level_granted') == ACCESS_LEVEL.ALL: #3:
                     logger.info('retrieve status data...')
                     _status_data = \
@@ -18087,7 +17217,8 @@ class ScreenResource(DbApiResource):
                     # do not cache if restricted
                     _data['is_restricted_view'] = True
         else:
-            logger.info('cache key set: %s', cache_key)
+            logger.debug('cache key set: %s', cache_key)
+        
         schema = self.build_schema(request.user)
         filename = self._get_filename({
             'facility_id': facility_id }, schema, True)
@@ -18098,7 +17229,6 @@ class ScreenResource(DbApiResource):
             request,format=kwargs.get('format', None))
         if content_type in [XLS_MIMETYPE,CSV_MIMETYPE]:
             _data = {'objects': [_data]}
-#             filename = 'screen_detail_%s' % facility_id
         response = HttpResponse(
             content=self.get_serializer().serialize(
                 _data, content_type),
@@ -18111,7 +17241,7 @@ class ScreenResource(DbApiResource):
                 'attachment; filename=%s.csv' % filename
         downloadID = request.GET.get('downloadID', None)
         if downloadID:
-            logger.info('set cookie "downloadID" %r', downloadID )
+            logger.debug('set cookie "downloadID" %r', downloadID )
             response.set_cookie('downloadID', downloadID)
         else:
             logger.debug('no downloadID: %s' % request.GET )
@@ -18151,7 +17281,6 @@ class ScreenResource(DbApiResource):
         return self.get_library_screening_resource().dispatch('list', request, **kwargs)    
     
     def dispatch_screen_screenresultview(self, request, **kwargs):
-        logger.info('dispatch screenresultview...')
         kwargs['screen_facility_id'] = kwargs.pop('facility_id')
         return ScreenResultResource().dispatch('list', request, **kwargs)    
     
@@ -18199,8 +17328,9 @@ class ScreenResource(DbApiResource):
     def get_query(self, request, schema, param_hash):
         
         DEBUG_SCREEN = logger.isEnabledFor(logging.DEBUG)
-        # screens_for_username = param_hash.get('screens_for_username', None)
+
         screens_for_userid = param_hash.get('screens_for_userid', None)
+        
         # general setup
 
         facility_id = param_hash.pop('facility_id', None)
@@ -18828,10 +17958,7 @@ class ScreenResource(DbApiResource):
         return (field_hash, columns, stmt, count_stmt, filename)
 
     def build_list_response(self, request, **kwargs):
-        ''' 
-        ScreenResource
-        '''
-        logger.info('ScreenResource - build_list_response')
+        
         schema = kwargs.pop('schema', None)
         if not schema:
             raise Exception('schema not initialized')
@@ -18845,9 +17972,7 @@ class ScreenResource(DbApiResource):
         if is_data_interchange:
             use_vocab = False
             use_titles = False
-         
         is_for_detail = kwargs.pop('is_for_detail', False)
-        
         manual_field_includes = set(param_hash.get('includes', []))
         
         # add fields for authorization filters
@@ -19050,8 +18175,11 @@ class ScreenResource(DbApiResource):
         schema = kwargs.pop('schema', None)
         if not schema:
             raise Exception('schema not initialized')
-        id_kwargs = self.get_id(deserialized, validate=True, schema=schema, **kwargs)
+        id_kwargs = self.get_id(
+            deserialized, validate=True, schema=schema, **kwargs)
+
         logger.info('patch screen: %r', id_kwargs)
+        
         create = False
         try:
             screen = Screen.objects.get(**id_kwargs)
@@ -19073,6 +18201,7 @@ class ScreenResource(DbApiResource):
                 raise ValidationError(
                     key=_key,
                     msg='No such user: %r' % initializer_dict[_key])
+        
         # Look for the lab_head_username alternate natural key
         _key = 'lab_head_username'
         lab_head_username = initializer_dict.get(_key)
@@ -19105,7 +18234,8 @@ class ScreenResource(DbApiResource):
                 raise ValidationError(
                     key=_key,
                     msg='No such user: %r' % initializer_dict[_key])
-        # Look for the lab_head_username alternate natural key
+        
+        # Look for the lead_head_username alternate natural key
         _key = 'lead_screener_username'
         lead_screener_username = initializer_dict.get(_key)
         if lead_screener_username:
@@ -19141,6 +18271,7 @@ class ScreenResource(DbApiResource):
                         key=_key,
                         msg='No such screensaver_user_id: %r' % collaborator_id)
             initializer_dict['collaborators'] = collaborators
+        
         # Look for the collaborator_usernames - alternate natural keys
         _key = 'collaborator_usernames'
         collaborator_usernames = initializer_dict.get(_key)
@@ -19283,7 +18414,6 @@ class ScreenResource(DbApiResource):
                 str(x) for x in
                     screen.publication_set.all()
                         .values_list('publication_id', flat=True)])
-            logger.info('current: %r, val: %r', current_publications, _val)
             publications_delete = current_publications - set(_val)
             logger.info('delete publications: %r', publications_delete)
             if publications_delete:
@@ -19334,13 +18464,11 @@ class StudyResource(ScreenResource):
     
     class Meta:
         resource_name = 'study'
-        max_limit = 10000
         always_return_data = True
         authentication = MultiAuthentication(IccblBasicAuthentication(),
                                              IccblSessionAuthentication())
         authorization = ScreenAuthorization(resource_name)
         serializer = LimsSerializer()
-        queryset = Screen.objects.all()  # .order_by('facility_id')
         
     def __init__(self, **kwargs):
         super(StudyResource, self).__init__(**kwargs)
@@ -19899,7 +19027,8 @@ class StudyResource(ScreenResource):
                 
                 def create_result(well_id, screens, screen_confirmed_positives):
                     screen_count = len(screens)
-                    screens_confirming_zero_duplexes = len(screens)-len(screen_confirmed_positives)
+                    screens_confirming_zero_duplexes = \
+                        len(screens)-len(screen_confirmed_positives)
                     result_row = {
                         'well_id': well_id  ,
                         'assay_well_control_type': None,
@@ -19920,7 +19049,8 @@ class StudyResource(ScreenResource):
                         weighted_value_sum += i * screens_for_weight
                         result_row[data_worksheet_column_letter] = screens_for_weight
                     if weighted_value_sum > 0:
-                        weighted_average = round(weighted_value_sum/(1.0*screen_count), 2)
+                        weighted_average = round(
+                            weighted_value_sum/(1.0*screen_count), 2)
                     result_row['E'] = weighted_average
                     logger.debug('yield row: %r', result_row)
                     return result_row
@@ -19961,10 +19091,12 @@ class StudyResource(ScreenResource):
         if deserialize_meta:
             meta.update(deserialize_meta)
         if not self._meta.always_return_data:
-            response = self.build_response(request, {API_RESULT_META: meta }, **kwargs)
+            response = self.build_response(
+                request, {API_RESULT_META: meta }, **kwargs)
             return response
         else:
-            new_data = self._get_detail_response_internal(facility_id=facility_id)
+            new_data = self._get_detail_response_internal(
+                facility_id=facility_id)
             data = { API_RESULT_META: meta, API_RESULT_DATA: [new_data]}
             response = self.build_response(request, data, status_code=201)
             return response 
@@ -19977,7 +19109,6 @@ class StudyResource(ScreenResource):
         POST is used to create or update a resource; not idempotent;
         - The LIMS client will use POST to create exclusively
         '''
-        logger.info('post_detail, study')
         deserialize_meta = None
         if kwargs.get('data', None):
             # allow for internal data to be passed
@@ -20357,11 +19488,13 @@ class UserChecklistResource(DbApiResource):
             raise ValidationError(key='name', msg='required')
 
         try:
-            user = ScreensaverUser.objects.get(screensaver_user_id=screensaver_user_id)
+            user = ScreensaverUser.objects.get(
+                screensaver_user_id=screensaver_user_id)
         except ObjectDoesNotExist:
             raise ValidationError(
                 key='screensaver_user_id',
-                msg='screensaver_user_id does not exist: %r' % screensaver_user_id)
+                msg='screensaver_user_id does not exist: %r' 
+                    % screensaver_user_id)
         create = False
         try:
             uci = UserChecklist.objects.get(
@@ -20418,10 +19551,7 @@ class LabAffiliationResource(DbApiResource):
                                              IccblSessionAuthentication())
         resource_name = 'labaffiliation'
         authorization = UserGroupAuthorization(resource_name)
-        ordering = []
-        filtering = {}
         serializer = LimsSerializer()
-        max_limit = 10000
         always_return_data = True
 
     def __init__(self, **kwargs):
@@ -20510,7 +19640,8 @@ class LabAffiliationResource(DbApiResource):
             _la = self.bridge['lab_affiliation']
             _lab_su = self.bridge['screensaver_user']
             
-            _lab_head_cte = self.get_screensaver_resource().get_user_cte().cte('la_lab_heads')
+            _lab_head_cte = \
+                self.get_screensaver_resource().get_user_cte().cte('la_lab_heads')
             
             custom_columns = {
                 'lab_head_ids': (
@@ -20556,11 +19687,6 @@ class LabAffiliationResource(DbApiResource):
              
             (stmt, count_stmt) = self.wrap_statement(
                 stmt, order_clauses, filter_expression)
-            # logger.info(
-            #     'stmt: %s',
-            #     str(stmt.compile(
-            #         dialect=postgresql.dialect(),
-            #         compile_kwargs={"literal_binds": True})))
             title_function = None
             if use_titles is True:
                 def title_function(key):
@@ -20599,8 +19725,9 @@ class LabAffiliationResource(DbApiResource):
                 try:
                     lab_affiliation  = \
                         LabAffiliation.objects.get(name=lab_affiliation_name)
-                    id_kwargs = { 'lab_affiliation_id': lab_affiliation.lab_affiliation_id }
-                    logger.info('found lab_affiliation by name: %r', lab_affiliation)
+                    id_kwargs = { 
+                        'lab_affiliation_id': lab_affiliation.lab_affiliation_id }
+                    logger.debug('found lab_affiliation by name: %r', lab_affiliation)
                 except ObjectDoesNotExist:
                     logger.info('affiliation_name does not exist: %r', lab_affiliation_name)
         
@@ -20640,15 +19767,8 @@ class ScreensaverUserResource(DbApiResource):
                                              IccblSessionAuthentication())
         resource_name = 'screensaveruser'
         authorization = ScreensaverUserResourceAuthorization(resource_name)
-        ordering = []
-        filtering = {}
         serializer = LimsSerializer()
-        excludes = ['digested_password']
-        max_limit = 10000
         always_return_data = True
-        # TODO: utilize the cache_control mechanism to signal cache status
-        # to the client (max-age, etag)
-        # cache = SimpleCache(timeout=10)
 
     def __init__(self, **kwargs):
         
@@ -20748,10 +19868,11 @@ class ScreensaverUserResource(DbApiResource):
             
         screensaver_user_id = kwargs.get('screensaver_user_id')
         if screensaver_user_id:
-            su = ScreensaverUser.objects.get(screensaver_user_id=screensaver_user_id)
+            su = ScreensaverUser.objects.get(
+                screensaver_user_id=screensaver_user_id)
             if not su.username:
                 raise Http404(
-                    'Specified user is not a login user (no username): {}'.format( 
+                    'User is not a login user (no username): {}'.format( 
                     screensaver_user_id))
             kwargs['username'] = su.username
         return UserGroupResource().dispatch('list', request, **kwargs)    
@@ -20770,7 +19891,8 @@ class ScreensaverUserResource(DbApiResource):
     @un_cache        
     @transaction.atomic    
     def update_user_agreement(self, request, screensaver_user_id, **kwargs): 
-        ''' Update the User Agreement for the user and provide managment functions:
+        ''' Update the User Agreement and provide managment functions:
+
         - invalidate Lab Members if data sharing level is different,
         - add/remove login capabilities on activate/deactivate
         '''
@@ -20778,7 +19900,7 @@ class ScreensaverUserResource(DbApiResource):
         logger.info('update_user_agreement: %r', screensaver_user_id)
 
         if request.method.lower() not in ['post','patch']:
-            raise Exception('Only POST/PATCH is allowed for user agreement update')
+            raise Exception('Only POST/PATCH is allowed')
             
         kwargs_for_user = {
             'exact_fields': ['screensaver_user_id', 'is_active',
@@ -20797,8 +19919,6 @@ class ScreensaverUserResource(DbApiResource):
             request, attributes=original_user_data, api_action='PATCH')
         parent_log.save()
         
-        logger.info('perform the POST/PATCH operation on the UA resource...')
-        
         # 1. Perform the User Agreement Patch
         # TODO: response type may not be JSON
         method = 'detail'
@@ -20808,18 +19928,15 @@ class ScreensaverUserResource(DbApiResource):
         _data = self.get_serializer().deserialize(
             LimsSerializer.get_content(response), JSON_MIMETYPE)
         _meta = _data.get(API_RESULT_META, {})
-        logger.debug('original meta: %r', _meta)
         user_agreement_data = _data.get(API_RESULT_DATA)
         assert len(user_agreement_data) == 1, 'too many objects returned'
         user_agreement_data = user_agreement_data[0]
-        logger.debug('ua data: %r', user_agreement_data)
 
         logger.info('user agreement POST/PATCH completed')
 
         user_data = self._get_detail_response_internal(
             screensaver_user_id=screensaver_user_id)
 
-        
         # 2. Perform checks for user:
         # 2.a activate if username is set and UA is active
         extra_meta = {}
@@ -20861,16 +19978,17 @@ class ScreensaverUserResource(DbApiResource):
                     'screensaver_user_id': screensaver_user_id,
                     'is_active': False }
                 logger.info(
-                    'no active user agreements exist for %r, removing is_active...', 
+                    'no active user agreements exist for %r, unset is_active...', 
                     screensaver_user_id)
                 patch_result = self.patch_obj(request, user_patch_data, **kwargs)
                 
-                logger.info('ScreensverUser patch result: %r', patch_result)
+                logger.debug('ScreensverUser patch result: %r', patch_result)
                 extra_meta['Account deactivated'] = 'true'
                 parent_log.diffs['is_active'] = [ True, False ]
                 parent_log.save()
             else:
-                logger.info('preserve "is_active" flag for: %r, active user agreements exist: %r',
+                logger.info('preserve "is_active" flag for: %r, '
+                    'active user agreements exist: %r',
                     screensaver_user_id, [x for x in active_user_agreements.all()])
 
         # Lab head checks
@@ -20895,7 +20013,8 @@ class ScreensaverUserResource(DbApiResource):
                     logger.info('no lab head user agreement found')
                     raise ValidationError(
                         key='status',
-                        msg='User may not be active until their lab head has a user agreement')
+                        msg='User may not be active until their lab head '
+                            'has a user agreement')
         else:
             # 2. If lab head DSL != lab_member DSL's, require override 
             # and deactivate lab_member DSLs
@@ -20941,8 +20060,8 @@ class ScreensaverUserResource(DbApiResource):
                 if override_param is not True:
                     raise ValidationError({
                         'Message': (
-                            'Setting the Lab Head Data Sharing Level to [%s] will '
-                            'invalidate the Lab Member Agreements with '
+                            'Setting the Lab Head Data Sharing Level to [%s] '
+                            'will invalidate the Lab Member Agreements with '
                             'differing Data Sharing Levels') % str(current_dsl),
                         API_PARAM_OVERRIDE: 'required',
                         'Lab Member Agreements to deactivate': uas_to_deactivate
@@ -20959,16 +20078,18 @@ class ScreensaverUserResource(DbApiResource):
         data = { API_RESULT_DATA: [user_agreement_data,], API_RESULT_META: _meta }
         return self.build_response(request, data)
 
-    def dispatch_useragreement_view(self, request, screensaver_user_id=None, username=None, **kwargs):
+    def dispatch_useragreement_view(
+            self, request, screensaver_user_id=None, username=None, **kwargs):
+        
         if username is not None:
             su = ScreensaverUser.objects.get(username=username)
             screensaver_user_id = su.screensaver_user_id
 
         if request.method.lower() in ['post','patch']:
-            logger.info('%r update user agreement...', request.method)
+            logger.debug('%r update user agreement...', request.method)
             return self.update_user_agreement(request, screensaver_user_id)
         else:
-            logger.info('dispatching: %r', request.method)
+            logger.debug('dispatching: %r', request.method)
             return self.get_ua_resource().dispatch(
                 'list', request, 
                 screensaver_user_id=screensaver_user_id, **kwargs)    
@@ -20978,7 +20099,6 @@ class ScreensaverUserResource(DbApiResource):
     
     def dispatch_user_serviceactivityview(self, request, **kwargs):
         kwargs['serviced_user_id__eq'] = kwargs.pop('screensaver_user_id')
-        # kwargs['classification__ne'] = SCHEMA.VOCAB.activity.classification.SCREENING
         return ActivityResource().dispatch('list', request, **kwargs)    
     
     def dispatch_user_serviceactivitydetailview(self, request, **kwargs):
@@ -21003,7 +20123,8 @@ class ScreensaverUserResource(DbApiResource):
 
     def build_schema(self, user=None, **kwargs):
         
-        schema = super(ScreensaverUserResource, self).build_schema(user=user, **kwargs)
+        schema = super(ScreensaverUserResource, self).build_schema(
+            user=user, **kwargs)
         sub_schema = self.get_user_resource().build_schema(user=user, **kwargs);
         fields = {}
         fields.update(sub_schema['fields'])
@@ -21051,7 +20172,6 @@ class ScreensaverUserResource(DbApiResource):
                 .select_from(_vocab)
                 .where(_vocab.c.scope=='labaffiliation.category')).cte(
                     'labaffiliation_category')
-        
         
         lab_head_table = (
             select([
@@ -21342,11 +20462,6 @@ class ScreensaverUserResource(DbApiResource):
          
         (stmt, count_stmt) = self.wrap_statement(
             stmt, order_clauses, filter_expression)
-        # logger.info(
-        #     'stmt: %s',
-        #     str(stmt.compile(
-        #         dialect=postgresql.dialect(),
-        #         compile_kwargs={"literal_binds": True})))
 
         title_function = None
         if use_titles is True:
@@ -21425,7 +20540,6 @@ class ScreensaverUserResource(DbApiResource):
         '''
         Special POST to allow for screensaver_user_id generation
         '''
-        logger.info('post_detail, screensaveruser')
         deserialize_meta = None
         if kwargs.get('data', None):
             # allow for internal data to be passed
@@ -21502,7 +20616,9 @@ class ScreensaverUserResource(DbApiResource):
         fields = schema['fields']
 
         id_kwargs = self.get_id(deserialized, schema=schema, **kwargs)
-        logger.info('id_kwargs: %r', id_kwargs)
+        if DEBUG_USER_PATCH:
+            logger.info('patch user, id_kwargs: %r', id_kwargs)
+        
         screensaver_user = None
         is_patch = bool(id_kwargs)
         if id_kwargs:
@@ -21539,7 +20655,8 @@ class ScreensaverUserResource(DbApiResource):
             deserialized, create=not is_patch, schema=schema)
         initializer_dict = { k:v for k,v in initializer_dict.items()
             if k in screensaveruser_fields}
-        logger.info('patch screensaveruser initializer_dict: %r, %r', is_patch, initializer_dict)
+        logger.info('patch screensaveruser initializer_dict: %r, %r', 
+            is_patch, initializer_dict)
         
         if screensaver_user is None:
             if id_kwargs:
@@ -21596,7 +20713,8 @@ class ScreensaverUserResource(DbApiResource):
                         msg='immutable (current val: %r)' % screensaver_user.ecommons_id)
                     
                 if screensaver_user.username is None:
-                    logger.info('screensaver_user: %r, setting username to new ecommons id: %r', 
+                    logger.info(
+                        'screensaver_user: %r, setting username to new ecommons id: %r', 
                         screensaver_user.screensaver_user_id, new_ecommons)
                     screensaver_user.username = new_ecommons
                 elif screensaver_user.username != new_ecommons:
@@ -21939,10 +21057,7 @@ class LibraryResourceAuthorization(UserGroupAuthorization):
         if not user:
             return False
         if permission_type == 'read':
-            logger.info('Allow all libraries for all authenticated users at this time.')
             return user.is_active
-        logger.info('resource not authorized: %r, %r, %r', 
-            self.resource_name, user, permission_type)
         return False
     
     # def is_restricted_view(self, user):
@@ -21998,40 +21113,6 @@ class ReagentResourceAuthorization(LibraryResourceAuthorization):
  
         return filter_expression
         
-#     def get_row_property_generator(self, user, fields, extant_generator):
-#         '''
-#         Filter result properties based on authorization rules
-#         '''
-#         class Row:
-#             def __init__(self, row):
-#                 logger.debug(
-#                     'filter screen row: %r', 
-#                     [(key, row[key]) for key in row.keys()])
-#                 self.row = row
-# 
-#             def has_key(self, key):
-#                 return self.row.has_key(key)
-#             def keys(self):
-#                 return self.row.keys()
-#             def __getitem__(self, key):
-#                 if self.row[key] is None:
-#                     return None
-#                 else:
-#                     if key == 'structure_image':
-#                         if self.has_key('is_restricted_structure'):
-#                             if self.row['is_restricted_structure']:
-#                                 return None
-#                         return self.row[key]
-#                     else:
-#                         return self.row[key]
-# 
-#         def restrict_image_property_generator(cursor):
-#             if extant_generator is not None:
-#                 cursor = extant_generator(cursor)
-#             for row in cursor:
-#                 yield Row(row)
-#         
-#         return restrict_image_property_generator
 
 class ReagentResource(DbApiResource):
     
@@ -22042,8 +21123,6 @@ class ReagentResource(DbApiResource):
                                              IccblSessionAuthentication())
         resource_name = 'reagent'
         authorization = ReagentResourceAuthorization(resource_name)
-        ordering = []
-        filtering = {}
         serializer = LimsSerializer()
         
     def __init__(self, **kwargs):
@@ -22144,24 +21223,6 @@ class ReagentResource(DbApiResource):
                 self.build_schema(
                     request.user,extra_dc_ids=extra_dc_ids, **param_hash), **kwargs)
 
-        # FIXME: 20181115: not used after ReagentResource/SM/RNAi refactor
-#         library_short_name = kwargs.pop('library_short_name')
-#         try:
-#             library = Library.objects.get(short_name=library_short_name)
-#             return self.build_response(
-#                 request, 
-#                 self.build_schema(
-#                     request.user,
-#                     extra_dc_ids=extra_dc_ids,
-#                     library_classification=library.classification), 
-#                 **kwargs)
-#             
-#         except Library.DoesNotExist, e:
-#             raise Http404(
-#                 'Can not build schema - library def needed'
-#                 'no library found for short_name: %r' % library_short_name)
-
-                
     def build_schema(
         self, user, extra_dc_ids=None, library_classification=None, **kwargs):
 
@@ -22223,8 +21284,9 @@ class ReagentResource(DbApiResource):
             schema['fields'] = newfields
             
         
-        logger.info('build reagent schema for user: %r, resource: %r, '
-            'extra_dc_ids: %r', user, self._meta.resource_name, extra_dc_ids)
+        if DEBUG_AUTHORIZATION:
+            logger.info('build reagent schema for user: %r, resource: %r, '
+                'extra_dc_ids: %r', user, self._meta.resource_name, extra_dc_ids)
         fields = schema['fields']
         max_ordinal = 0
         for fi in fields.values():
@@ -22232,7 +21294,8 @@ class ReagentResource(DbApiResource):
                 max_ordinal = fi['ordinal']
 
         if extra_dc_ids:
-            logger.info('user: %r, get extra_dc_ids: %r', user, extra_dc_ids)
+            if DEBUG_AUTHORIZATION:
+                logger.info('user: %r, get extra_dc_ids: %r', user, extra_dc_ids)
             reported_extra_datacolumns = self.get_datacolumn_resource()\
                 ._get_list_response_internal(
                     user, includes='*',
@@ -22243,8 +21306,9 @@ class ReagentResource(DbApiResource):
             # is not available for the DataColumn resource
             extra_datacolumns = []
             for dc in reported_extra_datacolumns:
-                logger.info('test dc for access: '
-                    '{key}, {user_access_level_granted}'.format(**dc))
+                if DEBUG_AUTHORIZATION:
+                    logger.info('test dc for access: '
+                        '{key}, {user_access_level_granted}'.format(**dc))
                 if dc['user_access_level_granted'] > ACCESS_LEVEL.OVERLAPPING_ONLY: #1:
                     extra_datacolumns.append(dc)
                 else:
@@ -22252,16 +21316,16 @@ class ReagentResource(DbApiResource):
                         'in the Reagents view: {screen_facility_id}: {key} '
                         'access level: {user_access_level_granted}'.format(**dc))
             if extra_datacolumns:
-                logger.info('allowed extra datacolumns: %r', 
-                    ['{screen_facility_id}: {key}, {user_access_level_granted}'\
-                        .format(**dc) for dc in extra_datacolumns])
+                if DEBUG_AUTHORIZATION:
+                    logger.info('allowed extra datacolumns: %r', 
+                        ['{screen_facility_id}: {key}, {user_access_level_granted}'\
+                            .format(**dc) for dc in extra_datacolumns])
                 decorated = [
                     (dc['study_type'] != None,
                      dc['screen_facility_id'],dc['ordinal'], dc) 
                         for dc in extra_datacolumns]
                 decorated.sort(key=itemgetter(0,1,2))
                 extra_datacolumns = [dc for sort_study,fid,ordinal,dc in decorated]
-                logger.info('extra_datacolumns: %r', len(extra_datacolumns))
                 datacolumn_fields = {}
                 for i, dc in enumerate(extra_datacolumns):
                     dc['visibility'] = ['l','d']
@@ -22375,17 +21439,15 @@ class ReagentResource(DbApiResource):
         
         if schema is None:
             well = Well.objects.get(well_id=well_id)
-            logger.info('building schema for well: %r, %r', 
-                well_id,well.library.classification)
             schema = self.build_schema(
                 user=request.user, 
                 library_classification=well.library.classification)
         
         data = {}
         if 'duplex_wells' not in schema['fields']:
-            logger.info('%r not found in schema for well: %r',
+            logger.warn('%r not found in schema for well: %r',
                         'duplex_wells', well_id)
-            logger.info('user: %r (may not have access)', request.user)
+            logger.warn('user: %r (may not have access)', request.user)
             return data
         try:
             sr = SilencingReagent.objects.get(well__well_id=well_id)
@@ -22624,7 +21686,6 @@ class ReagentResource(DbApiResource):
                 
                 formatted_data.append([])
                 
-                
                 title_row = ['Duplex Data','',]
                 formatted_data.append(title_row)
 
@@ -22697,15 +21758,12 @@ class ReagentResource(DbApiResource):
                     else:
                         sheet.write_row(i,0,row)
 
-                logger.info('close workbook...')
                 wb.close()
                 
-                logger.info('get file size...')
                 temp_file.seek(0, os.SEEK_END)
                 size = temp_file.tell()
                 temp_file.seek(0)   
                 
-                logger.info('xls stream to response...')
                 _file = file(temp_file.name)
                 response = StreamingHttpResponse(FileWrapper1(_file)) 
                 response['Content-Length'] = size
@@ -22743,26 +21801,21 @@ class ReagentResource(DbApiResource):
         
         downloadID = request.GET.get('downloadID', None)
         if downloadID:
-            logger.info('set cookie "downloadID" %r', downloadID )
             response.set_cookie('downloadID', downloadID)
         else:
             logger.debug('no downloadID: %s' % request.GET )
     
-        logger.info('returning response: %r', response)
         return response;
 
     @read_authorization
     def get_detail(self, request, **kwargs):
-        # substance_id = kwargs.get('substance_id')
+
         well_id = kwargs.get('well_id')
         if well_id is None: # and substance_id is None:
             raise MissingParam('well_id')
-
         kwargs['visibilities'] = kwargs.get('visibilities', ['d'])
-        logger.info('visibilities: %r', kwargs['visibilities'])
         kwargs['is_for_detail'] = True
         return self.get_list(request, **kwargs)
-
 
     def get_list(self, request, **kwargs):
 
@@ -22789,11 +21842,8 @@ class ReagentResource(DbApiResource):
             raise Exception('no preview found for %s', library_short_name)
 
         kwargs[API_PARAM_SHOW_PREVIEW] = True
-        
         kwargs['visibilities'] = kwargs.get('visibilities', ['l'])
-        
         return self.build_list_response(request, **kwargs)
-
         
     def _build_result_value_column(self, field_information):
         '''
@@ -22869,9 +21919,6 @@ class ReagentResource(DbApiResource):
                 and_(_cw.c.well_id==_well.c.well_id,
                      _cw.c.copy_id==_copy.c.copy_id,
                      _cw.c.plate_id==_p.c.plate_id), isouter=True))
-#             .where(_cw.c.well_id==_well.c.well_id)
-#             .where(_cw.c.copy_id==_copy.c.copy_id)
-#             .where(_cw.c.plate_id==_p.c.plate_id)
             )
         
         
@@ -22954,7 +22001,7 @@ class ReagentResource(DbApiResource):
                             .where(_apilog.c.ref_resource_name==logging_rname)
                             .where(_apilog.c.key==literal_column('well.well_id'))
                             .where(_diff.c.field_key==key).as_scalar(),
-                        cast(columns[key], sqlalchemy.sql.sqltypes.Text)).label(key)
+                        cast(columns[key], TEXT)).label(key)
         return columns
         
         
@@ -23051,7 +22098,7 @@ class ReagentResource(DbApiResource):
         custom_columns['screening_mg_ml_concentrations'] = case([
             (_well.c.library_well_type==WELL_TYPE.EXPERIMENTAL, 
                 select([func.array_to_string(func.array_agg(
-                    cast(spcs.c.mg_ml_concentration,sqlalchemy.sql.sqltypes.Text)),
+                    cast(spcs.c.mg_ml_concentration,TEXT)),
                     LIST_DELIMITER_SQL_ARRAY)])
                     .select_from(spcs)
                     .where(spcs.c.well_id==_well.c.well_id).as_scalar() )],
@@ -23244,7 +22291,7 @@ class ReagentResource(DbApiResource):
         well_search_data = param_hash.pop(SCHEMA.API_PARAM_SEARCH, None)
         well_base_query = None
         if well_search_data is not None:
-            logger.info('well_search_data: %r', well_search_data)
+            logger.debug('well_search_data: %r', well_search_data)
             if param_hash.pop('vendor_and_compound_search', False) is True:
                 well_base_query = \
                     WellResource.create_vendor_compound_name_base_query(well_search_data)
@@ -23299,7 +22346,7 @@ class ReagentResource(DbApiResource):
         #             substance_id=substance_id).well.library
 
         extra_dc_ids = param_hash.get(API_PARAM_DC_IDS, None)
-        logger.info('build list response: dc_ids: %r', extra_dc_ids)
+        logger.debug('build list response: dc_ids: %r', extra_dc_ids)
         # Note: build schema for each request to use the subtype
         schema = self.build_schema(request.user, extra_dc_ids=extra_dc_ids)
             
@@ -23388,17 +22435,6 @@ class ReagentResource(DbApiResource):
     # NOTE: removed; patching will only be done in batch, from library/well
     # @transaction.atomic()    
     # def patch_obj(self, request, deserialized, **kwargs):
-    #     well = kwargs.get('well', None)
-    #     if not well:
-    #         raise ValidationError(key='well', msg='required')
-    #     
-    #     reagent_resource = self.get_reagent_resource(
-    #         well.library.classification)
-    #     reagent = reagent_resource.patch_obj(request, deserialized, **kwargs)
-    #     
-    #     reagent.well = well
-    #     reagent.save()
-    #     return well
     
     def final_validation(self,final_data):
         ''' Perform final validations on the data generated after loading'''
@@ -23425,8 +22461,6 @@ class SilencingReagentResource(ReagentResource):
             IccblBasicAuthentication(), IccblSessionAuthentication())
         resource_name = 'silencingreagent'
         authorization = ReagentResourceAuthorization(resource_name)
-        ordering = []
-        filtering = {}
         serializer = LimsSerializer()
         
     def __init__(self, **kwargs):
@@ -23451,30 +22485,6 @@ class SilencingReagentResource(ReagentResource):
         SilencingReagent.objects.all().filter(well__library=library).delete()
     
     
-#     def build_gene_columns(self, custom_columns):
-#         vendor_gene_columns = [
-#             'vendor_entrezgene_id', 'vendor_gene_name', 'vendor_gene_species']
-#         facility_gene_columns = [
-#             'facility_entrezgene_id', 'facility_gene_name',
-#             'facility_gene_species']
-#         bridge = self.bridge
-#         gene_table = bridge['gene']
-#         sirna_table = bridge['silencing_reagent']
-#         gene_symbol = bridge['gene_symbol']
-#         genbank_acc = bridge['gene_genbank_accession_number']
-#         well_table = bridge['well']
-#         library_table = bridge['library']
-#         
-#         join_stmt = gene_table.join(sirna_table,
-#             gene_table.c['gene_id'] == sirna_table.c[join_column])
-#         select_stmt = select([gene_table.c[field_name]]).\
-#             select_from(join_stmt)
-#         select_stmt = select_stmt.where(
-#             text('silencing_reagent.reagent_id=reagent.reagent_id'))
-#         select_stmt = select_stmt.label(key)
-#         custom_columns[key] = select_stmt
-        
-        
     def build_sqlalchemy_columns(
         self, fields, user=None, base_query_tables=None, custom_columns=None, 
         show_preview=False, show_restricted=False):
@@ -23721,8 +22731,8 @@ class SilencingReagentResource(ReagentResource):
         # NOTE: patching will only be done in batch, from library/well
  
     def _patch_wells(self, request, deserialized):
-        ''' For bulk update: 
-        - deserialized has been loaded with the well & duplex wells
+        ''' Internal for bulk updates: 
+        - the deserialized array has been loaded with the well & duplex wells
         NOTE: patching will only be done in batch, from library/well
         '''
         logger.info('patch (%d) reagents for silencing_reagent ...', len(deserialized))
@@ -23742,8 +22752,9 @@ class SilencingReagentResource(ReagentResource):
                 if well_data.get('duplex_wells', None):
                     reagent.save()
                     reagent.duplex_wells = well_data['duplex_wells']
-#                 else:
-#                     reagent.duplex_wells = None
+                # FIXME: 20181211: how to unset duplex_wells? (Not this...)
+                # else:
+                #    reagent.duplex_wells = None
             else:
                 is_patch = True
                 # TODO: only works for a single reagent
@@ -23866,10 +22877,7 @@ class SmallMoleculeReagentResource(ReagentResource):
             IccblBasicAuthentication(), IccblSessionAuthentication())
         resource_name = 'smallmoleculereagent' 
         authorization = ReagentResourceAuthorization(resource_name)
-        ordering = []
-        filtering = {}
         serializer = LimsSerializer()
-        excludes = []  # ['json_field']
         always_return_data = True  # this makes Backbone happy
 
     def __init__(self, **kwargs):
@@ -23895,12 +22903,6 @@ class SmallMoleculeReagentResource(ReagentResource):
     def build_sqlalchemy_columns(
         self, fields, user=None, base_query_tables=None, 
         custom_columns=None, show_preview=False, show_restricted=False):
-        '''
-        @return an array of sqlalchemy.sql.schema.Column objects
-        @param fields - field definitions, from the resource schema
-        
-        FIXME: should restrict fields using the auth.rowproxy?
-        '''
         
         logger.info(
             'build_sqlalchemy_columns for small_molecule_reagent: user: %r', user)
@@ -24017,8 +23019,8 @@ class SmallMoleculeReagentResource(ReagentResource):
         # NOTE: patching will only be done in batch, from library/well
     
     def _patch_wells(self, request, deserialized):
-        ''' For bulk update: 
-        - deserialized has been loaded with the wells
+        ''' Internal bulk update: 
+        - the deserialized array has been loaded with the wells
         '''
         logger.info('patch (%d) reagents for small_molecule ...', len(deserialized))
         
@@ -24168,9 +23170,6 @@ class NaturalProductReagentResource(ReagentResource):
                                              IccblSessionAuthentication())
         resource_name = 'naturalproductreagent'
         authorization = LibraryResourceAuthorization(resource_name)
-        
-        ordering = []
-        filtering = {}
         serializer = LimsSerializer()
         
     def __init__(self, **kwargs):
@@ -24236,8 +23235,6 @@ class WellSerializer(LimsSerializer):
     
     def from_xls(self, content, root='objects', **kwargs):
         list_delimiters = kwargs.pop('list_delimiters', [LIST_DELIMITER_XLS, ','])
-        logger.info('list delimiters: %r', list_delimiters)
-        logger.info('kwargs: %r', kwargs)
         return super(WellSerializer, self).from_xls(content, root=root, 
                                         list_delimiters=list_delimiters, **kwargs)
 
@@ -24251,11 +23248,8 @@ class WellResource(DbApiResource):
                                              IccblSessionAuthentication())
         resource_name = 'well'
         authorization = LibraryResourceAuthorization(resource_name)
-        ordering = []
-        filtering = {}
         serializer = WellSerializer()   
         always_return_data = True 
-        max_limit = 10000
 
     def __init__(self, **kwargs):
         self.library_resource = None
@@ -24304,8 +23298,6 @@ class WellResource(DbApiResource):
                     name="api_dispatch_well_duplex_view"),
         ]
         
-    
-
     @read_authorization
     def dispatch_well_annotations_view(self, request, **kwargs):
         '''
@@ -24653,8 +23645,8 @@ class WellResource(DbApiResource):
         deserialize_meta = None
         if not deserialized:
             deserialized, deserialize_meta = self.deserialize(request, schema=schema)
-        if self._meta.collection_name in deserialized:
-            deserialized = deserialized[self._meta.collection_name]
+        if API_RESULT_DATA in deserialized:
+            deserialized = deserialized[API_RESULT_DATA]
 
         # Track cumulative parsing and validation errors        
         cumulative_error = CumulativeError()
@@ -25347,7 +24339,6 @@ class WellResource(DbApiResource):
             reversed = defaultdict(set)
             for plate, wellnames in plate_wells.items():
                 reversed[','.join(sorted(wellnames))].add(plate)
-            logger.info('reversed: %r', reversed)
             
             for wellnames, plates in reversed.items():
                 compressed_searches.append({
@@ -25448,9 +24439,6 @@ class LibraryResource(DbApiResource):
             IccblBasicAuthentication(), IccblSessionAuthentication())
         resource_name = 'library'
         authorization = LibraryResourceAuthorization(resource_name)
-        
-        ordering = []
-        filtering = {}
         serializer = LimsSerializer()
         always_return_data = True 
         
@@ -25605,15 +24593,12 @@ class LibraryResource(DbApiResource):
         return self.get_well_resource().dispatch('preview', request, **kwargs)    
 
     def dispatch_library_well_preview_view(self, request, **kwargs):
-#         kwargs['library_short_name'] = kwargs.pop('short_name')
-#         return self.get_well_resource().dispatch('preview', request, **kwargs)    
         short_name = kwargs.pop('short_name')
         kwargs['library_short_name'] = short_name
         library = Library.objects.get(short_name=short_name)
         return self.get_reagent_resource(library.screen_type)\
             .dispatch('preview_list', request, **kwargs)
    
-
     @write_authorization
     @transaction.atomic
     def dispatch_library_well_delete_preview(self, request, **kwargs):
@@ -25765,11 +24750,9 @@ class LibraryResource(DbApiResource):
                 select([func.array_to_string(
                     func.array_agg(
                         _concat(                            
-                            cast(_comment_apilogs.c.name,
-                                sqlalchemy.sql.sqltypes.Text),
+                            cast(_comment_apilogs.c.name, TEXT),
                             LIST_DELIMITER_SUB_ARRAY,
-                            cast(_comment_apilogs.c.date_time,
-                                sqlalchemy.sql.sqltypes.Text),
+                            cast(_comment_apilogs.c.date_time, TEXT),
                             LIST_DELIMITER_SUB_ARRAY,
                             _comment_apilogs.c.comment)
                     ), 
@@ -26002,7 +24985,6 @@ class LibraryResource(DbApiResource):
         id_kwargs = self.get_id(deserialized, schema=schema, **kwargs)
         Library.objects.get(**id_kwargs).delete()
     
-    
     def validate(
         self, _dict, patch=False, schema=None, fields=None, library=None):
         
@@ -26179,9 +25161,3 @@ class ResourceResource(reports.api.ResourceResource):
             # TODO: remove after migration
             logger.exception('catch error on extend_resource_specific_data (migration)')
         
-#         elif key == 'labcherrypick':
-#             resource_data['extraSelectorOptions'] = {
-#                 'label': 'Status',
-#                 'searchColumn': 'status',
-#                 'options': ['unfulfilled','selected','plated','not_selected']}
-            

@@ -633,6 +633,7 @@ define([
       var copyUsageTypeField = _.result(copyResource['fields'],'usage_type',{});
       var plateResource = appModel.getResource('librarycopyplate');
       var plateStatusField = _.result(plateResource['fields'],'status',{});
+      var plateTypeField = _.result(plateResource['fields'],'plate_type',{});
       var plateWellVolumeField = _.result(plateResource['fields'], 'well_volume', {});
       var plateMgMlConcentrationField = _.result(
         plateResource['fields'], 'mg_ml_concentration', {});
@@ -686,6 +687,18 @@ define([
         validators: ['required'],
         options: appModel.getVocabularySelectOptions(
           copyUsageTypeField.vocabulary_scope_ref),
+        template: fieldTemplate 
+      };
+      
+      formSchema['plate_type'] = {
+        title: 'Plate Type',
+        key: 'plate_type',
+        type: EditView.ChosenSelect,
+        editorClass: 'chosen-select',
+        editorAttrs: { widthClass: 'col-sm-5'},
+        validators: ['required'],
+        options: appModel.getVocabularySelectOptions(
+          plateTypeField.vocabulary_scope_ref),
         template: fieldTemplate 
       };
       

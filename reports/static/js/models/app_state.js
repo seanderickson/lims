@@ -2807,7 +2807,7 @@ define([
   
   appState._form_template = _.template([
      '<div class="form-horizontal container" id="_form_template" >',
-     '<form data-fieldsets class="form-group form-horizontal container" autocomplete="off">',
+     '<form data-fieldsets class="form-horizontal container" autocomplete="off">',
      "</form>",
      '<div id="data-error" class="has-error" ></div>',
      "</div>"].join(''));      

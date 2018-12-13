@@ -26,7 +26,11 @@ def get_siunit(test_value):
       ['k', Decimal('1e3')],
       ['', Decimal(1)],
       ['m', Decimal('1e-3')],
-      ['μ', Decimal('1e-6')],
+      # NOTE: UTF-8 encodings are supported, but avoid using them because
+      # Excel has poor support for reading properly opening encoded csv files
+      # ['μ', Decimal('1e-6')],
+      # [ '\u00B5', Decimal('1e-6')], # Todo: this may work (test)
+      ['u', Decimal('1e-6')],
       ['n', Decimal('1e-9')],
       ['p', Decimal('1e-12')]
       ]

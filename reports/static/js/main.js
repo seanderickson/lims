@@ -222,8 +222,10 @@ function($, _, Backbone, Iccbl, appModel, AppView, AppRouter,
       idleTimeout = parseInt(appData.get('BROWSER_IDLE_TIMEOUT_SECONDS'))*1000;
     }
     
-    console.log('startIdleTimer, serverTimeoutSeconds: ', serverTimeoutSeconds, 
-      'idleTimeout (s)', idleTimeout/1000);
+    if (appModel.DEBUG){
+      console.log('startIdleTimer, serverTimeoutSeconds: ', serverTimeoutSeconds, 
+        'idleTimeout (s)', idleTimeout/1000);
+    }
     startIdleTimer();
   });
   

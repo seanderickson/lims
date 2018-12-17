@@ -1,26 +1,24 @@
 <div class="modal-dialog">
   <div class="modal-content" style="overflow: auto;">
-    <div class="modal-header">
-      <h4 class="modal-title">
-        <div id='modal_title' '><%= title %></div>
-        <div class="pull-right" id="top_modal_buttons" style="display: none;" '>
-            <button class="btn btn-sm" id="modal-cancel" >
-                cancel
-            </button>
-            <button class="btn btn-sm" id="modal-ok" >
-                Ok
-            </button>
-        </div>
-      </h4>
+    <div class="modal-header ">
+      <div id='modal_title' class="h4 pull-left"><%= title %></div>
+      <div class="pull-right" id="top_modal_buttons" style="display: none;" '>
+          <button class="btn btn-default btn-sm" id="modal-cancel" >
+              Cancel
+          </button>
+          <button class="btn btn-default btn-sm" id="modal-ok" >
+              Ok
+          </button>
+      </div>
     </div>
     <div class="modal-body">
         <%= body %>
     </div>
 		<div id="modal_footer" class="modal-footer">
-		    <button class="btn btn-sm" id="modal-cancel" >
-		        cancel
+		    <button class="btn btn-default btn-sm" id="modal-cancel" >
+		        Cancel
 		    </button>
-		    <button class="btn btn-sm" id="modal-ok" >
+		    <button class="btn btn-default btn-sm" id="modal-ok" >
 		        Ok
 		    </button>
 		</div>

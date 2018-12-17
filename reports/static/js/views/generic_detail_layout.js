@@ -138,11 +138,12 @@ define([
       var newUriStack = ['apilog','order','-date_time', appModel.URI_PATH_SEARCH];
       var search = {};
       search['ref_resource_name'] = this.model.resource.key;
+      // FIXME: should use schema['log_id_attribute'] to get the key
       search['key'] = encodeURIComponent(this.model.key);
       newUriStack.push(appModel.createSearchString(search));
-      var route = newUriStack.join('/');
       appModel.setUriStack(newUriStack);
       // Note: using the router this way creates double history entry
+      // var route = newUriStack.join('/');
       // appModel.router.navigate(route, {trigger: true});
     },
 

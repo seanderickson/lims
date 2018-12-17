@@ -1,18 +1,21 @@
 # overlay settings for running scripts from the command line on the server
 # set's up a different log file so that the server logs aren't overwritten, 
 # and don't get the permissions changed.
-
-from os import environ
+import sys
 
 try:
     from settings import *
 except ImportError:
-    import sys
     print >>sys.stderr, '''Settings not defined.  Please configure a version of
     settings.py for this site.'''
-    del sys
     
-    
+# Turn off these settings so bootstrapping to a local non-HTTPS server will work
+BACKGROUND_PROCESSING = False
+IS_PRODUCTION_READY = False
+SECURE_SSL_REDIRECT = False
+SESSION_COOKIE_SECURE = False
+CSRF_COOKIE_SECURE = False
+
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
@@ -33,7 +36,7 @@ LOGGING = {
         'logfile': {
             'level':'DEBUG',
             'class':'logging.handlers.RotatingFileHandler',
-            'filename': os.path.join(PROJECT_ROOT, 'logs', 'screensaver2-cli.log'),
+            'filename': os.path.join(PROJECT_ROOT, 'logs', 'screensaver-cli.log'),
             'maxBytes': 5000000,
             'backupCount': 2,
             'formatter': 'simple',

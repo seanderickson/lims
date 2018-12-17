@@ -121,7 +121,8 @@ class Migration(migrations.Migration):
             model_name='labcherrypick',
             name='copy',
             field=models.ForeignKey(related_name='copy_lab_cherry_picks', 
-                to='db.Copy', null=True),
+                to='db.Copy', null=True,
+                on_delete=models.deletion.SET_NULL),
         ),
         
         migrations.RunPython(migrate_cherry_pick_request_empty_wells),
@@ -159,37 +160,57 @@ class Migration(migrations.Migration):
                 related_name='searched_screener_cherry_pick', 
                 to='db.Well', null=False),
         ),
-        migrations.AddField(
-            model_name='cherrypickassayplate',
-            name='plating_date',
-            field=models.DateField(null=True),
-        ),
-        migrations.AddField(
-            model_name='cherrypickassayplate',
-            name='plated_by',
-            field=models.ForeignKey(
-                related_name='plated_cherry_pick_plates', 
-                to='db.ScreensaverUser', null=True),
-        ),
-        migrations.AddField(
-            model_name='cherrypickassayplate',
-            name='screened_by',
-            field=models.ForeignKey(
-                related_name='screened_cherry_pick_plates', 
-                to='db.ScreensaverUser', null=True),
-        ),
-        migrations.AddField(
-            model_name='cherrypickassayplate',
-            name='screening_date',
-            field=models.DateField(null=True),
-        ),
         # deprecate created_by - replaced by logs
         migrations.AlterField(
             model_name='cherrypickrequest',
             name='created_by',
             field=models.ForeignKey(
                 related_name='created_cherry_pick', 
-                to='db.ScreensaverUser', null=True),
+                to='db.ScreensaverUser', null=True,
+                on_delete=models.deletion.CASCADE),
+        ),
+        migrations.AlterField(
+            model_name='cherrypickrequest',
+            name='volume_approved_by',
+            field=models.ForeignKey(null=True,
+                 on_delete=models.deletion.SET_NULL, 
+                 related_name='approved_cherry_pick', to='db.ScreensaverUser'),
+        ),
+        migrations.AlterField(
+            model_name='cherrypickrequest',
+            name='requested_by',
+            field=models.ForeignKey(
+                related_name='requested_cherry_pick', to='db.ScreensaverUser',
+                on_delete=models.deletion.CASCADE),
+        ),
+        migrations.AddField(
+            model_name='cherrypickassayplate',
+            name='plating_date',
+            field=models.DateField(null=True),
+        ),
+
+        # Activity fields
+        
+        migrations.AddField(
+            model_name='cherrypickassayplate',
+            name='plated_by',
+            field=models.ForeignKey(
+                related_name='plated_cherry_pick_plates', 
+                to='db.ScreensaverUser', null=True,
+                on_delete=models.deletion.SET_NULL),
+        ),
+        migrations.AddField(
+            model_name='cherrypickassayplate',
+            name='screened_by',
+            field=models.ForeignKey(
+                related_name='screened_cherry_pick_plates', 
+                to='db.ScreensaverUser', null=True,
+                on_delete=models.deletion.SET_NULL),
+        ),
+        migrations.AddField(
+            model_name='cherrypickassayplate',
+            name='screening_date',
+            field=models.DateField(null=True),
         ),
         
         migrations.RunSQL(
@@ -208,6 +229,8 @@ class Migration(migrations.Migration):
         '''),
 
         # Create a link from CPLT directly to CPR for Activity reporting
+        # NOTE: 20180925 - activity_refactor: consider dropping this link and using
+        # the activity.apilog_uri field to track the child logs created for plates
         migrations.AddField(
             model_name='cherrypickliquidtransfer',
             name='cherry_pick_request',
@@ -300,6 +323,12 @@ class Migration(migrations.Migration):
                 =cherry_pick_assay_plate.cherry_pick_assay_plate_id
               order by date_of_activity desc limit 1);
         '''),
+        
+        
+        
+        # TODO: recreate the cherry_pick_screening activities as logs
+        # 20180905 - not needed
+        
 #         migrations.RunSQL('''
 #             update plate
 #             set key = library.short_name || '/' || copy.name || '/' || plate_number

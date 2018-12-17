@@ -100,10 +100,13 @@ class ParseError(ValidationError):
 class BadRequestError(ValidationError):
     pass
 
+class ConfigurationError(ValidationError):
+    pass
+
 class MissingParam(ValidationError):
     
     def __init__(self, param_name):
-        ValidationError.__init__(key=param_name, msg='required')
+        ValidationError.__init__(self, key=param_name, msg='required')
         
 class ApiNotImplemented(ValidationError):
 

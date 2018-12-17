@@ -1,7 +1,9 @@
-<ul class="menu nav-sidebar">
+<ul class="menu nav-sidebar nav nav-stacked">
+    <!-- 
   <li class="" id="<%= 'home' %>" title="<%=ui_resources['home'].description %>">
     <a  href="#"><h4><%= ui_resources['home'].title %></h4></a>
   </li>
+     -->
   <%
   _.each(_(menu['submenus']).keys(), function(key){
     var ui_resource = ui_resources[key];
@@ -15,7 +17,7 @@
 	    var submenus = submenu['submenus'];
 	    if( !_.isEmpty(submenus)){
   %>
-        <ul  class="menu nav-sidebar">
+        <ul  class="menu ">
   <%
 				_.each(_.keys(submenus), function(key){
 			    if(!_.has(ui_resources,key)){
@@ -34,7 +36,7 @@
             }
             if( submenu2['expanded'] ) {
             %>
-              <ul  class="menu nav-sidebar">
+              <ul  class="menu ">
             <%
               _.each(_(submenu2['submenus']).keys(), 
               function(key){
@@ -42,7 +44,7 @@
                 var ui_resource1 = ui_resources[key];
               %>
                 <li class="" id="<%= key %>" title="<%=ui_resource1.description %>">
-                <a href="#<%= key %>"><strong><%= ui_resource1.title %></a></strong></li>
+                <a href="#<%= key %>"><%= ui_resource1.title %></a></li>
               <%
               }); // each submenu2 items
              %>

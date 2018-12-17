@@ -1,31 +1,4 @@
 key,scope,ordinal,title
-assay_dev_consult,serviceactivity.type,0,"Assay Dev Consult"
-automation,serviceactivity.type,1,Automation
-image_analysis,serviceactivity.type,2,"Image Analysis"
-informatics,serviceactivity.type,3,Informatics
-medchem_analytical,serviceactivity.type,4,"MedChem - Analytical"
-medchem_consult,serviceactivity.type,5,"MedChem - Consult"
-medchem_synthesis,serviceactivity.type,6,"MedChem - Synthesis"
-other,serviceactivity.type,7,Other
-training_acumen,serviceactivity.type,8,"Training - Acumen"
-training_biomekfx,serviceactivity.type,9,"Training - BiomekFX"
-training_combi,serviceactivity.type,10,"Training - Combi"
-training_combi_nl,serviceactivity.type,11,"Training - Combi nL"
-training_cybio,serviceactivity.type,12,"Training - CyBio"
-training_envision,serviceactivity.type,13,"Training - Envision"
-training_flexstation_iii,serviceactivity.type,14,"Training - Flexstation III"
-training_hp_d300,serviceactivity.type,15,"Training - HP D300"
-training_ixm,serviceactivity.type,16,"Training - IXM"
-training_ixm_c,serviceactivity.type,17,"Training - IXM C"
-training_lumina_ii,serviceactivity.type,18,"Training - Lumina II"
-training_m5,serviceactivity.type,19,"Training - M5"
-training_octet,serviceactivity.type,20,"Training - Octet"
-training_other,serviceactivity.type,21,"Training - Other"
-training_qpcr_abi,serviceactivity.type,22,"Training - QPCR-ABI"
-training_qpcr_qstudio_7_flex,serviceactivity.type,23,"Training - QPCR-Qstudio 7 Flex"
-training_qpcr_roche,serviceactivity.type,24,"Training - QPCR-Roche"
-training_velos,serviceactivity.type,25,"Training - Velos"
-training_wellmate,serviceactivity.type,26,"Training - Wellmate"
 bacteria,screen.species,0,bacteria
 c_elegans,screen.species,1,"C. Elegans"
 drosophila,screen.species,2,Drosophila
@@ -85,33 +58,6 @@ other,funding_support,34,Other
 sanofi_aventis,funding_support,35,Sanofi-Aventis
 unspecified,funding_support,36,Unspecified
 yuan_nih_06_07,funding_support,37,"Yuan NIH 06-07"
-assay_dev_consult,activity.type,0,"Assay Dev Consult"
-automation,activity.type,1,Automation
-image_analysis,activity.type,2,"Image Analysis"
-informatics,activity.type,3,Informatics
-medchem_analytical,activity.type,4,"MedChem - Analytical"
-medchem_consult,activity.type,5,"MedChem - Consult"
-medchem_synthesis,activity.type,6,"MedChem - Synthesis"
-other,activity.type,7,Other
-training_acumen,activity.type,8,"Training - Acumen"
-training_biomekfx,activity.type,9,"Training - BiomekFX"
-training_combi,activity.type,10,"Training - Combi"
-training_combi_nl,activity.type,11,"Training - Combi nL"
-training_cybio,activity.type,12,"Training - CyBio"
-training_envision,activity.type,13,"Training - Envision"
-training_flexstation_iii,activity.type,14,"Training - Flexstation III"
-training_hp_d300,activity.type,15,"Training - HP D300"
-training_ixm,activity.type,16,"Training - IXM"
-training_ixm_c,activity.type,17,"Training - IXM C"
-training_lumina_ii,activity.type,18,"Training - Lumina II"
-training_m5,activity.type,19,"Training - M5"
-training_octet,activity.type,20,"Training - Octet"
-training_other,activity.type,21,"Training - Other"
-training_qpcr_abi,activity.type,22,"Training - QPCR-ABI"
-training_qpcr_qstudio_7_flex,activity.type,23,"Training - QPCR-Qstudio 7 Flex"
-training_qpcr_roche,activity.type,24,"Training - QPCR-Roche"
-training_velos,activity.type,25,"Training - Velos"
-training_wellmate,activity.type,26,"Training - Wellmate"
 graduate_student,user.classification,0,"Graduate Student"
 iccb_fellow,user.classification,1,"ICCB Fellow"
 other,user.classification,2,Other

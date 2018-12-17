@@ -53,7 +53,7 @@ define([
       });
 
       self.show_all_fields_control = $([
-        '<label class="checkbox-inline" ',
+        '<label class="checkbox-inline" id="show_all_fields_control" ',
         '   title="Show all fields available for the resource" >',
         '  <input type="checkbox">show all available fields',
         '</label>'
@@ -102,8 +102,9 @@ define([
       }
       
       function create_title(fi){
-        if (Iccbl.appModel.hasGroup('readEverythingAdmin') 
+        if (appModel.getCurrentUser().is_superuser
             && fi.vocabulary_scope_ref){
+          // Show link to the vocab term for superuser
           return Iccbl.formatString(
             '<a href="#vocabulary/search/scope__exact={vocabulary_scope_ref}" '
             + ' class="" '
@@ -120,14 +121,24 @@ define([
           updateMethod: 'html',
           onGet: function(value) {
             if (value){
-              return create_title(value);
+              var label = create_title(value);
+              // 20181203 - no badge
+              //var admin_label = "<span style='' "
+              //  + "class='label label-warning label-as-badge pull-left strong' "
+              //  + "title='admin field'>A</span>&nbsp;";
+              // if (_.contains(self.adminKeys, key)) label = admin_label + label;
+              return label;
             }
-            else return 'Title for ' + key;
+            else return 'Label for ' + key;
           },
           attributes: [{
             name: 'title', observe: key,
             onGet: function(value) {
-              if (value) return value.description;
+              if (value) {
+                var tooltip = value.description;
+                if (_.contains(self.adminKeys, key)) tooltip = tooltip + ' (Admin field)';
+                return tooltip;
+              }
             }
           }]
         };
@@ -235,15 +246,19 @@ define([
         return finalValue;
       }
       function decimalGetter(value){
-        console.log('decimalGetter:', value);
-        var formatted;
-        var formatter = new Iccbl.DecimalFormatter(cell_options);
-        if(_.isString(value) || _.isNumber(value)){
-          formatted = formatter.fromRaw(value);
-          console.log('decimal getter: v:', value, ', formatted: ', 
-            formatted, ', options: ', cell_options);
-          return formatted;
-        }else{
+        if (cell_options){
+          console.log('decimalGetter:', value);
+          var formatted;
+          var formatter = new Iccbl.DecimalFormatter(cell_options);
+          if(_.isString(value) || _.isNumber(value)){
+            formatted = formatter.fromRaw(value);
+            console.log('decimal getter: v:', value, ', formatted: ', 
+              formatted, ', options: ', cell_options);
+            return formatted;
+          }else{
+            return value;
+          }
+        } else {
           return value;
         }
       }
@@ -251,21 +266,19 @@ define([
         var vocabulary = getVocabulary();
         if(!_.isUndefined(value) && !_.isNull(value) && vocabulary){
           value = getTitle(vocabulary,value);
+          return value;
         }
-        return value;
-        // TODO: use the NumberFormatter to show numbers with thousands separator:
-        // --- on hold --- rework using options so only values (not IDs) are formatted
-        //var formatter = new Iccbl.NumberFormatter({ decimals: 0 });
-        //if(_.isString(value) || _.isNumber(value)){
-        //  formatted = formatter.fromRaw(value);
-        //  if (appModel.DEBUG){
-        //    console.log('integer getter: v:', value, ', formatted: ', 
-        //      formatted, ', options: ', cell_options);
-        //  }
-        //  return formatted;
-        //}else{
-        //  return value;
-        //}
+        else if(_.isNumber(value)){
+          var formatter = new Iccbl.IntegerFormatter(cell_options);
+          formatted = formatter.fromRaw(value);
+          if (appModel.DEBUG){
+            console.log('integer getter: v:', value, ', formatted: ', 
+              formatted, ', options: ', cell_options);
+          }
+          return formatted;
+        }else{
+          return value;
+        }
       }
       function booleanGetter(value){
         if(_.isBoolean(value)){
@@ -274,8 +287,15 @@ define([
         }else{
           return value;
         }
+      };
+          
+      function imageGetter(value){
+        if (!_.isEmpty(value) && value != '-' ){
+          console.log('image:', value);
+          return '<img src="' + value + '" alt="structure image" />';
+        }
       }
-            
+      
       data_type_formatters = {
         'date': dateGetter,
         'list': listGetter,
@@ -301,11 +321,11 @@ define([
       function linkGetter(value){
         var _options = _.extend(
           { hrefTemplate: '#', target: '_self' }, cell_options );                
-        // use the display options if needed for backward compatibility
-        if( _.has(fi,'display_options') && _options.hrefTemplate == '#' ) {
-          _options.hrefTemplate = window.location.pathname + '#' + fi['display_options'];
-          _options.target = '_self';
-        } 
+//        // use the display options if needed for backward compatibility
+//        if( _.has(fi,'display_options') && _options.hrefTemplate == '#' ) {
+//          _options.hrefTemplate = window.location.pathname + '#' + fi['display_options'];
+//          _options.target = '_self';
+//        } 
 
         if(value && !_.isNull(value) && value != '-' ){
           var interpolatedVal = Iccbl.formatString(_options.hrefTemplate,self.model, value);
@@ -327,10 +347,10 @@ define([
           var _options = _.extend(
             { hrefTemplate: '#', target: '_self' }, cell_options );                
           // use the display options if needed for backward compatibility
-          if( _.has(fi,'display_options') && _options.hrefTemplate == '#' ) {
-            _options.hrefTemplate = window.location.pathname + '#' + fi['display_options'];
-            _options.target = '_self';
-          } 
+//          if( _.has(fi,'display_options') && _options.hrefTemplate == '#' ) {
+//            _options.hrefTemplate = window.location.pathname + '#' + fi['display_options'];
+//            _options.target = '_self';
+//          } 
           var vocabulary = getVocabulary();
           var output = [];
           _.each(modelValues, function(value){
@@ -361,7 +381,8 @@ define([
       display_type_formatters = {
         'link': linkGetter,
         'linklist': linkListGetter,
-        'siunit': siUnitGetter
+        'siunit': siUnitGetter,
+        'image': imageGetter
       };
       
       // compose getter hierarchy; default<-data_type<-display_type<-vocabulary
@@ -424,11 +445,12 @@ define([
       var buttonModel = new Backbone.Model();
       _.each(this.buttons, function(button){
         btnbindings['[name="' + button + '"]'] = button;
-        buttonModel.set(button,button);
+        var buttonName = button.charAt(0).toUpperCase() + button.slice(1);
+        buttonModel.set(button,buttonName);
       });
       this.stickit(buttonModel, btnbindings);
       
-      if (appModel.hasGroup('readEverythingAdmin')) {
+      if (appModel.getCurrentUser().is_superuser ) {
         $('#generic-detail-bottom-buttonpanel-left').prepend(self.show_all_fields_control);
         self.show_all_fields_control.find('input[type="checkbox"]').change(function(e) {
           console.log('click show all', e);

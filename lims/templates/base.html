@@ -2,6 +2,7 @@
 <html>
 <head>
   <meta charset="utf-8" />
+    <meta name="viewport" content="initial-scale = 1.0,maximum-scale = 1.0" />
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
 
 <!--     <link rel="stylesheet" media="screen" href="{{ STATIC_URL }}css/external/bootstrap.css" /> -->
@@ -9,7 +10,6 @@
   {% load admin_urls %}
 
     <link rel="shortcut icon" href="{{STATIC_URL}}/images/favicon.ico?v=1" type="image/x-icon" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="">
     <meta name="author" content="">
 
@@ -25,6 +25,10 @@
   
   /** container width settings
   -------------------------------------------------- **/
+  @media print {
+    .navbar,.sidebar,.controls {display:none; }
+  }
+
   @media (min-width: 568px) {
     .container {
       width: inherit;
@@ -40,7 +44,6 @@
       width: inherit;
     }
   }  
-
   /** sticky footer
   -------------------------------------------------- **/
   html {
@@ -106,7 +109,7 @@
 </style>
 
   {% block head %}
-    <title>Screensaver</title>
+    <title>{{ page_title }}</title>
   {% endblock %}
 
 </head>
@@ -115,7 +118,9 @@
   <script language="javascript" type="text/javascript">
     window.logged_in = "{{ user.is_authenticated|yesno:"true,false" }}"==="true";
     window.is_superuser = "{{ user.is_superuser|yesno:"true,false" }}"==="true";
-    window.user = "{{ user }}"
+    window.user = "{{ user }}";
+    window.logout_url = "{% url 'logout' %}";
+    window.static_url = "{{STATIC_URL}}";
   </script>
   <!-- navbar reports -->
   {% block navbar %}
@@ -126,8 +131,8 @@
   </div>
   {% block footer %}  
 	  <div id="footer">
-	    <div class="container">
-	      <a href="#">Screensaver</a> | <a href="http://iccb.med.harvard.edu/">ICCB-Longwood</a>
+	    <div class="container text-center">
+	      <a href="{{software_repository_url}}" target="_blank">Screensaver</a> | <a href="{{software_development_facility_url}}" target="_blank" >{{software_development_facility}}</a>
 	    </div>
 	  </div>
   {% endblock %}

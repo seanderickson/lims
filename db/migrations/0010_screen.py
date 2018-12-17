@@ -1,9 +1,7 @@
 # -*- coding: utf-8 -*-    
 from __future__ import unicode_literals
 
-# from datetime import datetime, time, date, timedelta
 import datetime
-import json
 import logging
 
 from django.db import migrations, models, transaction
@@ -12,44 +10,43 @@ from django.db.utils import IntegrityError
 from pytz import timezone
 import pytz
 
+from db.migrations import create_log_time, times_seen
 from reports.utils import default_converter
 from reports.models import ApiLog
-
-from db.migrations import create_log_time
+from reports.schema import DATE_FORMAT
 
 
 logger = logging.getLogger(__name__)
 
 DB_API_URI = '/db/api/v1'
 
-def make_log(
-    apps, input_date, ref_resource_name, key, 
-    diffs=None, comment=None, user_id=None, username=None):
+# Default Admin User for log records (should be updated for other facilities)
+USERNAME_ADMIN = 'sde_EDIT'
+USER_ID_ADMIN = 7
 
-    apilog_model = apps.get_model('reports','apilog')
-    collision_counter=0
+def make_log(status_item):
 
-    if diffs is None:
-        diffs = {}
-    
+    logger.debug('make status log: %r', status_item)
+    collision_counter=1
+
     log = ApiLog()
-    log.date_time = create_log_time(key,input_date) 
-    log.user_id = user_id or 1
-    log.username = username
-    log.ref_resource_name = ref_resource_name
-    log.key = key
-    log.uri = '/'.join([DB_API_URI, ref_resource_name, key])
-    log.diffs = diffs
-    log.comment = comment
+    log.key = status_item['screen_facility_id']
+    log.date_time = create_log_time(log.key,status_item['date']) 
+    log.username = status_item['username']
+    log.user_id = status_item['user_id']
+    log.ref_resource_name = 'screen'
+    log.uri = '/'.join([DB_API_URI, log.ref_resource_name, log.key])
+    log.diffs = status_item.get('diffs')
+    log.comment = status_item.get('comments')
+    log.json_field = status_item.get('json_field')
     try:
         # check for log key (date_time) collisions; this shouldn't 
         # happen with the "create_log_time()", but, in case it does
         with transaction.atomic():
             log.save()
     except IntegrityError as e:
-        q = apilog_model.objects.filter(
-                ref_resource_name=ref_resource_name,
-                key = key).order_by('-date_time')        
+        q = ApiLog.objects.filter(
+                ref_resource_name=log.ref_resource_name, key = log.key).order_by('-date_time')        
         if q.exists():    
             max_datetime = ( q.values_list('date_time', flat=True))[0]
         else:
@@ -61,44 +58,6 @@ def make_log(
         times_seen.add(max_datetime)
         log.date_time = max_datetime
         collision_counter = collision_counter + 1
-        
-    return log
-
-def migrate_pin_transfer_approval(apps, schema_editor):
-    '''
-    Migrate the pin_transfer_approval activities to the
-    "pin_transfer_approved_by" field, and recored the date and comment
-    '''
-    Screen = apps.get_model('db', 'Screen')
-    AdministrativeActivityModel = apps.get_model('db', 'AdministrativeActivity')
-    count = 0
-    for s in ( Screen.objects.all()
-        .filter(pin_transfer_admin_activity__isnull=False)):
-        activity = s.pin_transfer_admin_activity;
-        
-        logger.info('migrate pin transfer activity for screen: %r', s)
-        logger.debug('process pin transfer activity: %r', activity)
-        
-        # Create an ApiLog - note, no de-duplication needed; for the current 
-        # database, the pin transfer approval has only been set once
-        diffs = {
-            'pin_transfer_approved_by_username': 
-                [None, activity.performed_by.username],
-            'pin_transfer_date_approved': 
-                [None, activity.date_of_activity.strftime("%Y-%m-%d")],
-            'pin_transfer_comments': [None, activity.comments],
-        }
-        
-        log = make_log(
-            apps,
-            activity.date_of_activity, 'screen', 
-            s.facility_id, 
-            diffs=diffs, comment=activity.comments,
-            user_id=activity.created_by.screensaver_user_id,
-            username=activity.created_by.username)
-        count = count + 1
-    
-    logger.info('migrated %d pin_transfer_admin_activity logs', count)
 
 def migrate_screen_status(apps,schema_editor):
     '''
@@ -108,42 +67,80 @@ def migrate_screen_status(apps,schema_editor):
     - adds an "id" field to screen_status_item
     - copies the latest status to the screen.status field    
     '''
+    Screen = apps.get_model('db', 'Screen')
+    ScreenStatusItem = apps.get_model('db','ScreenStatusItem')
         
     # Create a history log for all of the status's for each screen, 
     # and store the _current/latest_ status on the new screen.status field
     count=0
-    ScreenStatusItem = apps.get_model('db','ScreenStatusItem')
-    for screen in (
-            apps.get_model('db','Screen').objects.all().order_by('facility_id')):
+    for screen in Screen.objects.all().order_by('facility_id'):
         
         logger.info('process screen: %s', screen.facility_id)
         if screen.status:
+            # Note: screen.status is set in manual/0002
             # Clean up the vocabulary used in the status_item table
             # NOTE: migration 0003 shows a newer way of generating the vocabs
             # - this is ok for these
             screen.status = default_converter(screen.status)
             screen.save()
-        # now scan the screen_status_items to recreate logs
-        prev_item = None
-        for status in ( ScreenStatusItem.objects.filter(screen=screen)
-                .order_by('status_date')):
-            new_status = default_converter(status.status)
-            diffs = {}
-            if prev_item:
-                prev_status = default_converter(prev_item.status)
-                diffs['status'] = [prev_status, new_status]
-            else:
-                diffs['status'] = [None, new_status]
-
-            log = make_log(
-                apps,status.status_date, 'screen', screen.facility_id, 
-                diffs, username='sde')
-            logger.debug('created log: %d: %r', count, log)
             
-            prev_item = status
-            count = count + 1
-    
+        # Now scan both the screen.status_items and the screen.pin_transfer_activities
+        # to concoct a status history table
+        
+        status_items= []
+        
+        for status in ScreenStatusItem.objects\
+            .filter(screen=screen).order_by('status_date'):
+            
+            status_item = {
+                'date': status.status_date,
+                'status': default_converter(status.status),
+                'username': USERNAME_ADMIN, # NOTE: no logs available in SS1
+                'user_id': USER_ID_ADMIN,
+                'screen_facility_id': str(screen.facility_id),
+                'comment': 'Migration'
+                }
+            status_items.append(status_item)
+        
+        if screen.pin_transfer_admin_activity is not None:
+        
+            activity = screen.pin_transfer_admin_activity;
+
+            status_item = {
+                'date': activity.date_of_activity, 
+                'status': 'transfer_approved',
+                'username': activity.created_by.username,
+                'user_id': activity.created_by.user_id,
+                'screen_facility_id': str(screen.facility_id),
+                'comment': activity.comments
+                }
+            status_item['json_field'] = { 
+                'migration': 'PinTransferAdminActivity',
+                'data': { 'activity_id': activity.activity_id }          
+                }
+            status_items.append(status_item)
+        
+        # sort by date to get the right status history
+        prev_item = None
+        status_items = sorted(status_items, key=lambda x: x['date'])
+        for status_item in status_items:
+            diffs = {
+                'status': [None, status_item['status']],
+                'date': [None, status_item['date'].strftime(DATE_FORMAT)]
+                }
+            if prev_item:
+                diffs['status'][0] = prev_item['status']
+                diffs['date'][0] = prev_item['date'].strftime(DATE_FORMAT)
+
+            status_item['diffs'] = diffs
+            prev_item = status_item
+            
+        for status_item in status_items:
+            make_log(status_item)
+            count = count+1
+
     logger.info('updated: %d screen status entries', count)
+
 
 def migrate_screen_project_phase(apps,schema_editor):
     '''
@@ -187,43 +184,10 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ('db', '0008_usergroups'),
+        ('reports', '0001_initial'), 
     ]
 
     operations = [
-        
         migrations.RunPython(migrate_screen_status),
-        migrations.RunPython(migrate_pin_transfer_approval),
         migrations.RunPython(migrate_screen_project_phase),
-        
-        # TODO: reinstate for final migration; leaving fields in the db for 
-        # now - 20170607
-        # migrations.RemoveField(
-        #     model_name='screen',
-        #     name='project_id',
-        # ),
-        # migrations.RemoveField(
-        #     model_name='screen',
-        #     name='project_phase',
-        # ),
-#         migrations.RemoveField(
-#             model_name='screen',
-#             name='transfection_agent',
-#         ),
-#         migrations.RenameField(
-#             model_name='screen', 
-#             old_name='transfection_agent_text', 
-#             new_name='transfection_agent'
-#         ),
-        
-#         migrations.AlterField(
-#             model_name='screen', name='project_phase', 
-#             field=models.TextField(null=True),
-#         ),
-#         migrations.AlterField(
-#             model_name='screen',
-#             name='project_id',
-#             field=models.TextField(null=True),
-#         ),
-        
-
     ]

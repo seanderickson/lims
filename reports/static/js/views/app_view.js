@@ -61,7 +61,7 @@ define([
             var addScreenButton = $([
               '<a class="btn btn-default btn-sm pull-down" ',
                 'role="button" id="add_screen_button" href="#">',
-                'Add Screen</a>'
+                'Add screen</a>'
               ].join(''));
             addScreenButton.click(function(e){
               e.preventDefault();
@@ -74,7 +74,7 @@ define([
             var addUserButton = $([
               '<a class="btn btn-default btn-sm pull-down" ',
                 'role="button" id="add_user_button" href="#">',
-                'Add User</a>'
+                'Add user</a>'
               ].join(''));
             addUserButton.click(function(e){
               e.preventDefault();
@@ -87,7 +87,7 @@ define([
             var addLibraryButton = $([
               '<a class="btn btn-default btn-sm pull-down" ',
                 'role="button" id="add_library_button" href="#">',
-                'Add Library</a>'
+                'Add library</a>'
               ].join(''));
             addLibraryButton.click(function(e){
               e.preventDefault();

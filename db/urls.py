@@ -11,7 +11,7 @@ from db.api import ScreensaverUserResource, ScreenResource, \
     SmallMoleculeReagentResource, SilencingReagentResource, NaturalProductReagentResource, \
     CopyWellResource, UserChecklistResource, \
     CherryPickRequestResource, CherryPickPlateResource, \
-    AttachedFileResource, ServiceActivityResource, LibraryScreeningResource, \
+    AttachedFileResource, LibraryScreeningResource, \
     UserAgreementResource, PublicationResource, PlateLocationResource, \
     LabAffiliationResource, RawDataTransformerResource
 import db.api
@@ -31,7 +31,7 @@ v1_api.register(LibraryCopyPlateResource())
 v1_api.register(PlateLocationResource())
 v1_api.register(WellResource())
 v1_api.register(ActivityResource())
-v1_api.register(ServiceActivityResource())
+# v1_api.register(ServiceActivityResource())
 v1_api.register(ReagentResource())
 v1_api.register(CherryPickRequestResource())
 v1_api.register(CherryPickPlateResource())
@@ -55,8 +55,8 @@ urlpatterns = [
         db.views.screen_raw_data_transform, name="screen_raw_data_transform" ),
     url(r'^cpr_raw_data_transform/(?P<cherry_pick_request_id>\S+)$',
         db.views.cpr_raw_data_transform, name="cpr_raw_data_transform" ),
-    url(r'^smiles_image/(?P<well_id>\S+)$',db.views.smiles_image,
-        name="smiles_image" ),
+    # url(r'^smiles_image/(?P<well_id>\S+)$',db.views.smiles_image,
+    #     name="smiles_image" ),
     url(r'^well_image/(?P<well_id>\S+)$',db.views.well_image, 
         name="well_image" ),
     url(r'^attachedfile/(?P<attached_file_id>\d+)/content$',

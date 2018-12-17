@@ -32,23 +32,32 @@ DATABASES = {
     }
 }
 
-# Hosts/domain names that are valid for this site; required if DEBUG is False
+
+# Hosts/domain names that are valid for this site.
+# INSTALL TODO: required if DEBUG is False
 # See https://docs.djangoproject.com/en/1.5/ref/settings/#allowed-hosts
 ALLOWED_HOSTS = []
 
+# NOTE: Django internationalization is not being used
+USE_I18N = False
+# Language code for this installation. All choices can be found here:
+# http://www.i18nguy.com/unicode/language-identifiers.html
+# NOTE: Django internationalization is not being used; so this has no effect.
+LANGUAGE_CODE = 'en-us'
+# Django format localization is not being used
+USE_L10N = False
+
+
 # Local time zone for this installation. Choices can be found here:
 # http://en.wikipedia.org/wiki/List_of_tz_zones_by_name
-# FIXME: set to the local time zone for the installation
+# INSTALL TODO: set to the local time zone for the installation
 TIME_ZONE = 'UTC'
-
-LANGUAGE_CODE = 'en-us'
-SITE_ID = 1
-USE_I18N = True
-USE_L10N = True
-# If you set this to False, Django will not use timezone-aware datetimes.
+# Use timezone aware datetime information when handling datetimes in Django:
+# NOTE: postgresql (stores) values internally as UTC, and the connection 
+# converts using the TIME_ZONE setting .
 USE_TZ = True
 
-# /accounts/login is the default
+# NOTE: /accounts/login is the default
 LOGIN_URL = '/accounts/login/'
 # Default if "next" is not given as a request param
 LOGIN_REDIRECT_URL='/lims/'
@@ -70,6 +79,9 @@ STATICFILES_FINDERS = (
     'django.contrib.staticfiles.finders.FileSystemFinder',
     'django.contrib.staticfiles.finders.AppDirectoriesFinder',
 )
+# Make this unique, and don't share it with anybody.
+SECRET_KEY = 'tell_no_1'
+SITE_ID = 1
 
 TEMPLATES = [
     {
@@ -148,9 +160,21 @@ MAX_ROWS_FOR_CACHE_RESULTPROXY=1e4
 # @see db.api.ScreenResultResource
 MIN_WELLS_TO_CLEAR_INDEXES = 3e5
 
-# ICCBL-Setting: If not True, then only staff may log in to the system
-# @see reports.auth.py
+# If not True, then only staff may log in to the system
+# see reports/auth.py
 IS_PRODUCTION_READY = False
+
+# NOTE: SSL may only be enforced on the production server
+# NOTE: do not use with the migration app, as it uses insecure HTTP to initialize, 
+# TODO: enable these settings when in production
+if IS_PRODUCTION_READY is True:
+    SECURE_SSL_REDIRECT = True
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+
+# 20191206: TODO: verify with Jen
+RESTRICT_ALL_SEQUENCES=True
+
 
 # ICCBL-Setting: For use when authenticating
 # @see reports.api_base

@@ -17,9 +17,9 @@ from django.utils.encoding import smart_bytes
 import six
 
 from reports import strftime_log
+import reports.schema as SCHEMA
 from reports.serialize import LimsJSONEncoder
 
-import reports.schema as SCHEMA
 
 API_ACTION = SCHEMA.VOCAB.apilog.api_action
 
@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 def dict_strip_unicode_keys(uni_dict):
     """
-    Converts a dict of unicode keys into a dict of ascii keys.
+    Convert a dict of unicode keys into a dict of ascii keys.
 
     Useful for converting a dict to a kwarg-able format.
     
@@ -44,108 +44,9 @@ def dict_strip_unicode_keys(uni_dict):
     return data
 
 
-class MetaManager(models.Manager):
-    ''' Special manager for the MetaHash table '''
-
-    def __init__(self, **kwargs):
-        super(MetaManager,self).__init__(**kwargs)
-
-    def get_or_none(self, function=None, **kwargs):
-        try:
-            x = self.get(**kwargs)
-            if x and function:
-                return function(x)
-            else:
-                return x
-        except self.model.DoesNotExist: 
-            return None
-
-    def get_and_parse(self, scope='', field_definition_scope='fields.field', 
-                      clear=False):
-        '''
-        @param scope - i.e. the table to get field definitions for
-        @param field_definition_scope - where the field properties are defined
-        @param clear to clear the cache
-
-        Query the metahash table for data identified by "scope", and fields 
-        defined by "field_definition_scope"
-            e.g. "fields.screensaveruser", or "fields.screen"
-        field_definition_scope - also defines what is in the the json_field for
-        this hash;
-            e.g. "fields.field", or "fields.resource, or fields.vocabulary"
-        '''
-        logger.debug('scope: %r', scope)
-        metahash = {}
-        if not clear:
-            metahash = cache.get('metahash:%s'%scope)
-        else:
-            cache.delete('metahash:%s'%scope)
-            
-        if not metahash:
-            metahash = self._get_and_parse(
-                scope=scope, field_definition_scope=field_definition_scope)
-            cache.set('metahash:'+scope, metahash);
-            logger.debug(
-                'get_and_parse done, for %r, hash found: %r', 
-                scope, metahash.keys())
-        else:
-            logger.debug('retrieve the cached field definitions for %r',scope)
-        return metahash
-
-
-    def _get_and_parse(self, scope='', 
-                          field_definition_scope='fields.field'):
-        '''
-        non-cached Query the metahash table for data identified by "scope", 
-        and fields defined by "field_definition_scope"
-            e.g. "fields.screensaveruser", or "fields.screen"
-        field_definition_scope - also defines what is in the the json_field for 
-        this hash;
-            e.g. "fields.field", or "fields.resource, or fields.vocabulary"
-        '''
-        logger.debug(
-            'get_and_parse table field definitions for scope: %r, fds: %r',
-            scope, field_definition_scope)
-        # try to make clear that the field definitions, though stored in the 
-        # metahash as well, could be in a separate table
-        field_definition_table = MetaHash.objects.all().filter(
-            scope=field_definition_scope)
-        if not field_definition_table:
-            logger.warn('field definitions not found for: %r',
-                field_definition_scope)
-            return {}
-        logger.debug('field_definition_table: %r', 
-            [field.key for field in field_definition_table])
-        # the objects themselves are stored in the metahash table as well
-        unparsed_objects = \
-            MetaHash.objects.all().filter(scope=scope).order_by('ordinal')
-        logger.debug('unparsed_objects: %r', 
-            [field.key for field in unparsed_objects])
-        parsed_objects = OrderedDict()
-        for unparsed_object in unparsed_objects:
-            parsed_object = {}
-            # only need the key from the field definition table
-            for field_key in [x.key for x in field_definition_table]:
-                parsed_object[field_key] = unparsed_object.get_field(field_key)
-                
-            # NOTE: choices for the "vocabulary_scope_ref" are being stored 
-            # here for convenience
-            
-            if parsed_object.get(u'vocabulary_scope_ref'):
-                vocab_ref = parsed_object['vocabulary_scope_ref']
-                parsed_object['choices'] = [
-                    x.key for x in Vocabulary.objects.all().filter(
-                        scope=vocab_ref)]
-            
-            parsed_objects[unparsed_object.key] = \
-                dict_strip_unicode_keys(parsed_object)
-
-        return parsed_objects
-
-
 class LogDiff(models.Model):
     
-    # reference to the parent ApiLog, note that Django emulates the CASCADE delete
+    # reference to the parent ApiLog
     log = models.ForeignKey('ApiLog', on_delete=models.CASCADE)
     
     #field = models.ForeignKey('Metahash')
@@ -353,8 +254,117 @@ class ApiLog(models.Model):
                 LogDiff.objects.bulk_create(bulk_create_diffs)
             
             return logs
-    
+
+
+class MetaManager(models.Manager):
+    ''' Manager for the MetaHash table '''
+
+    def __init__(self, **kwargs):
+        super(MetaManager,self).__init__(**kwargs)
+
+    def get_or_none(self, function=None, **kwargs):
+        try:
+            x = self.get(**kwargs)
+            if x and function:
+                return function(x)
+            else:
+                return x
+        except self.model.DoesNotExist: 
+            return None
+
+    def get_and_parse(self, scope='', field_definition_scope='fields.field', 
+                      clear=False):
+        '''
+        Parse fields from the Metadata store using definitions specified by the
+        "field_definition_scope" (cached version).
+
+        @param scope defines the target resource to return fields for:
+            e.g. "fields.screensaveruser", or "fields.screen"
+        
+        @param field_definition_scope defines the schema of the field objects 
+            that will be parsed:
+            e.g. "fields.field", or "fields.resource, or fields.vocabulary"
+        @param clear to clear the cache
+
+        '''
+        metahash = {}
+        if not clear:
+            metahash = cache.get('metahash:%s'%scope)
+        else:
+            cache.delete('metahash:%s'%scope)
+            
+        if not metahash:
+            metahash = self._get_and_parse(
+                scope=scope, field_definition_scope=field_definition_scope)
+            cache.set('metahash:'+scope, metahash);
+            logger.debug(
+                'get_and_parse done, for %r, hash found: %r', 
+                scope, metahash.keys())
+        else:
+            logger.debug('retrieve the cached field definitions for %r',scope)
+        return metahash
+
+
+    def _get_and_parse(self, scope='', 
+                          field_definition_scope='fields.field'):
+        '''
+        Parse fields from the Metadata store using definitions specified by the
+        "field_definition_scope" (non-cached version).
+        '''
+        logger.debug(
+            'get_and_parse table field definitions for scope: %r, fds: %r',
+            scope, field_definition_scope)
+        
+        # Parse field schema definition first
+        field_definition_table = MetaHash.objects.all().filter(
+            scope=field_definition_scope)
+        if not field_definition_table:
+            # Bootstrap case
+            logger.warn('field definitions not found for: %r',
+                field_definition_scope)
+            return {}
+        logger.debug('field_definition_table: %r', 
+            [field.key for field in field_definition_table])
+        
+        # Use the field schema definition to parse the row objects:
+        # Row objects themselves are stored in the metahash table as well.
+        unparsed_objects = \
+            MetaHash.objects.all().filter(scope=scope).order_by('ordinal')
+        logger.debug('unparsed_objects: %r', 
+            [field.key for field in unparsed_objects])
+        
+        parsed_objects = OrderedDict()
+        for unparsed_object in unparsed_objects:
+
+            parsed_object = {}
+            
+            for field_key in [x.key for x in field_definition_table]:
+                parsed_object[field_key] = unparsed_object.get_field(field_key)
+                
+            # NOTE: choices for the "vocabulary_scope_ref" are being stored 
+            # here for convenience
+            # TODO: restrict choices to retired != True
+            if parsed_object.get(u'vocabulary_scope_ref'):
+                vocab_ref = parsed_object['vocabulary_scope_ref']
+                parsed_object['choices'] = [
+                    x.key for x in Vocabulary.objects.all().filter(
+                        scope=vocab_ref)]
+            
+            parsed_objects[unparsed_object.key] = \
+                dict_strip_unicode_keys(parsed_object)
+
+        return parsed_objects
+
+
 class MetaHash(models.Model):
+    '''
+    Store API metadata for resources and fields.
+    
+    Uses a composite key consisting of (scope, key).
+
+    Additional data are defined as JSON in the json_field and are parsed 
+    using the schema defined via the "field" resource.
+    '''
     
     objects = MetaManager()
     
@@ -367,11 +377,11 @@ class MetaHash(models.Model):
     # choices are from the TastyPie field types
     json_field_type = models.CharField(max_length=128, null=True); 
     
-    # This is the "meta" field, it contains "virtual" json fields
     json_field = models.TextField(null=True) 
 
     # Required if the record represents a linked field; 
-    # choices are from the TastyPie field types
+    # choices are from the TastyPie field types.
+    # 20181214 - deprecate, used for Reagent resource subtypes.
     linked_field_type = models.CharField(
         max_length=128, null=True); 
     
@@ -381,6 +391,7 @@ class MetaHash(models.Model):
         unique_together = (('scope', 'key'))    
     
     def get_json_field_hash(self):
+        ''' Load the json field.'''
         if self.json_field:
             if not self.loaded_field: 
                 self.loaded_field = json.loads(self.json_field)
@@ -389,6 +400,7 @@ class MetaHash(models.Model):
             return {}
     
     def get_field(self, field):
+        '''Retrieve a field value, parsing it from the json_field if needed.'''
         field_names = set([
             f.name for f in self._meta.get_fields()])
         if field in field_names:
@@ -401,23 +413,21 @@ class MetaHash(models.Model):
             return None
     
     def set_json_field(self, field, value):
+        '''Set a value to a field, stored internally in the json_field.'''
+        
         temp = self.get_json_field_hash()
         temp[field] = value;
         self.json_field = json.dumps(temp, cls=LimsJSONEncoder)
     
     def is_json(self):
-        """
-        Determines if this Meta record references a JSON nested field or not
-        """
-        # return ( True if ( 
-        # self.json_field_type and self.json_field_type.upper() != 'VIRTUAL' ) 
-        # else False )
+        '''True if the current metadata represents a JSON nested field'''
         return True if self.json_field_type else False
                 
     def model_to_dict(self, scope):
         '''
-        Specialized model_to_dict for JSON containing tables defined using the 
-        Metahash Manager.
+        Specialized model_to_dict that will parse data from the internal
+        json_field.
+        
         @param scope for finding field definitions in the metahash table.
         e.g. "fields.<model_name>" 
         '''
@@ -433,6 +443,7 @@ class MetaHash(models.Model):
             % (self.id, self.scope, self.key))
 
 class Vocabulary(models.Model):
+    '''Store vocabularies for the API'''
     
     objects                 = MetaManager()
     
@@ -445,14 +456,8 @@ class Vocabulary(models.Model):
     comment                 = models.TextField(null=True)
     description             = models.TextField(null=True)
     
-    # checklist item fields (consider moving to userchecklistitem)
-    expire_interval_days    = models.IntegerField(null=True)
-    expire_notifiy_days     = models.IntegerField(null=True)
-    
-    # All other fields are "virtual" JSON stored fields, (unless we decide to 
-    # migrate them out to real fields for rel db use cases)
-    # NOTE: "json_type" for all virtual JSON fields in the entire database are
-    # defined in the MetaHash
+    # Other data may be stored in the json_field; field metadata for 
+    # the vocabulary resource may be used to define these fields.
     json_field                   = models.TextField(null=True)
        
     class Meta:
@@ -485,6 +490,13 @@ class Vocabulary(models.Model):
 
         
 class Permission(models.Model):
+    '''
+    Permissions for API resources and fields:
+
+    - scope of the resource or field,
+    - key of the resource or field,
+    - type, e.g. "read" or "write".
+    '''
 
     scope = models.CharField(max_length=64) # scope of the permission
     key = models.CharField(max_length=64)  # key of the permission
@@ -500,12 +512,20 @@ class Permission(models.Model):
    
     
 class UserGroup(models.Model):
+    '''
+    Define UserGroups that will have permissions:
+    - UserGroups contain users,
+    - UserGroups may belong to other UserGroups through the super_groups,
+        - A UserGroup inherits the super_group permissions,
+        - A super_group inherits the UserGroup's users.
+    '''
     
     name = models.TextField(unique=True)
     title = models.TextField(unique=True, null=True)
     users = models.ManyToManyField('reports.UserProfile')
     permissions = models.ManyToManyField('reports.Permission')
     description = models.TextField(null=True)
+    
     # Super Groups: 
     # - inherit permissions from super_groups, this group is a sub_group to them
     # - inherit users from sub_groups, this group is a super_group to them
@@ -560,26 +580,26 @@ class UserGroup(models.Model):
             % (self.name))
 
 class UserProfile(models.Model):
+    ''' Extend the Django auth.User for the reports API.'''
 
     objects = MetaManager()
     
-    # link to django.contrib.auth.models.User, note: allow null so that it
+    # Link to django.contrib.auth.models.User, note: allow null so that it
     # can be created at the same time, but not null in practice
     user = models.OneToOneField(
         settings.AUTH_USER_MODEL, null=True, on_delete=models.CASCADE) 
     
-    # will mirror the auth_user.username field
+    # Note: username mirrors the auth_user.username field
     username = models.TextField(null=False, unique=True) 
     
-    # Harvard specific fields
+    # Reports API specific fields
     phone = models.TextField(null=True)
     mailing_address = models.TextField(null=True)
     comments = models.TextField(null=True)
 
-    # TODO: make this unique
     ecommons_id = models.TextField(null=True)
 
-    # TODO: fields also found on ScreensaverUser
+    # Note: fields also found on ScreensaverUser
     harvard_id = models.TextField(null=True)
     harvard_id_expiration_date = models.DateField(null=True)
     harvard_id_requested_expiration_date = models.DateField(null=True)
@@ -588,7 +608,7 @@ class UserProfile(models.Model):
 
     gender = models.CharField(null=True, max_length=15)    
 
-    # permissions assigned directly to the user, as opposed to by group
+    # These permissions assigned directly to the user, as opposed to by group
     permissions = models.ManyToManyField('reports.Permission')
 
     def __repr__(self):
@@ -623,6 +643,7 @@ class UserProfile(models.Model):
     
 
 class Job(models.Model):
+    '''Manage API background job data'''
 
     user_requesting = models.ForeignKey(
         'UserProfile', on_delete=models.PROTECT)
@@ -667,78 +688,3 @@ class Job(models.Model):
             '<Job(id=%d, user_id=%d)>'
             % (self.id, self.user_requesting.id))
      
-     
-# class ListLog(models.Model):
-#     '''
-#     A model that holds the keys for the items created in a "put_list"
-#     '''
-#     
-#     apilog = models.ForeignKey('ApiLog')
-# 
-#     # name of the resource, i.e. "apilog" or "screen", "user", etc.
-#     ref_resource_name = models.CharField(max_length=64)
-# 
-#     # full public key of the resource instance being logged (may be composite, 
-#     # separted by '/')
-#     key = models.CharField(max_length=128)
-# 
-#     uri = models.TextField()
-#     
-#     class Meta:
-#         # TODO: must be apilog and either of(('ref_resource_name', 'key'),'uri')
-#         # -- so probably better to handle in software
-#         unique_together = (('apilog', 'ref_resource_name', 'key','uri'))    
-#     
-#     def __unicode__(self):
-#         return unicode(str((self.ref_resource_name, self.key, self.uri )))
-
-# # 
-# ## proof-of-concept: Typed Record table with virtual field support:
-# # 
-# # This is a particular case of the Metahash:fields/resources tables.  
-# # Instead of having "virtual" fields be in the json_field, in this case they will
-# # stored in the child RecordValue table
-# ## There will be one "Record" or Parent table for every node in the schema graph.
-# ## Each RecordTable will have a RecordValue table
-# class Record(models.Model):
-#     # some fields will always be better to store on the Record table.  we'll want
-#     # to indicate this as well in the Metahash.  
-#     base_value1 = models.TextField()
-#     
-#     # the scope key points to the particular type of resource represented
-#     # when joining with the RecordValue table, we will get the field key we 
-#     # want by finding the "fields" for this scope in the Metahash:fields table
-#     scope = models.CharField(max_length=64)
-#     
-# class RecordValue(models.Model):
-#     # name of the parent field will be stored in the meta hash
-#     parent = models.ForeignKey('Record')
-#     # this field links to the column definition
-#     field_meta = models.ForeignKey('Metahash')
-#     # name of the value field will be stored in the meta hash
-#     value = models.TextField(null=True)
-# 
-#     
-# class RecordMultiValue(models.Model):
-#     # name of the parent field will be stored in the meta hash
-#     parent = models.ForeignKey('Record')
-#     # this field links to the column definition
-#     field_meta = models.ForeignKey('Metahash')
-#     # name of the value field will be stored in the meta hash
-#     value = models.TextField()
-#     ordinal = models.IntegerField()
-# 
-#     class Meta:
-#         unique_together = (('field_meta', 'parent', 'ordinal'))    
-#     
-# class RecordValueComplex(models.Model):
-#     '''
-#     This class exists to model extant complex linked tables, i.e. SMR, RNAi
-#     '''
-#     
-#     # name of the parent field will be stored in the meta hash
-#     parent = models.OneToOneField('Record', unique=True)
-#     # name of the value field will be stored in the meta hash
-#     value1 = models.TextField(null=True)
-#     value2 = models.TextField(null=True)
-# 

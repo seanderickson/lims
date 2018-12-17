@@ -62,6 +62,8 @@ define([
         }
       }
       
+      console.log('libraryScreening initialized');
+      
       _.bindAll(this, 'setDetail');
       
     },
@@ -291,7 +293,7 @@ define([
             var add_another_button = $([
               '<button class="btn btn-default btn-sm " role="button" ',
               'id="add_another_ls_button" title="Add another library screening visit" >',
-              'Add another Library Screening Visit',
+              'Add another library screening visit',
               '</button>'
               ].join(''));
             $('#generic-detail-buttonpanel-left').append(add_another_button);
@@ -440,6 +442,7 @@ define([
 
           EditView.prototype.afterRender.apply(this,arguments);
 
+          console.log('libraryScreening.editView afterRender...');
           var self_editform = this;
 
           var screenResource = appModel.getResource('screen')
@@ -577,11 +580,11 @@ define([
             };
             
             var FormFields = Backbone.Model.extend({
-              schema: formSchema,
-              validate: function(attrs) {
-                var errs = {};
-                if (!_.isEmpty(errs)) return errs;
-              }
+              schema: formSchema
+//              validate: function(attrs) {
+//                var errs = {};
+//                if (!_.isEmpty(errs)) return errs;
+//              }
             });
             var formFields = new FormFields();
             var form = new Backbone.Form({
@@ -600,48 +603,51 @@ define([
             self.$el.find('[key="library_plates_screened"]').append($form);
             $form.append([
                 '<button type="submit" ',
-                'class="btn btn-default btn-sm pull-right" " >Add plate ranges</input>',
+                'class="btn btn-default btn-sm controls-right" " >Add plate ranges</input>',
                 ].join(''));
 
-            var showScreeningInquiryButton = $([
-              '<a class="btn btn-default btn-sm pull-down pull-right" ',
-                'role="button" target="_blank" ', 
-                'id="show_screening_inquiry_link" ',
-                'title="Use the Screening Inquiry form to search for available plate copies" ',
-                'href="#">',
-                'Show Screening Inquiry form...</a>'
-              ].join(''));
-            $form.append(showScreeningInquiryButton);
-            showScreeningInquiryButton.click(function(e){
-              // see search_box.js
-              var searchData = {
-                screen_facility_id: self.model.get('screen_facility_id')
-              };
-              var num_replicates = self_editform.getValue('number_of_replicates');
-              var vol_to_assayplates  = self_editform.getValue(
-                'volume_transferred_per_well_to_assay_plates');
-              var plate_search = form.getValue('plate_search');
-              if (vol_to_assayplates){
-                
-                searchData['volume_required'] = vol_to_assayplates;
-                searchData['replicate_count'] = num_replicates;
-              }
-              if(plate_search){
-                var errors = [];
-                var plate_ranges = Iccbl.parseRawPlateSearch(plate_search, errors);
-                if (!_.isEmpty(errors)){
-                  console.log('plate search has errors', errors);
-                } else if (!_.isEmpty(plate_ranges)){
-                  searchData['plate_ranges'] = plate_ranges;
+            // Begin, optional screening inquiry form
+            if (appModel.DEBUG && appModel.getCurrentUser().is_superuser) {
+              var showScreeningInquiryButton = $([
+                '<a class="btn btn-default btn-sm pull-down controls-right" ',
+                  'role="button" target="_blank" ', 
+                  'id="show_screening_inquiry_link" ',
+                  'title="Use the Screening Inquiry form to search for available plate copies" ',
+                  'href="#">',
+                  'Show the screening inquiry form...</a>'
+                ].join(''));
+              $form.append(showScreeningInquiryButton);
+              showScreeningInquiryButton.click(function(e){
+                // see search_box.js
+                var searchData = {
+                  screen_facility_id: self.model.get('screen_facility_id')
+                };
+                var num_replicates = self_editform.getValue('number_of_replicates');
+                var vol_to_assayplates  = self_editform.getValue(
+                  'volume_transferred_per_well_to_assay_plates');
+                var plate_search = form.getValue('plate_search');
+                if (vol_to_assayplates){
+                  
+                  searchData['volume_required'] = vol_to_assayplates;
+                  searchData['replicate_count'] = num_replicates;
                 }
-                var urlSearchParts = 
-                  PlateRangeSearchView.prototype.encodeFormData.call(this,searchData);
-                var uriStack = ['#screen', self.model.get('screen_facility_id'),
-                                'summary','plateranges',appModel.URI_PATH_SEARCH,
-                                urlSearchParts.join(appModel.SEARCH_DELIMITER)];
-                e.target.href = uriStack.join('/')
-              }
-            });
+                if(plate_search){
+                  var errors = [];
+                  var plate_ranges = Iccbl.parseRawPlateSearch(plate_search, errors);
+                  if (!_.isEmpty(errors)){
+                    console.log('plate search has errors', errors);
+                  } else if (!_.isEmpty(plate_ranges)){
+                    searchData['plate_ranges'] = plate_ranges;
+                  }
+                  var urlSearchParts = 
+                    PlateRangeSearchView.prototype.encodeFormData.call(this,searchData);
+                  var uriStack = ['#screen', self.model.get('screen_facility_id'),
+                                  'summary','plateranges',appModel.URI_PATH_SEARCH,
+                                  urlSearchParts.join(appModel.SEARCH_DELIMITER)];
+                  e.target.href = uriStack.join('/')
+                }
+              });
+            } // End, optional screening inquiry form
             
             form.$el.find('[ type="submit" ]').click(function(e){
               e.preventDefault();
@@ -736,13 +742,22 @@ define([
             // attach listener volume calculator
             function calculateVolFromLibraryPlates(){
               var errors = self_editform.commit({ validate: true }); 
-              
               var num_replicates = self_editform.getValue('number_of_replicates');
               var vol_to_assayplates  = self_editform.getValue(
                 'volume_transferred_per_well_to_assay_plates');
-              if(_.isEmpty(errors['number_of_replicates']) 
-                  && _.isNumber(num_replicates) && _.isNumber(vol_to_assayplates)
-                  && (num_replicates > 0 && vol_to_assayplates > 0)){
+              console.log('calculateVolFromLibraryPlates', 
+                num_replicates, vol_to_assayplates, errors);
+              if(errors && !_.isEmpty(errors['number_of_replicates']) 
+                  || vol_to_assayplates <= 0){
+                console.log('cannot calculate volume until form values are entered');
+                self_editform.setValue(
+                  'volume_transferred_per_well_from_library_plates',null);
+                self.model.unset(
+                  'volume_transferred_per_well_from_library_plates');
+                self_editform.fields
+                  .volume_transferred_per_well_from_library_plates.editor.render();
+              } else {
+
                 var calculated = num_replicates * vol_to_assayplates;
                 self_editform.setValue(
                   'volume_transferred_per_well_from_library_plates',calculated);
@@ -751,20 +766,13 @@ define([
                   calculated);
                 self_editform.fields
                   .volume_transferred_per_well_from_library_plates.editor.render();
-              } else {
-                console.log('cannot calculate volume until form values are entered');
-                self_editform.setValue(
-                    'volume_transferred_per_well_from_library_plates',null);
-                self.model.unset(
-                    'volume_transferred_per_well_from_library_plates');
-                  self_editform.fields
-                    .volume_transferred_per_well_from_library_plates.editor.render();
+              
               }
             };
             //var calcVolButton = $([
             //  '<button class="btn btn-default btn-sm" ',
             //    'role="button" id="calc_volume_transferred_per_well_from_library_plates" href="#">',
-            //    'calculate</button>'
+            //    'Calculate</button>'
             //  ].join(''));
             //self_editform.$el.find(
             //  '[key=form-group-volume_transferred_per_well_from_library_plates]'
@@ -789,15 +797,28 @@ define([
         showEdit: function() {
           var self = this;
           appModel.initializeAdminMode(function(){
-            console.log('showedit...');
             var fields = self.model.resource.fields;
             fields['performed_by_user_id'].choiceHash = 
               appModel._get_screen_member_choices(self.screen);
-            
+            fields['performed_by_username']['editability'] = [];
+            fields['serviced_user_id']['editability'] = [];
+            fields['serviced_username']['editability'] = [];
             fields['screen_facility_id']['editability'] = [];
             fields['library_plates_screened'].display_options = _.extend(
               {}, fields['library_plates_screened'].display_options, 
               {widthClass: 'col-sm-8'});
+            fields['library_plates_screened'].validators = [
+              function checkPlates(value, formValues) {
+                if (formValues['is_for_external_library_plates'] !== true ){
+                  if (! value){
+                    return {
+                      type: 'Required',
+                      message: 'Required'
+                    }
+                  }
+                }
+              }];
+
             if (!self.model.isNew()){
               // allow the library_plates_screened to be unset
               fields['library_plates_screened'].required = false;
@@ -828,6 +849,15 @@ define([
         
       });
       
+      self.model.resource.fields['screen_facility_id']['visibility'] = [];
+      
+      if (this.model.get('is_for_external_library_plates') === true){
+        _.each(['library_plates_screened','screened_experimental_well_count',
+            'libraries_screened_count','library_plates_screened_count'] ,
+          function(key){
+            self.model.resource.fields[key]['visibility']=[];
+        });
+      }
       
       // FIXME: 20170519, pick needed values only from the args 
       view = new DetailLayoutLS(_.extend(self.args, { 

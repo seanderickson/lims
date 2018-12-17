@@ -3,15 +3,16 @@ from __future__ import unicode_literals
 from collections import OrderedDict
 import io
 import logging
+import numbers
 
+import six
 import xlrd
 import xlsxwriter
 
-from reports.utils import default_converter
 from reports import MAX_IMAGE_ROWS_PER_XLS_FILE
 from reports.serialize import csvutils
 import reports.serialize
-import six
+from reports.utils import default_converter
 
 
 logger = logging.getLogger(__name__)
@@ -19,15 +20,16 @@ logger = logging.getLogger(__name__)
 
 LIST_DELIMITER_XLS = ';'
 
-# TODO: compare with other packages: openpyxl, pyexcelerate
 def xls_write_workbook(file, data, request=None, image_keys=None, 
     title_function=None, list_brackets=None):
     '''
+    
+    TODO: compare with other packages: openpyxl, pyexcelerate
+    
     ***WARNING*** xlsx files load fully into memory on display - if there are 
     >~ 2000 images, this will cause performance issues on the client.***
     @param sheet_rows iterable of dicts, one per row
     '''
-
     if not isinstance(data, dict):
         raise Exception(
             'unknown data for generic xls serialization: %r' % type(data))
@@ -63,6 +65,7 @@ def write_rows_to_sheet(wb, sheet_rows, sheet_basename,
     >~ 2000 images, this will cause performance issues on the client.***
     @param sheet_rows iterable of dicts, one per row
     '''
+    logger.info('write_rows_to_sheet: %r...', sheet_basename)
     max_rows_per_sheet = 2**20
     
     sheet_name = sheet_basename 
@@ -88,19 +91,22 @@ def write_rows_to_sheet(wb, sheet_rows, sheet_basename,
                 val, delimiter=LIST_DELIMITER_XLS,
                 list_brackets=list_brackets)
             if val is not None:
-                if len(val) > 32767: 
-                    logger.error('warn, row too long, %d, key: %r, len: %d', 
-                        row,key,len(val) )
                 if image_keys and key in image_keys:
                     max_rows_per_sheet = MAX_IMAGE_ROWS_PER_XLS_FILE
-                    # hack to speed things up:
+                    # hack to speed things up for the db.api:
                     if ( key == 'structure_image' and
                             'library_well_type' in values and
                             values['library_well_type'].lower() == 'empty' ):
                         continue
                     write_xls_image(sheet, filerow, i, val, request)
                 else:
-                    sheet.write_string(filerow,i,val)
+                    if isinstance(val, numbers.Number):
+                        sheet.write_number(filerow, i, val)
+                    else:
+                        if len(val) > 32767: 
+                            logger.error('warn, row too long, %d, key: %r, len: %d', 
+                                filerow,key,len(val) )
+                        sheet.write_string(filerow,i,val)
         filerow += 1
         if row % 10000 == 0:
             logger.info('wrote %d rows to temp file', row)
@@ -139,10 +145,13 @@ def generic_write_rows_to_sheet(rows, sheet):
         for i, val in enumerate(values):
             val = csvutils.convert_list_vals(val, delimiter=LIST_DELIMITER_XLS)
             if val is not None:
-                if len(val) > 32767: 
-                    logger.error('warn, row too long, %d, key: %r, len: %d', 
-                        row,key,len(val) )
-                sheet.write_string(row,i,val)
+                if isinstance(val, numbers.Number):
+                    sheet.write_number(row, i, val)
+                else:
+                    if len(val) > 32767: 
+                        logger.error('warn, row too long, %d, key: %r, len: %d', 
+                            row,i,len(val) )
+                    sheet.write_string(row,i,val)
 
 def write_xls_image(worksheet, filerow, col, val, request):
     '''

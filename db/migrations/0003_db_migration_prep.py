@@ -5,13 +5,13 @@ import logging
 import os
 import re
 
+from django.conf import settings
 from django.db import migrations, models
-
-from reports.utils import default_converter
-import lims
-from lims.base_settings import PROJECT_ROOT
-import unicodecsv as csv
 import six
+
+import lims
+from reports.utils import default_converter
+import unicodecsv as csv
 
 
 logger = logging.getLogger(__name__)
@@ -67,31 +67,12 @@ def create_vocab(vocab_writer, attr, scope, query, write_to_file=True):
             vocab_writer.writerow(row)
         logger.info('updated vocab: %r' % row)
 
-def create_serviceactivity_vocab(vocab_writer, attr, scope, query):
-    logger.info('create simple vocab: %s, %s', attr,scope)
-    vocabs = []
-    for ordinal, attr_value in (enumerate(
-        query.values_list(attr, flat=True)
-            .distinct(attr).order_by(attr))):
-        if not attr_value: continue
-        key = default_converter(attr_value)
-        title = attr_value
-        vocabs.append([key, scope, ordinal, title])
-    for row in vocabs:
-        title = row[3]
-        key = row[0]
-        # NOTE: do not run update; this is the second run of the service activity
-        #         query.filter(**{ '%s__exact' % attr: title }).update(**{ attr: key })
-        vocab_writer.writerow(row)
-        logger.info('updated vocab: %r' % row)
-
-
 def create_simple_vocabularies(apps):
 
     # simple vocab cases: update without linked tables
     
     vocab_file = os.path.join(
-        PROJECT_ROOT, 'db', 'static', 'api_init', 'vocabulary_data_generated.csv')
+        settings.PROJECT_ROOT, 'db', 'static', 'api_init', 'vocabulary_data_generated.csv')
 
     logger.info('write vocabularies to %s' % vocab_file)
     
@@ -99,13 +80,10 @@ def create_simple_vocabularies(apps):
         vocab_writer = csv.writer(_file)
         header = ['key', 'scope', 'ordinal', 'title'] 
         vocab_writer.writerow(header)
-        # Run it twice for service activities, so that they can be separated
-        # from the vanilla activities; 
-        create_serviceactivity_vocab(
-            vocab_writer, 'service_activity_type', 'serviceactivity.type',
-            apps.get_model('db', 'ServiceActivity').objects.all())
         
         input_args = [
+#                 ['service_activity_type', 'activity.type',
+#                     apps.get_model('db', 'ServiceActivity').objects.all()],
                 ['species', 'screen.species',
                     apps.get_model('db', 'Screen').objects.all()],
                 ['assay_type', 'screen.assay_type',
@@ -116,9 +94,6 @@ def create_simple_vocabularies(apps):
                     apps.get_model('db', 'DataColumn').objects.all()],
                 ['value', 'funding_support',
                     apps.get_model('db', 'FundingSupport').objects.all()],
-                ['service_activity_type', 'activity.type',
-                    apps.get_model('db', 'ServiceActivity').objects.all()],
-                # dep: 0020(provisional) -> moves to 0002: move classification column
                 ['classification', 'user.classification',
                     apps.get_model('db', 'ScreensaverUser').objects.all()],
                 ['gender', 'user.gender',
@@ -165,7 +140,7 @@ def create_simple_vocabularies(apps):
             create_vocab(vocab_writer, *arg_list)
 
     api_init_actions_file = os.path.join(
-        PROJECT_ROOT, 'db', 'static', 'api_init', 'api_init_actions.csv')
+        settings.PROJECT_ROOT, 'db', 'static', 'api_init', 'api_init_actions.csv')
     logger.info('write %s entry to %s' % (vocab_file, api_init_actions_file))
     with open(api_init_actions_file, 'a+') as _file:
         new_row = ['patch', 'vocabulary', os.path.basename(vocab_file)]
@@ -180,18 +155,20 @@ def create_simple_vocabularies(apps):
             writer.writerow(new_row)
         else:
             logger.info('api_init entry for row already created: %r' % row)
-
-    # update the new service_activity.funding_support
-    # see below for manual sql for screen funding supports
-    for fs in apps.get_model('db', 'FundingSupport').objects.all():
-        apps.get_model('db', 'ServiceActivity').objects.all().filter(
-            funding_support_link=fs).update(funding_support=fs.value)
-    
+# 
+#     
+#     
+#     # update the new service_activity.funding_support
+#     # see below for manual sql for screen funding supports
+#     for fs in apps.get_model('db', 'FundingSupport').objects.all():
+#         apps.get_model('db', 'ServiceActivity').objects.all().filter(
+#             funding_support_link=fs).update(funding_support=fs.value)
+#     
     
 def create_attached_file_type_vocab(apps):
     
     vocab_file = os.path.join(
-        PROJECT_ROOT, 'db', 'static', 'api_init', 
+        settings.PROJECT_ROOT, 'db', 'static', 'api_init', 
         'vocabulary_attachedfiletype_data.csv')
     logger.info('write vocabularies to %s' % vocab_file)
 
@@ -242,7 +219,7 @@ def create_attached_file_type_vocab(apps):
                 .filter(attached_file_type=obj).update(type=key))
 
     api_init_actions_file = os.path.join(
-        PROJECT_ROOT,'db', 'static', 'api_init', 'api_init_actions.csv')
+        settings.PROJECT_ROOT,'db', 'static', 'api_init', 'api_init_actions.csv')
     logger.info('write %s entry to %s' % (vocab_file, api_init_actions_file))
     with open(api_init_actions_file, 'a+') as _file:
         new_row = ['patch', 'vocabulary', os.path.basename(vocab_file)]
@@ -264,7 +241,7 @@ def create_attached_file_type_vocab(apps):
 def create_checklist_vocabularies(apps):
     
     vocab_file = os.path.join(
-        PROJECT_ROOT,'db', 'static', 'api_init', 
+        settings.PROJECT_ROOT,'db', 'static', 'api_init', 
         'vocabulary_checklists_data.csv')
     logger.info('write vocabularies to %s' % vocab_file)
     with open(vocab_file, 'w') as _file:
@@ -285,37 +262,84 @@ def create_checklist_vocabularies(apps):
             vocab_writer.writerow(row)
             logger.info('created: %r', row)
     
-    
+def create_serviceactivity_vocab(apps):
+    logger.info('create_serviceactivity_vocab...')
+        
+    vocab_file = os.path.join(
+        settings.PROJECT_ROOT,'db', 'static', 'api_init', 
+        'vocabulary_activity_data.csv')
+    logger.info('write vocabularies to %s' % vocab_file)
+    with open(vocab_file, 'w') as _file:
+        vocab_writer = csv.writer(_file)
+        header = ['key', 'scope', 'ordinal', 'title','comment'] 
+        vocab_writer.writerow(header)
+
+        attr = 'service_activity_type'
+        scope_nested = 'activity.type.%s'
+        scope_searches = [
+            [re.compile(r'^training', re.IGNORECASE), scope_nested%'training'],
+            [re.compile(r'^automation', re.IGNORECASE), scope_nested%'automation'],
+        ]
+        scope_other = scope_nested % 'other'
+        query = apps.get_model('db', 'ServiceActivity').objects.all()
+        vocabs = []
+        for ordinal, attr_value in (
+                enumerate(query.values_list(attr, flat=True)
+                    .distinct(attr).order_by(attr))):
+            if isinstance(attr_value, six.string_types):
+                attr_value = attr_value.strip()
+            if not attr_value: continue
+            
+            title = attr_value
+            key = default_converter(title)
+            scope = None
+            for scope_pattern,new_scope in scope_searches:
+                if scope_pattern.match(attr_value):
+                    scope = new_scope
+                    break
+            if not scope:
+                scope = scope_other
+                
+            query.filter(**{ '%s__exact' % attr: attr_value }).update(**{ attr: key })
+            
+            vocabs.append([key, scope, ordinal, title])
+
+        for row in vocabs:
+            vocab_writer.writerow(row)
+            logger.info('updated vocab: %r' % row)
+
+    logger.info('create_serviceactivity_vocab - Done')
+
 def create_vocabularies(apps, schema_editor):
     
     create_simple_vocabularies(apps)
     create_attached_file_type_vocab(apps)
     create_checklist_vocabularies(apps)
-    
+    create_serviceactivity_vocab(apps)
 
-def update_facility_usage_roles(apps, schema_editor):
-    UserFacilityUsageRole = apps.get_model('db', 'UserFacilityUsageRole')
-    
-    role_updates = (
-#         ('smallMoleculeScreener', 'small_molecule_screener'),
-#         ('rnaiScreener', 'rnai_screener'),
-        ('iccblProjectUser', 'iccbl_project_user'),
-        ('analyticalChemistryUser', 'analytical_chemistry_user'),
-        ('nonScreeningUser', 'non_screening_user'),
-        ('mouseImagerUser', 'mouse_image_user'),
-        ('qpcrUser', 'qpcr_user'),
-        ('medicinalChemistUser', 'medicinal_chemist_user'),
-    )
-    
-    for ru in role_updates:
-        (UserFacilityUsageRole.objects.all()
-            .filter(facility_usage_role=ru[0])
-            .update(facility_usage_role=ru[1]))
-
-    UserFacilityUsageRole.objects.all()\
-        .filter(facility_usage_role='smallMoleculeScreener').delete()
-    UserFacilityUsageRole.objects.all()\
-        .filter(facility_usage_role='rnaiScreener').delete()
+# def update_facility_usage_roles(apps, schema_editor):
+#     UserFacilityUsageRole = apps.get_model('db', 'UserFacilityUsageRole')
+#     
+#     role_updates = (
+# #         ('smallMoleculeScreener', 'small_molecule_screener'),
+# #         ('rnaiScreener', 'rnai_screener'),
+#         ('iccblProjectUser', 'iccbl_project_user'),
+#         ('analyticalChemistryUser', 'analytical_chemistry_user'),
+#         ('nonScreeningUser', 'non_screening_user'),
+#         ('mouseImagerUser', 'mouse_image_user'),
+#         ('qpcrUser', 'qpcr_user'),
+#         ('medicinalChemistUser', 'medicinal_chemist_user'),
+#     )
+#     
+#     for ru in role_updates:
+#         (UserFacilityUsageRole.objects.all()
+#             .filter(facility_usage_role=ru[0])
+#             .update(facility_usage_role=ru[1]))
+# 
+#     UserFacilityUsageRole.objects.all()\
+#         .filter(facility_usage_role='smallMoleculeScreener').delete()
+#     UserFacilityUsageRole.objects.all()\
+#         .filter(facility_usage_role='rnaiScreener').delete()
 
 class Migration(migrations.Migration):
 
@@ -335,15 +359,16 @@ class Migration(migrations.Migration):
               order by screen.screen_id,value
               );
         '''.strip()),
-        migrations.RunSQL('delete from user_facility_usage_role;'),
-        migrations.RunSQL('''
-            insert into user_facility_usage_role (id,screensaver_user_id,facility_usage_role) (
-              select nextval('user_facility_usage_role_id_seq'), su.screensaver_user_id, facility_usage_role
-              from screening_room_user su
-              join screening_room_user_facility_usage_role roles on(su.screensaver_user_id=roles.screening_room_user_id)
-              order by su.screensaver_user_id,roles.facility_usage_role
-              );
-        '''.strip()),
+        # TODO: 20180920 - no longer needed (JAS)
+#         migrations.RunSQL('delete from user_facility_usage_role;'),
+#         migrations.RunSQL('''
+#             insert into user_facility_usage_role (id,screensaver_user_id,facility_usage_role) (
+#               select nextval('user_facility_usage_role_id_seq'), su.screensaver_user_id, facility_usage_role
+#               from screening_room_user su
+#               join screening_room_user_facility_usage_role roles on(su.screensaver_user_id=roles.screening_room_user_id)
+#               order by su.screensaver_user_id,roles.facility_usage_role
+#               );
+#         '''.strip()),
         # Transfer the cell_line vocab from the "screen_cell_line" table to the 
         # "screen_cell_lines" vocab table
         migrations.RunSQL('delete from screen_cell_lines;'),
@@ -364,15 +389,6 @@ class Migration(migrations.Migration):
             where ta.transfection_agent_id=screen.transfection_agent_id;
         '''.strip()),
            
-#         migrations.RemoveField(
-#             model_name='screen',
-#             name='transfection_agent',
-#         ),
-#         migrations.RenameField(
-#             model_name='screen', 
-#             old_name='transfection_agent_text', 
-#             new_name='transfection_agent'
-#         ),
         
         # Lab affiliation migration prep: data migration in 0007
         migrations.RenameField(
@@ -386,17 +402,6 @@ class Migration(migrations.Migration):
             new_name='name',
         ),
         
-#         migrations.AddField(
-#             model_name='screensaveruser',
-#             name='rnai_data_sharing_level',
-#             field=models.IntegerField(null=True),
-#         ),
-#         migrations.AddField(
-#             model_name='screensaveruser',
-#             name='sm_data_sharing_level',
-#             field=models.IntegerField(null=True),
-#         ),
-
-
-        migrations.RunPython(update_facility_usage_roles),
+        # Removed: 20180920 - per JAS no longer needed
+        # migrations.RunPython(update_facility_usage_roles),
     ]

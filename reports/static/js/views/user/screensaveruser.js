@@ -57,6 +57,9 @@ define([
       UserView.__super__.initialize.apply(this, arguments);      
       var self = this;
       // Merge the parent user.js tabs and modify the tab order
+      // NOTE: 20181128 - doing this after parent initialization overrides the 
+      // TabbedController permission checking on tabs
+      
       var keyOrder = ['detail'].concat(_.keys(this.screensaver_tabbed_resources));
       if (_.has(this.tabbed_resources, 'usergrouppermissions')){
         keyOrder.push('usergrouppermissions');
@@ -68,25 +71,35 @@ define([
         orderedTabs[key] = tempTabs[key];
       });
       self.tabbed_resources = orderedTabs;
-      
-      if (appModel.getCurrentUser().username != this.model.get('username')){
-        _.each(_.keys(this.tabbed_resources), function(key){
-          if(key !== 'detail' && !appModel.hasPermission(
-              self.tabbed_resources[key].resource,'read')){
+
+      _.each(_.keys(this.tabbed_resources), function(key){
+        if(key !== 'detail' && !appModel.hasPermission(
+            self.tabbed_resources[key].resource,'read')){
+          if (appModel.getCurrentUser().username == self.model.get('username')){
+            // 20181128 - Allow users to see their own activities and screens
+            if (!_.contains(['activity','screens'], key)){
+              delete self.tabbed_resources[key];
+            }
+          } else {
             delete self.tabbed_resources[key];
           }
-        });
+        }
+      });
+
+      if (!this.model.has('screens')){
+        delete self.tabbed_resources['screens'];
       }
       
+      // Usergroup should be hidden, this is a fail-safe
       if (this.model.get('is_staff') != true){
         delete self.tabbed_resources['usergrouppermissions'];
       }
+      
       _.bindAll(this,'addServiceActivity');
     },
 
-    setLabHeadFieldVisibility: function(classification, originalClassification){
+    setLabHeadFieldVisibility: function(classification){
       var self = this;
-      console.log('classification:' + classification)
       if(classification == appModel.VOCAB_USER_CLASSIFICATION_PI){
         self.$el.find('[key="form-group-lab_affiliation_id"]').show();
         self.$el.find('[key="form-group-lab_member_ids"]').show();
@@ -106,8 +119,6 @@ define([
     
     setDetail: function(delegateStack){
       
-      console.log('setDetail: ', delegateStack);
-
       var key = 'detail';
       var self,outerSelf;
       outerSelf = self = this;
@@ -139,7 +150,11 @@ define([
         return obj.val == 2;
       });
       resource.fields['rnai_data_sharing_level'].choiceHash = vocab_dsl;
-      
+
+      // Lab fields
+      // lab_head_username/lab_affiliation_name: not editable from the UI
+      resource.fields['lab_head_username']['editability'] = [];
+      resource.fields['lab_affiliation_name']['editability'] = [];
       var originalClassification = self.model.get('classification');
       if ( originalClassification == appModel.VOCAB_USER_CLASSIFICATION_PI){
         resource.fields['classification']['editability'] = [];
@@ -151,7 +166,10 @@ define([
         resource.fields['lab_member_ids']['visibility'] = ['d'];
         resource.fields['lab_member_ids'].vocabulary = {};
         if (self.model.has('lab_member_ids')){
+          // Note lab member data are provided in three separate sorted arrays
           var lab_member_ids = self.model.get('lab_member_ids');
+          var ids_with_email = [];
+          var ids_no_email = [];
           var lab_member_names = self.model.get('lab_member_names');
           var lab_member_emails = self.model.get('lab_member_emails');
           for (var i=0; i<lab_member_ids.length; i++){
@@ -159,18 +177,30 @@ define([
             var email = lab_member_emails[i];
             if (!_.isEmpty(email) && email != 'null'){
               name += ' &lt;' + email + '&gt;';
+              ids_with_email.push(lab_member_ids[i]);
+            } else {
+              ids_no_email.push(lab_member_ids[i]);
             }
             resource.fields['lab_member_ids'].vocabulary[lab_member_ids[i]] = name;
+          }
+          if (!_.isEmpty(ids_no_email)){
+            // reorder so no-email entries are last
+            self.model.set('lab_member_ids', ids_with_email.concat(ids_no_email));
           }
         }
       } else {
         resource.fields['lab_member_ids']['editability'] = [];
       }
-
+      if(!appModel.hasPermission('screensaveruser', 'read')){
+        // FIXME: 20181203; hide urls for screeners for
+        // lab_member_ids that they are not allowed to view:
+        // Requires override of generic_detail_stickit.link_list_getter
+        resource.fields['lab_member_ids']['display_options']['hrefTemplate'] = '#';
+      }
       this.model.validate = function(attrs) {
         var errs = {};
         if ( attrs.classification == appModel.VOCAB_USER_CLASSIFICATION_PI &&
-            !_.isNumber(attrs.lab_affiliation_id) ){
+            _.isEmpty(attrs.lab_affiliation_id) ){
           errs.lab_affiliation_id = 'Required if PI';
         }
         if (!attrs.username && !attrs.ecommons_id){
@@ -179,16 +209,37 @@ define([
               'Either Ecommons or Username must be entered for active users'
           }
         }
+        
+        if (attrs.username && attrs.ecommons_id){
+          
+          if (self.model.has('username') && self.model.has('ecommons_id')){
+            console.log('ok for username and ecommons to be present, if already set');
+          }else{
+            errs.username = errs.ecommons_id = 
+              'Either Ecommons or Username must be entered, not both';
+          }
+        }
+        
         if (!_.isEmpty(errs)) return errs;
       };
       
       var editView = EditView.extend({
         save_success: function(data, textStatus, jqXHR){
-          EditView.prototype.save_success.apply(this,arguments);
-          console.log('user saved. unset users...');
+          if (appModel.DEBUG){
+            console.log('user saved. unset users...');
+          }
           appModel.unset('users');
-          console.log('unset done');
           appModel.getUsers();
+          
+          var newAttributes = _.result(data,appModel.API_RESULT_DATA);
+          if (!newAttributes || !_.isArray(newAttributes) || newAttributes.length != 1){
+            console.log('Could not parse new user attributes', data);
+            this.remove();
+            appModel.router.back();
+          } else {
+            var key = Iccbl.getIdFromIdAttribute(newAttributes[0], this.model.resource);
+            appModel.router.navigate(this.model.resource.key + '/' + key, {trigger:true});
+          }
         },
         
         afterRender: function(){
@@ -197,7 +248,7 @@ define([
           var addLabAffiliationButton = $([
             '<a class="btn btn-default btn-sm" ',
               'role="button" id="add_button" href="#">',
-              'Add</a>'
+              'Add new affiliation</a>'
             ].join(''));
           
           addLabAffiliationButton.click(function(event){
@@ -213,18 +264,17 @@ define([
           }else{
               self.$el.find('[key="form-group-lab_head_id"]').hide();
           }
-          outerSelf.setLabHeadFieldVisibility(originalClassification, originalClassification);
+          outerSelf.setLabHeadFieldVisibility(originalClassification);
           
           self.listenTo(this, "classification:change", function(e){
             var classification = self.getValue('classification');
-            outerSelf.setLabHeadFieldVisibility(classification, originalClassification);
+            outerSelf.setLabHeadFieldVisibility(classification);
             if(classification == appModel.VOCAB_USER_CLASSIFICATION_PI){
               self.setValue('lab_head_id', '');
             } else {
               self.setValue('lab_affiliation_id','');
               self.setValue('lab_member_ids','');
               if (originalClassification == appModel.VOCAB_USER_CLASSIFICATION_PI){
-                console.log('unset lab head id');
                 self.setValue('lab_head_id','');
                 self.$el.find('[key="lab_head_id"]')
                   .find('.chosen-select').trigger("chosen:updated");
@@ -257,27 +307,75 @@ define([
       
       var detailView = DetailView.extend({
         afterRender: function(){
+          var detailSelf = this;
           DetailView.prototype.afterRender.apply(this,arguments);
           if(appModel.hasPermission('screensaveruser', 'write')){
+
+            if (self.model.get('classification')==appModel.VOCAB_USER_CLASSIFICATION_PI){
+              console.log('set up lab members div...');
+              var memberButtonsDiv = $('<div class="pull-down"/>');
+              var addLabMemberButton = $([
+                '<a class="btn btn-default btn-sm" ',
+                  'title="Create a new user as a member of this lab" ',
+                  'role="button" id="add_lab_member_button" href="#">',
+                  'Add lab member</a>'
+                ].join(''));
+              var browseLabMemberButton = $([
+                '<a class="btn btn-default btn-sm" ',
+                  'title="show lab members" ',
+                  'role="button" id="browse_lab_member_button" href="#">',
+                  'Browse</a>'
+                ].join(''));
+              memberButtonsDiv.append(browseLabMemberButton);
+              memberButtonsDiv.append(addLabMemberButton);
+              var toggleMembersControl = $([
+                '<div class="pull-up">',
+                '<a id="toggle-members-control">',
+                  'Show &gt;&gt;</a>',
+                  '</div>'
+                ].join(''));
+              
+              var state = false;
+              var labMemberDiv = $('<div id="lab-member-div"/>');
+              labMemberDiv.append(this.$el.find('#lab_member_ids').html());
+              labMemberDiv.hide();
+              this.$el.find('#lab_member_ids').empty();
+              this.$el.find('#lab_member_ids').append(toggleMembersControl);
+              this.$el.find('#lab_member_ids').append(labMemberDiv);
+              toggleMembersControl.click(function(e){
+                e.preventDefault();
+                state = !state;
+                labMemberDiv.toggle(state);
+                if (state){
+                  toggleMembersControl.html('Hide &lt;&lt;');
+                } else {
+                  toggleMembersControl.html('Show &gt;&gt;');
+                }
+              });
+              this.$el.find('#lab_member_ids').append(memberButtonsDiv);
+              browseLabMemberButton.click(function(e){
+                e.preventDefault();
+                var uriStack = ['screensaveruser',
+                  'includes','-lab_head_id,lab_name',
+                  appModel.URI_PATH_SEARCH,
+                  'lab_head_id=' + self.model.get('screensaver_user_id')];
+                console.log('route: ', uriStack);
+                appModel.setUriStack(uriStack);
+                
+              });
+              addLabMemberButton.click(function(e){
+                e.preventDefault();
+                self.addLabMember();
+              });
+            }
+          } else {
+            // FIXME: 20181203; hide urls for screeners for
+            // lab_member_ids that they are not allowed to view:
+            // Requires override of generic_detail_stickit.link_list_getter
             
-            var addLabMemberButton = $([
-              '<div class="pull-down">',
-              '<a class="btn btn-default btn-sm" ',
-                'title="Create a new user as a member of this lab" ',
-                'role="button" id="add_lab_member_button" href="#">',
-                'Add Lab Member</a>',
-                '</div>'
-              ].join(''));
-            this.$el.find('#lab_member_ids').append(addLabMemberButton);
-            addLabMemberButton.click(function(e){
-              e.preventDefault();
-              self.addLabMember();
-            });
             
           }
-          
           self.showUserAgreements();
-          
         }
       });
  
@@ -338,7 +436,6 @@ define([
     
     showUserAgreements: function(){
       var self = this;
-      console.log('showUserAgreements, ', self.model.key, self.model);
       if (!appModel.hasPermission('useragreement')){
         console.log('user does not have permission to query "useragreement"');
         return;
@@ -362,7 +459,6 @@ define([
       }).fail(function() { Iccbl.appModel.jqXHRfail.apply(this,arguments); });      
       
       function build_table(collection) {
-        console.log('build user agreement table', collection);
         if (collection.isEmpty()) {
           return;
         }
@@ -487,7 +583,18 @@ define([
                   this.$el.append(
                     $('<input type="button" class="btn btn-default btn-sm" value="Update" />')
                       .on('click', function(){
-                        self.updateUserAgreement(innerself.model); 
+                        if (self.model.get('classification') != appModel.VOCAB_USER_CLASSIFICATION_PI
+                            && !_.isNumber(innerself.model.get('lab_head_data_sharing_level'))){
+                          var typeLabel = appModel.getVocabularyTitle(
+                            uaResource.fields['type']['vocabulary_scope_ref'], innerself.model.get('type'));
+                          
+                          appModel.showModalMessage({
+                            body: 'Please set the Lab Head Data Sharing Level first',
+                            title: 'Lab Head ' + typeLabel + ' Data Sharing Level has not been set'
+                          });
+                        }else{
+                          self.updateUserAgreement(innerself.model); 
+                        }
                       })
                     );
                   this.$el.append(
@@ -502,9 +609,7 @@ define([
                           + '/' + innerself.model.get('type'));
                         
                         newUriStack.push(appModel.createSearchString(search));
-                        var route = newUriStack.join('/');
-                        console.log('history route: ' + route);
-                        appModel.router.navigate(route, {trigger: true});
+                        appModel.setUriStack(newUriStack);
                       })
                     );
 
@@ -553,13 +658,16 @@ define([
     },
 
     updateUserAgreement: function(uaModel){
-      
+
       var self = this;
       var uaResource = appModel.getResource('useragreement');
       var type = uaModel.get('type');
+      var user_is_pi = self.model.get('classification') == appModel.VOCAB_USER_CLASSIFICATION_PI;
+      var lab_head_dsl = uaModel.get('lab_head_data_sharing_level');
       var url = [self.model.resource.apiUri, 
                  self.model.key,
                  'useragreement'].join('/');
+      // TODO: replace with appState._form_template
       var form_template = [
          "<div class='form-horizontal container' id='uploadUAButton_form' >",
          "<form class='form-horizontal container' >",
@@ -573,18 +681,6 @@ define([
       });
       var formSchema = {};
 
-      var lab_head_id = self.model.get('lab_head_id');
-      function showLabHeadWarning(msg){
-        appModel.showModal({
-          body: msg,
-          title: 'Proceed?',
-          ok: function(){
-            buildForm();
-            return false;
-          }
-        });
-      };
-      
       if (uaModel.get('status') == 'active'){
         formSchema['deactivate'] = {
           title: 'Deactivate',
@@ -633,24 +729,28 @@ define([
         template: fieldTemplate
       };
       
-      var vocab_scope_ref = 
-        self.model.resource.fields['sm_data_sharing_level']['vocabulary_scope_ref'];
-      var vocab_dsl = Iccbl.appModel.getVocabularySelectOptions(vocab_scope_ref);
-      if (type=='rnai'){
-        vocab_dsl = _.reject(vocab_dsl, function(obj){
-          return obj.val == 2;
-        });
+      
+      if (user_is_pi){
+        var vocab_scope_ref = 
+          self.model.resource.fields['sm_data_sharing_level']['vocabulary_scope_ref'];
+        var vocab_dsl = Iccbl.appModel.getVocabularySelectOptions(vocab_scope_ref);
+        if (type=='rnai'){
+          vocab_dsl = _.reject(vocab_dsl, function(obj){
+            return obj.val == 2;
+          });
+        }
+        formSchema['data_sharing_level'] = {
+          title: 'New Data Sharing Level',
+          key: 'data_sharing_level',
+          type: Backbone.Form.editors.Select.extend({
+              className: 'form-control'
+            }),
+          options: vocab_dsl,
+          template: fieldTemplate,
+          validators: []
+        };
       }
-      formSchema['data_sharing_level'] = {
-        title: 'New Data Sharing Level',
-        key: 'data_sharing_level',
-        type: Backbone.Form.editors.Select.extend({
-            className: 'form-control'
-          }),
-        options: vocab_dsl,
-        template: fieldTemplate,
-        validators: []
-      };
+      
       formSchema['fileInputPlaceholder'] = {
         title: 'File',
         key: 'file_input',
@@ -671,7 +771,6 @@ define([
       var FormFields = Backbone.Model.extend({
         schema: formSchema,
         validate: function(attrs){
-          console.log('form validate', attrs);
           var errs = {};
           
           var dateVal = new Date(attrs['date_active']);
@@ -680,30 +779,22 @@ define([
           var currentDate = new Date();
           currentDate = new Date(
             currentDate.getFullYear(),currentDate.getMonth(),currentDate.getDate());
-          console.log('dateVal', dateVal, 'current', currentDate);
           if (dateVal > currentDate){
             errs['date_active'] = 'May not be in the future';
           }
-          
-          var dsl = attrs['data_sharing_level'];
-          if (_.isNumber(uaModel.get('lab_head_data_sharing_level'))){
-            if (dsl != uaModel.get('lab_head_data_sharing_level')){
-              if (self.model.get('classification') != appModel.VOCAB_USER_CLASSIFICATION_PI){
-                errs['data_sharing_level'] = 'Must match the Lab Head';
+
+          if (user_is_pi){
+            if (attrs['expire'] != true && attrs['deactivate'] != true){
+              // Only require DSL if not expiring/deactivating
+              var new_dsl = attrs['data_sharing_level'];
+              if ( new_dsl === null || new_dsl == ''){
+                errs['data_sharing_level'] = 'Required'
               }
-            }
-          }
-          
-          if (attrs['expire'] != true && attrs['deactivate'] != true){
-            // Only require DSL if not expiring/deactivating
-            var new_dsl = attrs['data_sharing_level'];
-            if ( new_dsl === null || new_dsl == ''){
-              errs['data_sharing_level'] = 'Required'
-            }
-            if (!uaModel.has('filename') || uaModel.has('date_expired')){
-              var file = $('input[name="fileInput"]')[0].files[0];
-              if (!file){
-                errs['fileInputPlaceholder'] = 'Attached file is required to activate';
+              if (!uaModel.has('filename') || uaModel.has('date_expired')){
+                var file = $('input[name="fileInput"]')[0].files[0];
+                if (!file){
+                  errs['fileInputPlaceholder'] = 'Attached file is required to activate';
+                }
               }
             }
           }
@@ -734,20 +825,17 @@ define([
             uaModel.get('data_sharing_level')));
       } else {
         formFields.set('date_active', new Date());
-        formFields.set('data_sharing_level', uaModel.get('lab_head_data_sharing_level'));
+        if(user_is_pi){
+          formFields.set('data_sharing_level', 3);
+        }
       }
       
-      if (self.model.get('classification') == appModel.VOCAB_USER_CLASSIFICATION_PI){
+      if (user_is_pi){
         formFields.set('lab_head_dsl', '&lt;User is Lab Head&gt;');
       } else {
-        if (!_.isNumber(uaModel.get('lab_head_data_sharing_level'))){
-          showLabHeadWarning(
-            'Lab Head has no active ' + typeLabel + ' - Data Sharing Level');
-        } else {
-          formFields.set('lab_head_dsl', appModel.getVocabularyTitle(
+        formFields.set('lab_head_dsl', appModel.getVocabularyTitle(
             uaResource.fields['data_sharing_level']['vocabulary_scope_ref'], 
             uaModel.get('lab_head_data_sharing_level')));
-        }
       }
 
       function buildForm(){
@@ -775,7 +863,6 @@ define([
           form.$el.find('#filechosen').html(label);
         });
         form.listenTo(form, "deactivate:change", function(e){
-          console.log('change');
           var value = form.getValue('deactivate');
           if(value == true){
             form.$el.find('input').not('[name="deactivate"]').prop('disabled', true);
@@ -788,7 +875,6 @@ define([
           }
         });
         form.listenTo(form, "expire:change", function(e){
-          console.log('change');
           var value = form.getValue('expire');
           if(value == true){
             form.$el.find('input').not('[name="expire"]').prop('disabled', true);
@@ -810,7 +896,6 @@ define([
             $('#general_error').remove();
             var errors = form.commit({ validate: true }); // runs schema and model validation
             if(!_.isEmpty(errors) ){
-              console.log('form errors, abort submit: ',errors);
               _.each(_.keys(errors), function(key){
                 $('[name="'+key +'"]').parents('.form-group').addClass('has-error');
               });
@@ -827,14 +912,16 @@ define([
               return false;
             }else{
               var values = form.getValue();
+
+              var headers = {};
+              var comments = values['comments'];
+              headers[appModel.HEADER_APILOG_COMMENT] = comments;
               
               if (_.result(values,'expire')){
                 appModel.showModalError('Manual Expiration not allowed');
                 return 
               }
               else if (_.result(values,'deactivate')){
-                console.log('deactivate...')
-                var httpType = 'PATCH';
                 var contentType = 'application/json';
                 var data = JSON.stringify({ 
                   status: 'inactive', type: type });
@@ -843,10 +930,10 @@ define([
                   url: url,    
                   data: data,
                   cache: false,
-                  contentType: contentType,
+                  contentType: 'application/json',
                   dataType: 'json', // what is expected back from the server
                   processData: false,
-                  type: httpType,
+                  type: 'PATCH',
                   headers: headers, 
                   success: function(data){
                     self.showUserAgreements();
@@ -859,11 +946,10 @@ define([
                       body: 'deactivated'
                     });
                   }
-                }).fail(function(){ 
+                }).fail(function(jqXHR, textStatus, errorThrown){
                   Iccbl.appModel.jqXHRfail.apply(this,arguments); 
                 }).done(function(model, resp){
                     // TODO: done replaces success as of jq 1.8
-                    console.log('done: ' + arguments);
                 });
                 return true;
               }
@@ -872,17 +958,6 @@ define([
               var mutableFields = _.filter(_.keys(uaResource.fields), function(key){
                 return _.contains(uaResource.fields[key]['editability'],'u');
               });
-              var lab_head_dsl = values['lab_head_dsl'];
-              var dsl = values['data_sharing_level'];
-              if (_.isNumber(lab_head_dsl)){
-                if( lab_head_dsl != dsl){
-                  appModel.showModal({
-                    title: 'Continue?',
-                    body: 'Selected Data Sharing Level is different than Lab Head DSL',
-                    
-                  });
-                }
-              }
               // TODO: Should admin be required to override if DSL is less 
               // restrictive than screen?              
               // (Show a warning if DSL does not match one of user's screens)
@@ -897,10 +972,6 @@ define([
               //  $form = $('#uploadUAButton_form');
               //  $form.append($errorDiv);
               //}
-              var headers = {};
-              var comments = values['comments'];
-              headers[appModel.HEADER_APILOG_COMMENT] = comments;
-              
               var httpType = 'PATCH';
               var contentType = 'application/json';
               var file = $('input[name="fileInput"]')[0].files[0];
@@ -918,47 +989,88 @@ define([
                     data.append(key,values[key])
                   }
                 });
+                if (!user_is_pi){
+                  data.append('data_sharing_level', lab_head_dsl);
+                }
               } else {
                 _.each(_.keys(values), function(key){
                   if (_.contains(mutableFields,key)){
-                    console.log('set key', key)
                     data[key] = values[key];
                   }
                 });
                 data['type'] = type;
-                data = JSON.stringify(data);
-              }
-              
-              $.ajax({
-                url: url,    
-                data: data,
-                cache: false,
-                contentType: contentType,
-                dataType: 'json', // what is expected back from the server
-                processData: false,
-                type: httpType,
-                headers: headers, 
-                success: function(data){
-                  self.showUserAgreements();
-                  self.model.fetch({ reset: true }).done(function(){
-                    self.buildMessages();
-                  });
-                  var msg = 'data sharing level: ' + values['data_sharing_level'];
-                  if (file){
-                    msg += '<br>file: ' + file.name + ' ';
-                  }
-                  appModel.showModalMessage({
-                    title: formTitle + ' - complete',
-                    okText: 'ok',
-                    body: msg
-                  });
+                if (!user_is_pi){
+                  data['data_sharing_level'] = lab_head_dsl;
                 }
-              }).fail(function(){ 
-                Iccbl.appModel.jqXHRfail.apply(this,arguments); 
-              }).done(function(model, resp){
-                  // TODO: done replaces success as of jq 1.8
-                  console.log('done: ' + arguments);
-              });
+               data = JSON.stringify(data);
+              }
+              console.log('patch DSL', data);
+              
+              function processPostPatch(patchUrl){
+                $.ajax({
+                  url: patchUrl,
+                  data: data,
+                  cache: false,
+                  contentType: contentType,
+                  dataType: 'json', // what is expected back from the server
+                  processData: false,
+                  type: httpType,
+                  headers: headers, 
+                  success: function(data){
+                    self.showUserAgreements();
+                    self.model.fetch({ reset: true }).done(function(){
+                      self.buildMessages();
+                    });
+                    
+                    var messages = {};
+                    messages['data_sharing_level'] =  values['data_sharing_level'];
+                    if (file){
+                      messages['filename'] = file.name;
+                    }
+                    var meta = _.result(data, 'meta', null);
+                    if (meta) {
+                      _.extend(messages, meta);
+                    }
+                    appModel.showJsonMessages(messages, {
+                      title: 'Update Success'
+                    });
+                  }
+                })
+                .fail(processError)
+                .done(function(model, resp){
+                  console.log('done', arguments);
+                    // TODO: done replaces success as of jq 1.8
+                });
+              };
+              
+              function processError(jqXHR, textStatus, errorThrown){
+                var jsonError = _.result(_.result(jqXHR, 'responseJSON'),'errors');
+                if (!_.isUndefined(jsonError)){
+                  var overrideFlag = _.result(jsonError,appModel.API_PARAM_OVERRIDE)
+                  if (!_.isUndefined(overrideFlag)){
+                    var bodyMsg = appModel.print_json(error);
+                    body = $('<textarea class="input-full" rows=' 
+                      + appModel.MAX_ROWS_IN_DIALOG_MSG + ' ></textarea>');
+                    body.val(bodyMsg);
+
+                    appModel.showModal({
+                      okText: 'Confirm Override',
+                      title: 'Override Required: New Data Sharing Level will invalidate Lab Member Agreements:',
+                      view: body,
+                      ok: function(){
+                        processPostPatch(url + '?' + appModel.API_PARAM_OVERRIDE + '=true');
+                      }
+                    });
+                    
+                  } else {
+                    Iccbl.appModel.jqXHRfail.apply(this,arguments); 
+                  }
+                } else {
+                  Iccbl.appModel.jqXHRfail.apply(this,arguments); 
+                }                
+              };
+
+              processPostPatch(url);
               return true;
             }
           }
@@ -976,9 +1088,7 @@ define([
       try{
         vocabulary = Iccbl.appModel.getVocabulary(vocabulary_scope_ref);
           _.each(_.keys(vocabulary),function(choice){
-            if (vocabulary[choice].is_retired) {
-              console.log('skipping retired vocab: ',choice,vocabulary[choice].title );
-            } else {
+            if (vocabulary[choice].is_retired !== true ) {
               choiceHash[choice] = vocabulary[choice].title;
             }
           });
@@ -1009,7 +1119,6 @@ define([
       var FormFields = Backbone.Model.extend({
         schema: formSchema,
         validate: function(attrs){
-          console.log('form validate', attrs);
           var errs = {};
             if(_.has(currentAffiliationNames,attrs['name'])){
               errs['name'] = '"'+ attrs['name'] + '" is already used';
@@ -1032,7 +1141,6 @@ define([
           e.preventDefault();
           var errors = form.commit({ validate: true }); // runs schema and model validation
           if(!_.isEmpty(errors) ){
-            console.log('form errors, abort submit: ',errors);
             _.each(_.keys(errors), function(key){
               $('[name="'+key +'"').parents('.form-group').addClass('has-error');
             });
@@ -1079,7 +1187,6 @@ define([
               },
               done: function(model, resp){
                 // TODO: done replaces success as of jq 1.8
-                console.log('done');
               }
             }).fail(function(){ Iccbl.appModel.jqXHRfail.apply(this,arguments); });
           
@@ -1091,7 +1198,6 @@ define([
     
     addScreen: function(extra_defaults){
       var self = this;
-      console.log('add screen for ls: ', self.model.get('screensaver_user_id'));
       var defaults = _.extend({
         lead_screener_id: self.model.get('screensaver_user_id'),
         lab_head_id: self.model.get('lab_head_id')
@@ -1114,7 +1220,9 @@ define([
       var self = this;
       self.$('ul.nav-tabs > li').addClass('disabled');
 
-      console.log('add lab member for lab head: ', self.model.get('screensaver_user_id'));
+      if (appModel.DEBUG){
+        console.log('add lab member for lab head: ', self.model.get('screensaver_user_id'));
+      }
       var defaults = _.extend({
         lab_head_id: self.model.get('lab_head_id'),
         lab_name: self.model.get('lab_name')
@@ -1123,6 +1231,9 @@ define([
       var resource = appModel.getResource('screensaveruser');
       newModel.resource = resource;
       resource.fields['lab_name']['visibility'] = ['e'];
+      // lab_head_username/lab_affiliation_name: not editable from the UI
+      resource.fields['lab_head_username']['editability'] = [];
+      resource.fields['lab_affiliation_name']['editability'] = [];
       
       var vocab_scope_ref = 
         resource.fields['classification']['vocabulary_scope_ref'];
@@ -1131,7 +1242,6 @@ define([
         return obj.val == appModel.VOCAB_USER_CLASSIFICATION_PI;
       });
       resource.fields['classification'].choiceHash = vocab_cls;
-      resource.fields['classification']['vocabulary_scope_ref'] = null;
       var hideForLabMember = [
         'lab_head_id','lab_affiliation_id','lab_member_ids',
         'lab_head_appointment_category','lab_head_appointment_department',
@@ -1143,12 +1253,23 @@ define([
       
       var NewLabUserEditView = EditView.extend({
         save_success: function(data, textStatus, jqXHR){
-          appModel.getModel('screensaveruser', self.model.key, 
-            function(model){
-              self.model = model;
-              self.change_to_tab('detail');
-              self.$('ul.nav-tabs > li').removeClass('disabled');
-            });
+          var inner_self = this;
+          if (appModel.DEBUG){
+            console.log('user saved. unset users...');
+          }
+          appModel.unset('users');
+          appModel.getUsers();
+          
+          console.log('save success show detail page...');
+          var newAttributes = _.result(data,appModel.API_RESULT_DATA);
+          if (!newAttributes || !_.isArray(newAttributes) || newAttributes.length != 1){
+            console.log('Could not parse new user attributes', data);
+            this.remove();
+            appModel.router.back();
+          } else {
+            var key = Iccbl.getIdFromIdAttribute(newAttributes[0], this.model.resource);
+            appModel.router.navigate(this.model.resource.key + '/' + key, {trigger:true});
+          }
         },
         cancel: function(e) {
           e.preventDefault();
@@ -1172,18 +1293,18 @@ define([
     setScreens: function(delegateStack) {
       var self = this;
       var addSMScreenButton = $([
-        '<a class="btn btn-default btn-sm pull-down" ',
+        '<a class="btn btn-default btn-sm pull-down controls-right" ',
           'role="button" id="add_smscreen" href="#">',
-          'Add Small Molecule Screen</a>'
+          'Add small molecule screen</a>'
         ].join(''));
       addSMScreenButton.click(function(e){
         e.preventDefault();
         self.addScreen({ screen_type: 'small_molecule' });
       });
       var addRnaiScreenButton = $([
-        '<a class="btn btn-default btn-sm pull-down" ',
+        '<a class="btn btn-default btn-sm pull-down controls-right" ',
           'role="button" id="add_rnaiscreen" href="#">',
-          'Add RNAi Screen</a>'
+          'Add RNAi screen</a>'
         ].join(''));
       addRnaiScreenButton.click(function(e){
         e.preventDefault();
@@ -1197,7 +1318,6 @@ define([
       _.each(_.values(resource.fields), function(field){
         if (_.contains(visibleFields, field.key)){
           if (!_.contains(field['visibility'],'l')){
-            console.log('add', field.key);
             extraIncludes.push(field.key);
           }
         } else {
@@ -1251,10 +1371,9 @@ define([
       // - performed by == user
       
       var self = this;
-      var saResource = appModel.getResource('serviceactivity');
       var activityResource = appModel.getResource('activity');
-      saResource.fields['serviced_user_id']['editability'] = [];
-      saResource.fields['activity_class']['visibility'] = [];
+      activityResource.fields['serviced_user_id']['editability'] = [];
+      activityResource.fields['serviced_username']['editability'] = [];
 
       if (!_.isEmpty(delegateStack) && delegateStack[0]=='+add') {
           self.addServiceActivity();
@@ -1264,7 +1383,7 @@ define([
         var activity_id = delegateStack.shift();
         self.consumedStack.push(activity_id);
         var _key = activity_id
-        appModel.getModelFromResource(saResource, _key, function(model){
+        appModel.getModelFromResource(activityResource, _key, function(model){
           view = new ServiceActivityView({
             model: model, 
             user: self.model,
@@ -1280,15 +1399,17 @@ define([
         // List view
         var view, url;
         var extraControls = [];
+        var extraListControls = [];
         var addServiceActivityButton = $([
           '<a class="btn btn-default btn-sm pull-down" ',
-            'role="button" id="add_button" href="#">',
-            'Add</a>'
+            'role="button" id="add_button" href="#" ',
+            'title="Add a service activity for the user" > ',
+            'Add a service activity</a>'
           ].join(''));
         var showDeleteButton = $([
           '<a class="btn btn-default btn-sm pull-down" ',
             'role="button" id="showDeleteButton" href="#">',
-            'Delete</a>'
+            'Delete a service activity</a>'
           ].join(''));
         var showHistoryButton = $([
           '<a class="btn btn-default btn-sm pull-down" ',
@@ -1304,22 +1425,19 @@ define([
           e.preventDefault();
           var newUriStack = ['apilog','order','-date_time', appModel.URI_PATH_SEARCH];
           var search = {};
-          search['ref_resource_name'] = 'serviceactivity';
+          search['ref_resource_name'] = 'activity';
           search['uri__contains'] = 'screensaveruser/' + self.model.get('screensaver_user_id');
           newUriStack.push(appModel.createSearchString(search));
-          var route = newUriStack.join('/');
-          console.log('history route: ' + route);
-          appModel.router.navigate(route, {trigger: true});
+          appModel.setUriStack(newUriStack);
+//          var route = newUriStack.join('/');
+//          appModel.router.navigate(route, {trigger: true});
           self.remove();
         });
-        if(appModel.hasPermission(saResource.key, 'edit')){
+        extraControls.unshift(showHistoryButton);
+        if(appModel.hasPermission(activityResource.key, 'edit')){
+          extraControls.unshift(showDeleteButton);
           extraControls.unshift(addServiceActivityButton);
         }
-        if(appModel.hasPermission(saResource.key, 'edit')){
-          extraControls.unshift(showDeleteButton);
-        }
-        extraControls.unshift(showHistoryButton);
-        console.log('extraControls',extraControls);
         url = [self.model.resource.apiUri, 
                    self.model.key,
                    'activities'].join('/');
@@ -1328,6 +1446,7 @@ define([
           resource: activityResource,
           url: url,
           extraControls: extraControls,
+          extraListControls: extraListControls,
           user: self.model
         });
         showDeleteButton.click(function(e){
@@ -1339,7 +1458,7 @@ define([
               sortable: false,
               cell: Iccbl.DeleteCell.extend({
                 render: function(){
-                  if (this.model.get('activity_class') == 'serviceactivity'){
+                  if (this.model.get('classification') == 'activity'){
                     Iccbl.DeleteCell.prototype.render.apply(this, arguments);
                   }
                   return this;
@@ -1355,20 +1474,30 @@ define([
     },
     
     addServiceActivity: function(e) {
+      
       if (e){
         e.preventDefault();
       }
       var self = this;
       
-      var saResource = Iccbl.appModel.getResource('serviceactivity');
-      saResource.fields['serviced_user_id']['editability'] = [];
+      var activityResource = appModel.getResource('activity');
+      activityResource.fields['serviced_user_id']['editability'] = [];
+      activityResource.fields['serviced_username']['editability'] = [];
+      activityResource.fields['serviced_user']['visibility'] = ['l','d','e'];
+      
+      var vocab_scope_ref = 
+        activityResource.fields['classification']['vocabulary_scope_ref'];
+      var vocab_classification = Iccbl.appModel.getVocabularySelectOptions(vocab_scope_ref);
+      vocab_type = _.reject(vocab_classification, function(obj){
+        return obj.val == 'screening';
+      });
+      activityResource.fields['classification'].choiceHash = vocab_type;
       
       var defaults = {
         serviced_user_id: self.model.get('screensaver_user_id'),
         serviced_user: self.model.get('name'),
-//        performed_by_user_id: appModel.getCurrentUser().screensaver_user_id
       };
-      var newModel = appModel.newModelFromResource(saResource, defaults);
+      var newModel = appModel.newModelFromResource(activityResource, defaults);
       var view = new ServiceActivityView({
         model: newModel,
         user: self.model,
@@ -1387,6 +1516,11 @@ define([
       var self = this;
       var key = 'attachedfile';
       var resource = appModel.getResource('attachedfile');
+      
+      _.each(['user_fullname','screen_facility_id','publication_id'], function(field_key){
+        resource.fields[field_key]['visibility'] = [];
+      });
+      
       var url = [self.model.resource.apiUri, 
                  self.model.key,
                  'attachedfiles'].join('/');
@@ -1409,8 +1543,13 @@ define([
       });
       uploadAttachedFileButton.click(function(e){
         e.preventDefault();
+        var type_choices = appModel.getVocabularySelectOptions('attachedfiletype.user');
+        // NOTE: do not show user agreement types in generic uploads (JAS)
+        type_choices = _.reject(type_choices, function(choice){
+          return choice.val.match(/user_agreement/gi);
+        });
         UploadDataForm.uploadAttachedFileDialog(
-          url, 'attachedfiletype.user'
+          url, type_choices
         ).done(function(){
           view.collection.fetch({ reset: true });
         }).fail(function(){
@@ -1445,10 +1584,10 @@ define([
       var showSaveButton = $([
         '<a class="btn btn-default btn-sm pull-down" ',
           'role="button" id="save_button" style="display: none; href="#">',
-          'save</a>'
+          'Save</a>'
         ].join(''));
       var showHistoryButton = $([
-      '<a class="btn btn-default btn-sm pull-down" ',
+      '<a class="btn btn-default btn-sm pull-down controls-right" ',
         'role="button" id="showHistoryButton" href="#">',
         'History</a>'
       ].join(''));
@@ -1459,9 +1598,9 @@ define([
         search['ref_resource_name'] = 'userchecklist';
         search['key__contains'] = self.model.get('screensaver_user_id') + '/';
         newUriStack.push(appModel.createSearchString(search));
-        var route = newUriStack.join('/');
-        console.log('history route: ' + route);
-        appModel.router.navigate(route, {trigger: true});
+        appModel.setUriStack(newUriStack);
+//        var route = newUriStack.join('/');
+//        appModel.router.navigate(route, {trigger: true});
         self.remove();
       });
       var Collection = Iccbl.MyCollection.extend({
@@ -1536,6 +1675,7 @@ define([
               }
             } else {
               text = 'Activated';
+              this.$el.addClass('active');
             }
             this.$el.text(text);
             this.delegateEvents();
@@ -1616,7 +1756,6 @@ define([
         showSaveButton.click(function(e){
           
           e.preventDefault();
-          console.log('changed collection', changedCollection,changedCollection.url);
           
           if(changedCollection.isEmpty()){
             appModel.showModalError('No changes to save');
@@ -1635,11 +1774,9 @@ define([
                 fetchCollection.fetch({ reset: true });
               },
               success: function(){
-                console.log('success');
                 fetchCollection.fetch();
               },
               done: function(){
-                console.log('done');
               }
             }
           );
@@ -1680,19 +1817,27 @@ define([
       }
       
       function displayUserChecklist(collection) {
-        view = new ListView({ 
+        var CListView = ListView.extend({
+          afterRender: function(){
+            ListView.prototype.afterRender.apply(this, arguments);
+            
+            // Per JAS/KRS, limit table size to 2/3 of page for readability (20181015)
+            this.$el.find('table').addClass('checklist');
+            self.$el.find('#table-div').removeClass();
+            self.$el.find('#list-container').parent().removeClass().addClass('col-sm-8');
+          }
+        })
+        view = new CListView({ 
           uriStack: _.clone(delegateStack),
           resource: resource,
           url: url,
           collection: collection,
           extraControls: [showSaveButton, showHistoryButton],
-          tableClass: 'left-align'
         });
         view.grid.columns.on('update', function(){
           view.$el.find('td').removeClass('edited');
         });
         collection.on('sync', function(){
-          console.log('synced');
           view.$el.find('td').removeClass('edited');
           appModel.clearPagePending();
         });
@@ -1717,15 +1862,12 @@ define([
     buildMessages: function() {
       var self = this;
       
-      console.log('build user messages...');
-
       if (!appModel.hasGroup('readEverythingAdmin')){
         return;
       }
    
       $('#content_title_message').find('#user_status_message').remove();
       var screens = self.getUserScreens();
-      console.log('build user messages', screens);
       if (_.isEmpty(screens)) {
         return;
       }

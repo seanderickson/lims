@@ -24,6 +24,8 @@ define([
             UploadDataForm, TabbedController ) {
 
   var LibraryView = TabbedController.extend({
+
+    WARN_SCREENING_STATUSES: ['discarded','not_allowed','requires_permission','not_recommended','retired' ],
     
     initialize: function(args) {
       var self = this;
@@ -201,7 +203,17 @@ define([
 
       showPreviewMessage();
       showReleaseMessage();
-      
+
+      $('#content_title_message').find('#library_status_message').remove();
+      if (!_.isEmpty(self.model.get('screening_status'))) {
+        if (_.contains(self.WARN_SCREENING_STATUSES, self.model.get('screening_status'))){
+          $('#content_title_message').append(
+            $('<div id="library_status_message" class="alert alert-danger"></div>').html(
+              'Screening Status: ' + appModel.getVocabularyTitle(
+                'library.screening_status',self.model.get('screening_status'))));
+        }
+      }
+    
       self.model.on('sync', showPreviewMessage);
       self.model.on('sync', showReleaseMessage);
     },
@@ -341,7 +353,7 @@ define([
       
       var self = this;
       var key = 'detail';
-      var buttons = ['download_contents'];
+      var buttons = []; //['download_contents'];
       if (appModel.hasPermission('library', 'write')){
         buttons = buttons.concat(['download','upload','history','edit']);
       }
@@ -463,19 +475,19 @@ define([
         var url = [self.model.resource.apiUri, 
                    self.model.key,
                    'reagent'].join('/');
-        var download_contents_button = $([
-           '<a class="btn btn-default btn-sm pull-right" ',
-             'title="Download the full library reagent table (with images, if Excel)" ',
-             'role="button" id="download_contents_button" >',
-             'Full Download</a>'
-           ].join(''));
-        download_contents_button.click(self.download_contents)
+        //var download_contents_button = $([
+        //   '<a class="btn btn-default btn-sm" ',
+        //     'title="Download the full library reagent table (with images, if Excel)" ',
+        //     'role="button" id="download_contents_button" >',
+        //     'Full download</a>'
+        //   ].join(''));
+        //download_contents_button.click(self.download_contents)
         view = new LibraryWellsView({ 
           uriStack: _.clone(delegateStack),
           resource: resource,
           url: url,
           library: self.model,
-          extraListControls: [download_contents_button]
+          extraControls: [] // [download_contents_button]
         });
         Backbone.Layout.setupView(view);
         self.listenTo(view , 'uriStack:change', self.reportUriStack);
@@ -538,7 +550,7 @@ define([
         
         if (appModel.hasPermission(copyResource.key, 'write')){
           var showAddButton = $([
-             '<a class="btn btn-default btn-sm pull-down" ',
+             '<a class="btn btn-default btn-sm pull-down controls-right" ',
                'role="button" id="add_resource" href="#">',
                'Add</a>'
              ].join(''));   
@@ -621,6 +633,7 @@ define([
       var copyUsageTypeField = _.result(copyResource['fields'],'usage_type',{});
       var plateResource = appModel.getResource('librarycopyplate');
       var plateStatusField = _.result(plateResource['fields'],'status',{});
+      var plateTypeField = _.result(plateResource['fields'],'plate_type',{});
       var plateWellVolumeField = _.result(plateResource['fields'], 'well_volume', {});
       var plateMgMlConcentrationField = _.result(
         plateResource['fields'], 'mg_ml_concentration', {});
@@ -677,6 +690,18 @@ define([
         template: fieldTemplate 
       };
       
+      formSchema['plate_type'] = {
+        title: 'Plate Type',
+        key: 'plate_type',
+        type: EditView.ChosenSelect,
+        editorClass: 'chosen-select',
+        editorAttrs: { widthClass: 'col-sm-5'},
+        validators: ['required'],
+        options: appModel.getVocabularySelectOptions(
+          plateTypeField.vocabulary_scope_ref),
+        template: fieldTemplate 
+      };
+      
       formSchema['initial_plate_status'] = {
         title: 'Initial Plate Status',
         help: 'Initial status for the plates of this copy (optional)',
@@ -684,7 +709,7 @@ define([
         type: EditView.ChosenSelect,
         editorClass: 'chosen-select',
         editorAttrs: { widthClass: 'col-sm-5'},
-        validators: [],
+        validators: ['required'],
         options: appModel.getVocabularySelectOptions(
           plateStatusField.vocabulary_scope_ref),
         template: fieldTemplate 

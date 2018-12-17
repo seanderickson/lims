@@ -72,7 +72,7 @@ def convert_django_autofields(apps, schema_editor):
         ('screensaver_user', 'screensaver_user_id'),
         ('attached_file', 'attached_file_id'),
         ('activity', 'activity_id'),
-        ('equipment_used','equipment_used_id'),
+#         ('equipment_used','equipment_used_id'),
         ('annotation_type','annotation_type_id'),
         ('assay_plate','assay_plate_id'),
         ('assay_well','assay_well_id'),
@@ -236,12 +236,11 @@ def add_timezone_to_timestamp_fields(apps, schema_editor):
                       table=table, column=column))
 
 
-def create_reagent_ids(apps, schema_editor):
-    
-    for reagent in apps.get_model('db','Reagent').objects.all():
-        reagent.substance_id = db.models.create_id()
-        reagent.save()
-
+# def create_reagent_ids(apps, schema_editor):
+#     
+#     for reagent in apps.get_model('db','Reagent').objects.all():
+#         reagent.substance_id = db.models.create_id()
+#         reagent.save()
 
 class Migration(migrations.Migration):
 
@@ -251,28 +250,28 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.CreateModel(
-            name='Substance',
-            fields=[
-                ('id', models.AutoField(verbose_name='ID', serialize=False, 
-                    auto_created=True, primary_key=True)),
-                ('comment', models.TextField(null=True)),
-            ],
-            options={
-                'db_table': 'substance',
-            },
-        ),
+        # migrations.CreateModel(
+        #     name='Substance',
+        #     fields=[
+        #         ('id', models.AutoField(verbose_name='ID', serialize=False, 
+        #             auto_created=True, primary_key=True)),
+        #         ('comment', models.TextField(null=True)),
+        #     ],
+        #     options={
+        #         'db_table': 'substance',
+        #     },
+        # ),
         
         migrations.AddField(
             model_name='library',
             name='version_number',
             field=models.IntegerField(default=0),
         ),
-        migrations.AddField(
-            model_name='reagent',
-            name='substance_id',
-            field=models.CharField(null=True,max_length=8),
-        ),
+        # migrations.AddField(
+        #     model_name='reagent',
+        #     name='substance_id',
+        #     field=models.CharField(null=True,max_length=8),
+        # ),
         migrations.AddField(
             model_name='reagent',
             name='comment',
@@ -330,7 +329,8 @@ class Migration(migrations.Migration):
             model_name='library',
             name='loaded_by',
             field=models.ForeignKey(related_name='libraries_loaded', 
-                to='db.ScreensaverUser', null=True),
+                to='db.ScreensaverUser', null=True,
+                on_delete=django.db.models.deletion.SET_NULL),
         ),
         migrations.RunPython(convert_django_autofields),
         migrations.RemoveField(model_name='reagent',name='facility_batch_id'),
@@ -341,7 +341,7 @@ class Migration(migrations.Migration):
         migrations.RemoveField(model_name='activity',name='version'),
         migrations.RemoveField(model_name='attachedfile',name='version'),
         migrations.RemoveField(model_name='abasetestset',name='version'),
-        migrations.RemoveField(model_name='equipmentused',name='version'),
+#         migrations.RemoveField(model_name='equipmentused',name='version'),
         migrations.RemoveField(model_name='annotationtype',name='version'),
         migrations.RemoveField(model_name='assayplate',name='version'),
         migrations.RemoveField(model_name='assaywell',name='version'),
@@ -360,7 +360,7 @@ class Migration(migrations.Migration):
         migrations.RemoveField(model_name='librarycontentsversion',name='version'),
         migrations.RemoveField(model_name='copy',name='version'),
         migrations.RemoveField(model_name='plate',name='version'),
-        migrations.RemoveField(model_name='wellvolumeadjustment',name='version'),
+#         migrations.RemoveField(model_name='wellvolumeadjustment',name='version'),
 
         # screening_room_user decommission
         migrations.AddField(
@@ -522,6 +522,9 @@ class Migration(migrations.Migration):
                 'db_table': 'cached_query',
             },
         ),
+# NOTE: WellQueryIndex is being created on the fly with API initialization:
+# - it is not necessary to add to migrations, but this can added as a final 
+# migration to keep django makemigrations happy.
 #         migrations.CreateModel(
 #             name='WellQueryIndex',
 #             fields=[
@@ -533,6 +536,7 @@ class Migration(migrations.Migration):
 #                 'db_table': 'well_query_index',
 #             },
 #         ),
+        
         migrations.CreateModel(
             name='UserChecklist',
             fields=[
@@ -570,14 +574,14 @@ class Migration(migrations.Migration):
             name='funding_support',
             field=models.TextField(null=True),
         ),
-        # 20170524
-        # Allow serviced user to be null; either serviced_user or 
-        # serviced_screen required (TODO: verify workflow with JAS/KR)
-        migrations.AlterField(
-            model_name='serviceactivity',
-            name='serviced_user',
-            field=models.ForeignKey(to='db.ScreensaverUser', null=True),
-        ),
+#         # 20170524
+#         # Allow serviced user to be null; either serviced_user or 
+#         # serviced_screen required (TODO: verify workflow with JAS/KR)
+#         migrations.AlterField(
+#             model_name='serviceactivity',
+#             name='serviced_user',
+#             field=models.ForeignKey(to='db.ScreensaverUser', null=True),
+#         ),
         
         migrations.CreateModel(
             name='ScreenFundingSupports',
@@ -622,23 +626,24 @@ class Migration(migrations.Migration):
             field=models.TextField(null=True),
         ),
         
-        migrations.CreateModel(
-            name='UserFacilityUsageRole',
-            fields=[
-                ('id', models.AutoField(
-                    verbose_name='ID', serialize=False, auto_created=True, 
-                    primary_key=True)),
-                ('facility_usage_role', models.TextField()),
-                ('screensaver_user', models.ForeignKey(to='db.ScreensaverUser')),
-            ],
-            options={
-                'db_table': 'user_facility_usage_role',
-            },
-        ),
-        migrations.AlterUniqueTogether(
-            name='userfacilityusagerole',
-            unique_together=set([('screensaver_user', 'facility_usage_role')]),
-        ),
+        # Removed - 20180920 per JAS
+        # migrations.CreateModel(
+        #     name='UserFacilityUsageRole',
+        #     fields=[
+        #         ('id', models.AutoField(
+        #             verbose_name='ID', serialize=False, auto_created=True, 
+        #             primary_key=True)),
+        #         ('facility_usage_role', models.TextField()),
+        #         ('screensaver_user', models.ForeignKey(to='db.ScreensaverUser')),
+        #     ],
+        #     options={
+        #         'db_table': 'user_facility_usage_role',
+        #     },
+        # ),
+        # migrations.AlterUniqueTogether(
+        #     name='userfacilityusagerole',
+        #     unique_together=set([('screensaver_user', 'facility_usage_role')]),
+        # ),
         migrations.RunSQL('alter table reagent alter column library_contents_version_id drop not null'),
 
         #  Update assay_well with the plate_number to expedite plate data loading stats 
@@ -806,6 +811,22 @@ class Migration(migrations.Migration):
             name='useragreement',
             unique_together=set([('screensaver_user', 'type')]),
         ),
+
+#         migrations.AddField(
+#             model_name='screen',
+#             name='pin_transfer_approved_by',
+#             field=models.ForeignKey('ScreensaverUser', null=True, 
+#                 on_delete=models.SET_NULL, 
+#                 related_name='pin_transfer_approved_screen', )),
+#         migrations.AddField(
+#             model_name='screen',
+#             name='pin_transfer_date_approved',
+#             field=models.DateField(null=True)),
+#         migrations.AddField(
+#             model_name='screen',
+#             name='pin_transfer_comments',
+#             field=models.TextField(null=True)),
+         
 
         
     ]

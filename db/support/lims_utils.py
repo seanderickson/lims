@@ -2,8 +2,6 @@
 from __future__ import unicode_literals
 
 from collections import defaultdict
-from decimal import Decimal
-import decimal
 from itertools import chain, combinations
 import logging
 import math
@@ -141,7 +139,8 @@ def letter_to_row_index(rowletter):
     if len(rowletter) == 1:
         return 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.index(rowletter.upper())
     else:
-        return letter_to_row_index(rowletter[-1]) + 26*(letter_to_row_index(rowletter[:-1])+1)
+        return letter_to_row_index(rowletter[-1]) \
+            + 26*(letter_to_row_index(rowletter[:-1])+1)
     
 def well_row_col(well_name):
     '''
@@ -151,7 +150,8 @@ def well_row_col(well_name):
     if not match:
         raise ValidationError(
             key='well_name', 
-            msg='%r does not match pattern: %s' % (well_name,WELL_NAME_PATTERN.pattern))
+            msg='%r does not match pattern: %s' % (
+                well_name,WELL_NAME_PATTERN.pattern))
     return (letter_to_row_index(match.group(1)), int(match.group(2))-1)
 
 def well_name_row_index(well_name):
@@ -169,7 +169,8 @@ def well_id_plate_number(well_id):
     if not match:
         raise ValidationError(
             key='well_id', 
-            msg='%r Does not match pattern: %s' % (well_id,WELL_ID_PATTERN.pattern))
+            msg='%r Does not match pattern: %s' % (
+                well_id,WELL_ID_PATTERN.pattern))
     return int(match.group(1))
 
 def well_id_name(well_id):
@@ -178,11 +179,45 @@ def well_id_name(well_id):
     if not match:
         raise ValidationError(
             key='well_id', 
-            msg='%r Does not match pattern: %s' % (well_id,WELL_ID_PATTERN.pattern))
+            msg='%r Does not match pattern: %s' % (
+                well_id,WELL_ID_PATTERN.pattern))
     wellrow = match.group(3).upper()
     wellcol = match.group(4)
     return '%s%s' % (wellrow, str(wellcol).zfill(2)) 
 
+# def parse_copywell_id(pattern):
+#     match = COPYWELL_ID_PATTERN.match(pattern)
+#     if not match:
+#         return (None,None,None,None)
+#     else:
+#         copy = match.group(2)
+#         plate = int(match.group(3))
+#         wellrow = match.group(5).upper()
+#         wellcol = match.group(6)
+#         wellname = '%s%s' % (wellrow, str(wellcol).zfill(2)) 
+# #         plate = str(plate).zfill(5)
+#         return ( copy, plate, well_id(plate, wellname), wellname)
+
+def parse_copywell_id(pattern):
+    
+    parts = pattern.split('/')
+    
+    if len(parts) < 3:
+        raise ValidationError(
+            key='copywell_id',
+            msg='Invalid pattern: must contain '
+                '"library_short_name/copy_name/well_id"')
+    else:
+        library_short_name = parts[0]
+        copy_name = parts[1]
+        _well_id = parts[2]
+        plate_number = well_id_plate_number(_well_id)
+        well_name = well_id_name(_well_id)
+            
+        return (
+            copy_name, plate_number, 
+            well_id(plate_number, well_name), well_name)
+        
 def parse_well_id(pattern):
     match = WELL_ID_PATTERN.match(pattern)
     if not match:
@@ -225,7 +260,6 @@ def parse_named_well_ranges(raw_data, plate_size):
     logger.info('parse_named_well_ranges(%r, %r) ', raw_data, plate_size)
     
     errors = defaultdict(list)
-#     wells_shared_between_ranges_error_msg = 'duplicate wells found in ranges: [%s]'
     named_well_ranges = {}
     
     if not raw_data:
@@ -283,6 +317,7 @@ def parse_named_well_ranges(raw_data, plate_size):
     return (named_well_ranges, errors)
 
 def parse_well_ranges(raw_data, plate_size, errors):
+    '''Parse wells defined in well range raw_data entered by the user'''
     
     logger.info('parse_well_ranges: %r, %r', raw_data, plate_size);
     WELL_PATTERN = re.compile(r'^([a-zA-Z]{1,2})(\d{1,2})$')
@@ -320,7 +355,8 @@ def parse_well_ranges(raw_data, plate_size, errors):
                 row_range = sorted([start_row,stop_row])
                 logger.info('input: %r, row_range: %r', parts, row_range)
                 if row_range[1] >= n_rows:
-                    errors[ERROR_WELL_ROW_OUT_OF_RANGE%row_to_letter(n_rows-1)].append(input)
+                    errmsg = ERROR_WELL_ROW_OUT_OF_RANGE % row_to_letter(n_rows-1)
+                    errors[errmsg].append(input)
                     continue
                 for i in range(0,n_cols):
                     for j in range(row_range[0],row_range[1]+1):
@@ -357,7 +393,8 @@ def parse_well_ranges(raw_data, plate_size, errors):
                 row_range = sorted([start_row,stop_row])
                 logger.info('well range: %r, %r, %r', parts,row_range,col_range)
                 if row_range[1] >= n_rows:
-                    errors[ERROR_WELL_ROW_OUT_OF_RANGE%row_to_letter(n_rows-1)].append(input)
+                    errmsg = ERROR_WELL_ROW_OUT_OF_RANGE%row_to_letter(n_rows-1)
+                    errors[errmsg].append(input)
                     continue
                 for i in range(col_range[0],col_range[1]+1):
                     for j in range(row_range[0],row_range[1]+1):
@@ -369,7 +406,8 @@ def parse_well_ranges(raw_data, plate_size, errors):
             if ROW_PATTERN.match(input):
                 row = letter_to_row_index(ROW_PATTERN.match(input).group(2))
                 if row >= n_rows:
-                    errors[ERROR_WELL_ROW_OUT_OF_RANGE%row_to_letter(n_rows-1)].append(input)
+                    errmsg = ERROR_WELL_ROW_OUT_OF_RANGE%row_to_letter(n_rows-1)
+                    errors[errmsg].append(input)
                     continue
                 for i in range(0,n_cols):
                     wells.append(get_well_name(row,i))
@@ -384,7 +422,8 @@ def parse_well_ranges(raw_data, plate_size, errors):
                 row = letter_to_row_index(WELL_PATTERN.match(input).group(1))
                 col = int(WELL_PATTERN.match(input).group(2))-1
                 if row >= n_rows:
-                    errors[ERROR_WELL_ROW_OUT_OF_RANGE%row_to_letter(n_rows-1)].append(input)
+                    errmsg = ERROR_WELL_ROW_OUT_OF_RANGE%row_to_letter(n_rows-1)
+                    errors[errmsg].append(input)
                     continue
                 if col >= n_cols:
                     errors[ERROR_WELL_COL_OUT_OF_RANGE%n_cols].append(input)
@@ -399,8 +438,8 @@ def parse_well_ranges(raw_data, plate_size, errors):
    
 def parse_wells_to_leave_empty(wells_to_leave_empty, plate_size):
     '''
-    TODO: replace with parse_well_ranges
     Parse the wells to leave empty field of the Cherry Pick Request.
+    TODO: replace with parse_well_ranges
     '''
 
     logger.debug('raw wells_to_leave_empty: %r, plate_size: %r', 
@@ -514,75 +553,6 @@ def find_minimal_satisfying_set(complete_set,instance_sets):
             min_satisfying_set = subset
             break
     return min_satisfying_set
-
-def get_siunit_symbol(test_value):
-    
-    return get_siunit(test_value)[0]
-
-def get_siunit(test_value):
-    '''
-    Return the best match (SI Unit symbol, value) for the given
-    test_value, such that:
-    test_value can be represented a number between 1 and 1000;
-    (best_match_symbol_val)<=test_value<(next_higher_symbol_val)
-    '''
-    siunits = [
-      ['T', 1e12],
-      ['G', 1e9],
-      ['M', 1e6],
-      ['k', 1e3],
-      ['', 1],
-      ['m', 1e-3,],
-      ['μ', 1e-6,],
-      ['n', 1e-9 ],
-      ['p', 1e-12 ]
-      ]
-    for symbol,val in siunits:
-        if val <= test_value:
-            return (symbol,val)
-    return None
-
-def convert_decimal(
-    raw_val, default_unit=1e-6, decimals=1, multiplier=None, 
-    track_significance=False):
-    '''
-    Convert a decimal by scaling to the default unit and rounding to the 
-    given decimals (decimal digits), optionally multiplying by a multiplier.
-    
-    @param default_unit adjust raw_val to the "default_unit" 
-    (as defined in the "display_options")
-    - e.g. if default_unit = 1e-6:
-        adjust the raw_val = raw_val.scaleb(6)
-    - e.g. if default_unit = 1e6:
-        adjust the raw_val = raw_val.scaleb(-6)
-    
-    @param decimals digits of precision to apply
-    @param multiplier (Note: only the exponent of the multiplier is used, so
-    only powers of 10 may be used)
-    @param track_significance if False, then trailing zeros are dropped
-    '''
-    assert decimals >= 0, 'decimals must be >= 0'
-    
-    # get the scale (exponent) of the default unit
-    # negate the scale for use with Decimal.scaleb()
-    scale = -Decimal(str(default_unit)).adjusted()
-    if multiplier is not None:
-        # get the scale (exponent) of the multiplier
-        multiplier = Decimal(str(multiplier)).adjusted()
-        if multiplier != 0:
-            scale = scale+multiplier
-    val = Decimal(raw_val)
-    if scale != 0:
-        val = val.scaleb(scale)
-    decimals = Decimal('1e-%d'%int(decimals))
-    val = val.quantize(decimals, decimal.ROUND_HALF_UP)
-        
-    def remove_exponent(d):
-        return d.quantize(Decimal(1)) if d == d.to_integral() else d.normalize()
-    if track_significance is False:
-        val = remove_exponent(val)
-    
-    return val
 
 def find_ranges(list_of_numbers):
     list_of_numbers = sorted(list_of_numbers)

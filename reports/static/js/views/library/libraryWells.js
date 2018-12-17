@@ -17,6 +17,14 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
   
   var LibraryWellsView = Backbone.Layout.extend({
     
+    // REAGENT_RESTRICTED_FIELDS: visible only to Admins
+    // TODO: move this to metadata
+    REAGENT_RESTRICTED_FIELDS: [
+      'sequence','anti_sense_sequence',
+      'smiles', 'inchi', 'molecular_formula',
+        'molecular_weight','molecular_mass','molfile','structure_image',
+        'molfile'],
+        
     template: _.template(layout),
     
     initialize: function(args) {
@@ -40,11 +48,11 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       this.showList(this.uriStack);
     },     
     
-    showDataColumnsDialog: function(listView){
+    showDataColumnsDialog: function(listView, study_mode){
       var self = this;
       
       var searchHash = listView.collection.listModel.get(appModel.URI_PATH_SEARCH);
-      var dc_ids = _.result(searchHash,'dc_ids', '');
+      var dc_ids = _.result(searchHash,appModel.API_PARAM_DC_IDS, '');
       if (dc_ids){
         if (!_.isArray(dc_ids)){
           dc_ids = dc_ids.split(',')
@@ -58,9 +66,15 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         includes: [
           'screen_facility_id','screen_title','name','description',
           'assay_data_type','ordinal','study_type'],
-        order_by: ['screen_facility_id', 'ordinal'],
+        order_by: ['-screen_facility_id', 'ordinal'],
         use_vocabularies: false
       };
+      if (study_mode){
+        data_for_get['study_type__is_null'] = false;
+        data_for_get['order_by'] = ['screen_facility_id', 'ordinal'];
+      } else {
+        data_for_get['study_type__is_null'] = true;
+      }
       
       if (self.resource.key == 'silencingreagent'){
         data_for_get['screen_type'] = 'rnai';
@@ -161,11 +175,10 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         });
         var searchHash = _.clone(
           listView.collection.listModel.get(appModel.URI_PATH_SEARCH));
-        searchHash['dc_ids'] = dc_ids_selected;
+        searchHash[appModel.API_PARAM_DC_IDS] = dc_ids_selected;
         listView.collection.listModel.set(appModel.URI_PATH_SEARCH, searchHash);
         
       }; // showColumns
-      
       
       function showTreeSelector(collection){
         console.log('showTreeSelector', dc_ids);
@@ -180,15 +193,8 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         
         var show_positives_control = $([
           '<label class="checkbox-inline pull-left" ',
-          '   title="Show positive columns only" >',
-          '  <input type="checkbox">positives',
-          '</label>'
-          ].join(''));
-        
-        var show_studies_control = $([
-          '<label class="checkbox-inline pull-left" ',
-          '   title="Show study annotations" >',
-          '  <input type="checkbox">show studies',
+          '   title="Show positive indicator columns only" >',
+          '  <input type="checkbox">Positive indicator columns</input>',
           '</label>'
           ].join(''));
         
@@ -196,12 +202,10 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
           search: function(){
             var show_pos_only = 
               show_positives_control.find('input[type="checkbox"]').prop('checked');
-            var show_studies = 
-              show_studies_control.find('input[type="checkbox"]').prop('checked');
             var searchedModels;
             if (!_.isEmpty(this.getSearchVal())){
               searchedModels = OtherColumnsTreeSelector.__super__.search.apply(this,arguments);
-            } else if (show_pos_only || show_studies ) {
+            } else if (show_pos_only ) {
               searchedModels = this.collection.models;
             } else{
               this.clearSearch();
@@ -212,29 +216,27 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
               if (shown && show_pos_only){
                 shown = model.get('positives_count')>0;
               }
-              if (shown && show_studies){
-                shown = !_.isEmpty(model.get('study_type'));
-              }
               return shown;
             });
             return searchedModels;
           }
         });
-        
+
+        var extraControls = [show_positives_control];
+        var title = 'Select screen columns to display';
+        if (study_mode){
+          extraControls = [];
+          title = 'Select study columns to display';
+        }
         var dcView = new OtherColumnsTreeSelector({
           collection: collection,
           treeAttributes: ['screen_info', 'title'],
           treeAttributesForTypeAhead: ['screen_info'],
-          extraControls: [show_positives_control, show_studies_control]
+          extraControls: extraControls,
+          startExpanded: study_mode
         });
 
         show_positives_control.find('input[type="checkbox"]').change(function(e) {
-          var searchedModels = dcView.search();
-          if (e.target.checked || !_.isEmpty(searchedModels)) {
-            collection.trigger('searchChange', searchedModels);
-          }
-        });
-        show_studies_control.find('input[type="checkbox"]').change(function(e){
           var searchedModels = dcView.search();
           if (e.target.checked || !_.isEmpty(searchedModels)) {
             collection.trigger('searchChange', searchedModels);
@@ -258,10 +260,9 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
               showColumns(dcView.getSelected());
             },
             view: el,
-            title: 'Select Screen and Study Columns to display'
+            title: title
         });
       }; // showTreeSelector
-      
       
     },
 
@@ -302,17 +303,47 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
           newResource['options']['rpp'] = '24';
         }
         
-//        var extraControls = [];
+        var extraControls = self.args.extraControls || [];
+        var extraListControls = [];
+        var show_study_columns_button = $([
+          '<button class="btn btn-default btn-sm" role="button" ',
+          'id="showStudyColumns" title="Show study columns" >',
+          'Add study columns',
+          '</button>'
+          ].join(''))
+        extraListControls.push(show_study_columns_button);
+        show_study_columns_button.click(function(e){
+          self.showDataColumnsDialog(view, true);
+        });
+
         var show_data_columns_control = $([
-          '<button class="btn btn-default btn-sm pull-right" role="button" ',
-          'id="show_data_columns_control" title="Show study and screen data columns" >',
-          'Select Study and Screen Columns',
+          '<button class="btn btn-default btn-sm" role="button" ',
+          'id="show_data_columns_control" title="Show screen data columns" >',
+          'Add screen columns',
           '</button>'
           ].join(''));
+        extraListControls.push(show_data_columns_control);
         show_data_columns_control.click(function(e){
           self.showDataColumnsDialog(view);
         });
-//        extraControls.push(show_data_columns_control);
+        
+        var show_restricted_control = $([
+          '<label class="checkbox-inline pull-left" style="display: none;" ',
+          '   title="Show restricted structure or sequence information, if applicable" >',
+          '  <input type="checkbox">Show restricted structures</input>&nbsp;',
+          '</label>'
+          ].join(''));
+        if (self.resource.key == 'silencingreagent'){
+          show_restricted_control = $([
+            '<label class="checkbox-inline pull-left" style="display: none;" ',
+            '   title="Show restricted structure or sequence information, if applicable" >',
+            '  <input type="checkbox">Show restricted sequences</input>',
+            '</label>'
+            ].join(''));
+        }
+        if (appModel.hasPermission(newResource.key, 'read')){
+          extraControls.push(show_restricted_control);
+        }
 
         ///////////////////////////////////////////////////////////
         // Override the well link and provide next/previous buttons
@@ -489,11 +520,16 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         //});
         
         var WellListView = ListView.extend({
-          afterRender: function(){
-            ListView.prototype.afterRender.apply(this,arguments);
-            this.$('#list_controls').append(show_data_columns_control);
-            return this;
-          }
+          reportState: function(){
+            var viewInstance = this;
+            ListView.prototype.reportState.apply(this,arguments);
+            var currentSearch = _.omit(
+              viewInstance.listModel.get(appModel.URI_PATH_SEARCH),
+              appModel.API_PARAM_DC_IDS);
+            console.log('currentSearch', currentSearch);
+            $('#clear_searches').toggle(!_.isEmpty(currentSearch));
+          },
+          
         });
 
         ///////////////////////////////////////////////////////////
@@ -510,7 +546,6 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
           }
         });
         
-        var extraControls = self.args.extraControls || [];
         var showPreviewControl = $([
           '<label class="checkbox-inline" ', 
           ' style="margin-left: 10px;" ',
@@ -543,10 +578,36 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
           resource: newResource,
           collection: collection,
           url: url,
-          extraControls: extraControls
+          extraControls: extraControls,
+          extraListControls: extraListControls
         });
 
         var view = new WellListView(viewArgs);
+
+        function has_restricted_fields(includes) {
+          return !_.isEmpty(_.intersection(includes, self.REAGENT_RESTRICTED_FIELDS));
+        }
+        self.listenTo(view.listModel, 'change:includes', 
+          function(model, changed, options){
+            show_restricted_control.toggle(has_restricted_fields(model.get('includes')));
+          });
+        show_restricted_control.toggle(has_restricted_fields(view.listModel.get('includes')));
+        
+        var initialSearchHash = view.listModel.get(appModel.URI_PATH_SEARCH);
+        var initial_show_restricted = 
+          _.result(initialSearchHash, appModel.API_PARAM_SHOW_RESTRICTED, false);
+        if (initial_show_restricted && initial_show_restricted.toLowerCase()=='true'){
+          show_restricted_control.find('input[type="checkbox"]').prop('checked',true);
+        }
+        show_restricted_control.find('input[type="checkbox"]').change(function(e) {
+          var searchHash = _.clone(view.listModel.get(appModel.URI_PATH_SEARCH));
+          if (e.target.checked) {
+            searchHash[appModel.API_PARAM_SHOW_RESTRICTED] = 'true';
+          } else {
+            searchHash[appModel.API_PARAM_SHOW_RESTRICTED] = 'false';
+          }
+          view.listModel.set(appModel.URI_PATH_SEARCH,searchHash);
+        });
         
         showPreviewControl.click(function(e){
           var searchHash = _.clone(view.listModel.get(appModel.URI_PATH_SEARCH));
@@ -685,7 +746,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       console.log('parsed listOptions', listOptions);
       var dc_ids = [];
       if (_.has(listOptions, appModel.URI_PATH_SEARCH)){
-        if (_.has(listOptions.search,'dc_ids')){
+        if (_.has(listOptions.search,appModel.API_PARAM_DC_IDS)){
           dc_ids = listOptions.search.dc_ids;
           if (dc_ids.length > 0 && _.isString(dc_ids)){
             dc_ids = dc_ids.split(',');
@@ -693,16 +754,21 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         }
       }
       dc_ids = _.map(dc_ids, function(dc_id){ return parseInt(dc_id); });
-      console.log('dc_ids', dc_ids);
+      console.log(appModel.API_PARAM_DC_IDS, dc_ids);
       if (!_.isEmpty(dc_ids)){
         // Re-fetch the schema if extra data columns are specified
         var options = {};
-        options['dc_ids'] = dc_ids;
+        options[appModel.API_PARAM_DC_IDS] = dc_ids;
         var schemaUrl = [self.resource.apiUri,'schema'].join('/');
         appModel.getResourceFromUrl(schemaUrl, createReagentView, options);
       } else {
-        // 20180320 - only get the schema if it is not in the initialize args
-        createReagentView(self.resource);
+        // 20181115 - get the explicit schema specified:
+        // TODO: Due to a hack for the composite schema generation for the reagent
+        // resource, the reagent schema must be generated
+        // see ReagentResource.build_schema
+        var schemaUrl = [self.resource.apiUri,'schema'].join('/');
+        appModel.getResourceFromUrl(schemaUrl, createReagentView, options);
+        // createReagentView(self.resource);
       }
     }
     

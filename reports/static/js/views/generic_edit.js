@@ -62,7 +62,16 @@ define([
       this.$el.on('blur', function (e) {
         $(this).off('mousewheel.disableScroll')
       });     
-    }
+    },
+    
+    render: function() {
+      Backbone.Form.editors.Number.prototype.render.apply(this);
+      if (this.schema.placeholder) {
+        this.$el.attr('placeholder', this.schema.placeholder);
+      }
+      return this;
+    },
+    
   });
   
   var SIunitEditor = Backbone.Form.editors.Base.extend({
@@ -567,6 +576,8 @@ define([
     }
   });
   
+  
+  // TODO: 20181029 - replace Chosen select with Select2 (see search_box.js)
   var ChosenSelect = Backbone.Form.editors.Select.extend({
     render: function() {
       var self = this;
@@ -839,6 +850,7 @@ define([
           },
         'select':
           {
+            // TODO: 20181029 - replace Chosen select with Select2 (see search_box.js)
             type: ChosenSelect,
             editorClass: 'chosen-select',
             editorAttrs: { widthClass: 'col-sm-5'}
@@ -882,12 +894,16 @@ define([
          };
       
       function create_title(fi){
-        if (fi.vocabulary_scope_ref){
-          return Iccbl.formatString(
-            '<a href="#vocabulary/search/scope__exact={vocabulary_scope_ref}" '
-            + ' target=_blank >{title}</a>',fi);
+        var title = _.result(fi.display_options, 'editorTitle', fi.title);
+        
+        if (Iccbl.appModel.getCurrentUser().is_superuser
+            && fi.vocabulary_scope_ref){
+          return '<a href="#vocabulary/search/scope__exact='
+            + fi.vocabulary_scope_ref + '" target=_blank >'
+            + title
+            + '</a>';
         } else {
-          return fi.title;
+          return title
         }
       };
       
@@ -1074,16 +1090,14 @@ define([
     },
     
     _createVocabularyChoices: function(fi) {
-      // 1. start with fieldinformation.choices
+      // 1. start with fieldinformation.choiceHash
       // 2. override with fieldinformation.vocabulary:
       // 2.a from fieldinformation.vocabulary, if available
       // 2.b fetch and add vocabulary from server
+
       var choiceHash = fi.choiceHash || [];
       if (_.isEmpty(choiceHash)) {
-        //  TODO 20171204 - test using the fi.choices to override
-        //      if (!_.isEmpty(fi.vocabulary_scope_ref)) {
         choiceHash = []
-        // replace the fi.choices with the vocabulary, if available
         try{
           var vocabulary = appModel.getVocabulary(fi.vocabulary_scope_ref);
           _.each(_.keys(vocabulary),function(choice) {
@@ -1146,6 +1160,7 @@ define([
       console.log('afterRender...');
 
       console.log('setup single selects using chosen...');
+      // TODO: 20181029 - replace Chosen select with Select2 (see search_box.js)
       // See http://harvesthq.github.io/chosen/
       this.$el.find('.chosen-select').chosen({
         disable_search_threshold: 3,
@@ -1374,7 +1389,8 @@ define([
       e.preventDefault();
       e.stopPropagation();
       var self = this;
-      var errors, changedAttributes,
+      var errors, 
+        changedAttributes = {},
         options = {};
       console.log('click_save');
       
@@ -1410,29 +1426,28 @@ define([
         return;
       }
       
-      // NOTE: backbone will save all attributes if model.isNew
-      // so changedAttributes will have no effect.
-      if (self.fullSaveOnEdit ) {
-        changedAttributes = null; 
-      } else {
-        changedAttributes = self._getChangedAttributes(this.model);
-        if (! changedAttributes || _.isEmpty(changedAttributes)) {
-          appModel.showModalMessage({
-            body: 'Form values must be changed or updated in the form in order to submit.',
-            title: 'No updated values found in this form'
-          });
-          return;
-        }
-      }
-
       // Set up options for Backbone sync / AJAX 
       
-      // Wait for the server before setting the new attributes on the model
-      options['wait'] = true;
-      
       if (!  self.model.isNew()) {
+        
+        // NOTE: backbone will save all attributes if model.isNew
+        // so changedAttributes will have no effect.
+        if (self.fullSaveOnEdit) {
+          changedAttributes = null; 
+        } else {
+          changedAttributes = self._getChangedAttributes(this.model);
+          if (! changedAttributes || _.isEmpty(changedAttributes)) {
+            appModel.showModalMessage({
+              body: 'Form values must be changed or updated in the form in order to submit.',
+              title: 'No updated values found in this form'
+            });
+            return;
+          }
+        }
+        
         options['patch'] = true;
       }else{
+        changedAttributes = self._getChangedAttributes(this.model);
         // If new, then add any previous attributes that are non-null (defaults)
         _.each(_.pairs(self.model.previousAttributes()),function(pair){
           var key = pair[0];
@@ -1451,6 +1466,9 @@ define([
         options.attrs = changedAttributes;
       }      
       
+      // Wait for the server before setting the new attributes on the model
+      options['wait'] = true;
+
       var headers = options['headers'] = {};
       
       if ( _.result(this.model.resource,'require_comment_on_save') === true) {

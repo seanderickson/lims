@@ -5,9 +5,9 @@ e,field.visibility,3,,"Visible in edit views","Visible in edit views"
 summary,field.visibility,4,,"Visible in summary views (if available)","Visible in summary views"
 billing,field.visibility,5,,"Visible in billing views","Visible in billing views"
 protocol,field.visibility,6,,"Visible in protocol views (Screens)","Visible in protocol views"
-api,field.visibility,7,,"Visible at the API, but not in the UI","Visible on the API only"
+api,field.visibility,7,"Note: this key should be used exclusively, and not with other keys in the visibility property of a field.","Visible from the API, but not in the UI, not visible in the columns selector; shown if the * selector is used","Visible on the API only"
 report,field.visibility,8,,"Visible as part of the standard complete report","Report View"
-none,field.visibility,9,"Note: field will not be shown unless explicitly added, (""*"" will not show them).","Not visible by default","Not visible by default"
+none,field.visibility,9,"Note: this key should be used exclusively, and not with other keys in the visibility property of a field.","Not visible by default, not visible in the UI columns selector, not shown when includes * selector is used; only visible when in the manual includes","Not visible by default"
 c,field.editability,1,,"Visible on creation","Visible on creation"
 u,field.editability,2,,"Visible on update","Visible on update"
 l,field.editability,3,,"Allow visibility in the lists in edit mode","Visible in edit list view"
@@ -47,7 +47,7 @@ read,permission.type,1,,"permission to read the resource",Read
 write,permission.type,2,,"permission to write the resource",Write
 json,resource.content_type,0,,application/json,JSON
 csv,resource.content_type,1,,text/csv,CSV
-xls,resource.content_type,2,"The Excel 2007+ XLSX file format",application/xls,XLS
+xls,resource.content_type,2,"The Excel 2007+ XLSX file format",application/xls,XLSX
 sdf,resource.content_type,3,"see http://download.accelrys.com/freeware/ctfile-formats/ctfile-formats.zip",chemical/x-mdl-sdfile,SDF-molfile
 female,user.gender,1,,Female,Female
 male,user.gender,2,,Male,Male

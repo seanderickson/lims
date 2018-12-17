@@ -37,6 +37,10 @@ def create_library_comments(apps,schema_editor):
         for row in cursor:
             _dict = dict(zip(sql_keys,row))
             
+            if 'original library contents (migration)' in _dict['comments']:
+                logger.info('ignoring activity log for library: %r',_dict)
+                continue
+            
             log = ApiLog()
             # Note: as long as users migration has been completed, all
             # user accounts will have a "username"

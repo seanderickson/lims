@@ -11,6 +11,16 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
+        
+        # NOTE: complete this operation from the last (0010) due to tx triggers 
+        # blocking this action in the (0010).
+        # NOTE: should just drop the foreign key constraint here
+        migrations.RunSQL('''
+            alter table screen drop constraint fk_pin_transfer_admin_activity_id;
+        '''),
+#         migrations.RunSQL('''
+#             update screen set pin_transfer_admin_activity_id = null;
+#         '''),
 
         # TODO: 20170918 ======
         # - to be tested with the orchestra migrations
@@ -54,16 +64,6 @@ class Migration(migrations.Migration):
             'ALTER TABLE screening_room_user '
             'DROP CONSTRAINT fk_screening_room_user_to_lab_head'),
         
-#         # 20170918; stashing here, to avoid sql pending trigger error in 0003
-#         migrations.RemoveField(
-#             model_name='screen',
-#             name='transfection_agent',
-#         ),
-#         migrations.RenameField(
-#             model_name='screen', 
-#             old_name='transfection_agent_text', 
-#             new_name='transfection_agent'
-#         ),
         migrations.AlterField(
             model_name='screen', name='project_phase', 
             field=models.TextField(null=True),

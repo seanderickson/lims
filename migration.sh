@@ -378,16 +378,22 @@ function migratedb {
     echo "migration $migration complete: $(ts)" >> "$LOGFILE"
   fi
     
+  migration='0022'
+  if [[ ! $completed_migrations =~ $migration ]]; then
+    $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
+    echo "migration $migration complete: $(ts)" >> "$LOGFILE"
+  fi
+    
 
 # TEMP: 20170614 disable post migrations; leaves vestigal fields/tables in place TODO: reinstate    
-#    migration='0098' 
-#    if [[ ! $completed_migrations =~ $migration ]]; then
-#      echo "migration $migration: $(ts) ..." >> "$LOGFILE"
-#      $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
-#      echo "migration $migration complete: $(ts)" >> "$LOGFILE"
-#    fi
+  migration='0098' 
+  if [[ ! $completed_migrations =~ $migration ]]; then
+   echo "migration $migration: $(ts) ..." >> "$LOGFILE"
+   $DJANGO_CMD migrate db $migration >>"$LOGFILE" 2>&1 || error "db $migration failed: $?"
+   echo "migration $migration complete: $(ts)" >> "$LOGFILE"
+  fi
 
-    # substance ID generation left until last
+  # substance ID generation left until last
 #    migration='0099' 
 #    if [[ ! $completed_migrations =~ $migration ]]; then
 #      echo "migration $migration: $(ts) ..." >> "$LOGFILE"
@@ -538,7 +544,7 @@ function setup_production_users {
   PYTHONPATH=. python reports/utils/db_init.py  \
     --input_dir=$BOOTSTRAP_PRODUCTION_DIR \
     -f ${BOOTSTRAP_PRODUCTION_DIR}/api_init_actions_patch.csv \
-    -u http://localhost:${BOOTSTRAP_PORT}/reports/api/v1 -c ${credential_file} >>"$LOGFILE" 2>&1
+    -u http://localhost:${BOOTSTRAP_PORT} -c ${credential_file} >>"$LOGFILE" 2>&1
   if [[ $? -ne 0 ]]; then
     kill $server_pid
     error "bootstrap production data failed: $?"
@@ -686,9 +692,9 @@ function create_studies {
   
   echo "wait for server process: $server_pid to start..." >>"$LOGFILE" 
   sleep 10
-  echo "create study $study_id, $study_file ..." >>"$LOGFILE" 
   study_id=200001
   study_file=docs/studies/study_${study_id}.json
+  echo "create study $study_id, $study_file ..." >>"$LOGFILE" 
   # lead_screener=sde_edit
   PYTHONPATH=. python reports/utils/django_requests.py -c ${credential_file} \
     -a POST http://localhost:${BOOTSTRAP_PORT}/db/api/v1/study/create_screened_count_study \
@@ -754,8 +760,6 @@ function main {
   
   restoredb_data
   
-  result_value_cleanup
-  
   maybe_activate_virtualenv
   
   pip install -r requirements.txt >>"$LOGFILE" 2>&1
@@ -796,11 +800,11 @@ function main {
   
   setup_production_users
   
-  create_studies
+#  create_studies
 
-  if [[ $IS_DEV_SERVER -ne 1 ]]; then
-    run_expiration_scripts
-  fi
+#  if [[ $IS_DEV_SERVER -ne 1 ]]; then
+#    run_expiration_scripts
+#  fi
   # put this here to see if LSF will start reporting results
   # exit 0
     
@@ -811,9 +815,11 @@ function main {
   # wget https://dev.screensaver2.med.harvard.edu/db/api/v1/screenresult/1158?page=1&limit=25&offset=0&library_well_type__eq=experimental
 
   if [[ $IS_DEV_SERVER -ne 1 ]]; then
-    PYTHONPATH=. python reports/utils/django_requests.py -u sde  \
+    PYTHONPATH=. python reports/utils/django_requests.py  -c ${credential_file} \
       -a GET "https://dev.screensaver2.med.harvard.edu/db/api/v1/screenresult/1158?page=1&limit=25&offset=0&library_well_type__eq=experimental"
   fi
+  
+  result_value_cleanup
   
   if [[ $MIGRATE_RESULT_VALUE_TABLE -ne 0 ]]; then
     migrate_result_values
@@ -832,8 +838,6 @@ main "$@"
   
 #  restoredb_data
     
-#  result_value_cleanup
-
 #  maybe_activate_virtualenv
   
 #  pip install -r requirements.txt >>"$LOGFILE" 2>&1
@@ -856,6 +860,8 @@ main "$@"
 #  create_studies
 
 # run_expiration_scripts
+
+#  result_value_cleanup
 
 
 

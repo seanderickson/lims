@@ -9,10 +9,12 @@ define([
   'views/generic_detail_layout',
   'views/generic_edit',
   'views/library/library',
+  'views/library/libraryListView',
   'views/library/libraryCopy',
   'views/library/libraryCopyPlate',
   'views/library/libraryWells',
   'views/library/libraryWell',
+  'views/library/libraryCopyWells',
   'views/screen/screen',
   'views/screen/libraryScreening',
   'views/screen/cherryPickRequest',
@@ -33,8 +35,8 @@ define([
   'templates/about.html'
 ], 
 function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout, 
-         EditView, LibraryView, LibraryCopyView, LibraryCopyPlateView,
-         LibraryWellsView, LibraryWellView,
+         EditView, LibraryView, LibraryListView, LibraryCopyView, LibraryCopyPlateView,
+         LibraryWellsView, LibraryWellView, LibraryCopyWellsView, 
          ScreenView, LibraryScreeningView, CherryPickRequestView,
          PlateLocationView, UserAdminView, UserView, UserGroupAdminView, 
          ActivityListView, ApilogView, ContactView, UploadDataForm, DetailTestView, 
@@ -43,8 +45,9 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
 
   var VIEWS = {
     'ListView': ListView, 
-    'DetailView': DetailLayout, 
+    'DetailView': DetailLayout,
     'LibraryView': LibraryView,
+    'LibraryListView': LibraryListView,
     'LibraryCopyView': LibraryCopyView, 
     'LibraryCopyPlateView': LibraryCopyPlateView,
     'ScreenView': ScreenView,
@@ -59,6 +62,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
     'ActivityListView': ActivityListView,
     'LibraryWellsView': LibraryWellsView,
     'LibraryWellView': LibraryWellView,
+    'LibraryCopyWellsView': LibraryCopyWellsView,
     'ApilogView': ApilogView,
     'content': ContactView
   };
@@ -218,19 +222,19 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       // FIXME: not all types can have an "add"
       //if (appModel.hasPermission(resource.key, 'write')){
       
-      if (_.contains(resource.visibility, 'c')){
-        var showAddButton = $([
-          '<a class="btn btn-default btn-sm pull-down" ',
-            'role="button" id="add_resource" href="#">',
-            'Add</a>'
-          ].join(''));   
-        showAddButton.click(function(e){
-          e.preventDefault();
-          var route = resource.key + '/+add';
-          appModel.router.navigate(route, {trigger: true});
-        });
-        extraControls.push(showAddButton);
-      }
+      //if (_.contains(resource.visibility, 'c')){
+      //  var showAddButton = $([
+      //    '<a class="btn btn-default btn-sm pull-down" ',
+      //      'role="button" id="add_resource" href="#">',
+      //      'Add</a>'
+      //    ].join(''));   
+      //  showAddButton.click(function(e){
+      //    e.preventDefault();
+      //    var route = resource.key + '/+add';
+      //    appModel.router.navigate(route, {trigger: true});
+      //  });
+      //  extraControls.push(showAddButton);
+      //}
       if (_.contains(resource.visibility, 'e')){
         if (resource.key in ['reagent','well','copywell',
                              'librarycopy','librarycopyplate']){
@@ -338,6 +342,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       var consumedStack = this.consumedStack = [];
       var uiResourceId;
       var resource;
+      var titleStack = [appModel.getAppData().get('page_title')];
       
       self.cleanup();
       
@@ -382,10 +387,16 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         Backbone.Layout.setupView(view);
         self.setViewInternal(view);
         self.reportUriStack([]);
-        return;
+        titleStack.push(resource.title);
       }else if (uiResourceId == 'about'){
+        var app_data = appModel.getAppData();
         var AboutView = Backbone.Layout.extend({
-          template: _.template(aboutLayout),
+          template: _.template(aboutLayout)({ 
+            static_url: window.static_url,
+            software_repository_url: app_data.get('software_repository_url'),
+            software_development_facility_url: app_data.get('software_development_facility_url'),
+            software_development_facility: app_data.get('software_development_facility')
+          }),
           initialize: function(){
             this._classname = 'AboutView';
           }
@@ -396,7 +407,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         self.objects_to_destroy.push(view);
         self.setViewInternal(view);
         self.reportUriStack([]);
-        return;
+        titleStack.push(resource.title);
       }else if (uiResourceId == 'contact'){
         $('#navbar').children().removeClass('active');
         $('#navbar').children('#contact').addClass('active');
@@ -404,9 +415,9 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         self.objects_to_destroy.push(view);
         self.setViewInternal(view);
         self.reportUriStack([]);
-        return;
+        titleStack.push(resource.title);
       }
-      if (!_.isEmpty(uriStack) 
+      else if (!_.isEmpty(uriStack) 
             && !_.contains(appModel.LIST_ARGS, uriStack[0]) ) {
         // DETAIL VIEW
         
@@ -415,6 +426,9 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
         }else{ 
           try{
             var _key = Iccbl.popKeyFromStack(resource, uriStack, consumedStack );
+            console.log('Generate detail view:', resource.key, _key, uriStack)
+            titleStack.push(resource.title);
+            titleStack.push(_key);
             var options = {};
             if (uiResourceId == 'screen'){
               // Use the special "ui" url for screen
@@ -436,7 +450,10 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel, ListView, DetailLayout,
       } else {
         // LIST VIEW
         self.showList(resource, uriStack);
+        titleStack.push(_.result(resource,'listing_title', resource.title));
       }
+
+      document.title = titleStack.join(': ');
     }
   });
 

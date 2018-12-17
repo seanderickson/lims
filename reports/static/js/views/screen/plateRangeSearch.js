@@ -34,7 +34,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel,
     ERR_MSG_PROTOCOL_REPLICATES: 
       'Replicate count does not match other visits: ',
     ERR_MSG_PROTOCOL_VOL: 'Volume does not match other visits: ',
-    ERR_MSG_PIN_TRANSFER_NOT_APPROVED: 'The pin transfer approval date has not been entered',
+    ERR_MSG_PIN_TRANSFER_NOT_APPROVED: 'The Screen "Liquid Transfer Approved" status has not been entered',
     ERR_MSG_DATA_MEETING_NOT_COMPLETED: 'The data meeting completed date has not been entered',
     
     initialize: function(args) {
@@ -197,15 +197,15 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel,
           ' style="margin-left: 10px;" ',
           'title="Show plate ranges from existing screenings for the screen" >',
           '  <input id="show_existing" ',
-          '    type="checkbox">Show existing plates',
+          '    type="checkbox">Show screened plates',
           '</label>'
         ].join(''));
       showExistingControl.find('input[type="checkbox"]')
         .prop('checked', urlStackData.show_existing);
 
       var downloadButton = this.downloadButton = $([
-        '<button type="button" class="btn btn-default btn-xs pull-right" ',
-        'id="download_button" >download</button>',
+        '<button type="button" class="btn btn-default btn-xs controls-right" ',
+        'id="download_button" >Download</button>',
       ].join(''));
       var showPlatesLink = this.showPlatesLink = $('<a>', {
         tabIndex : -1,
@@ -213,7 +213,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel,
         target : '_blank',
         title: 'Display plates for the current page'
       }).text('show plates');
-      showPlatesLink.addClass('btn btn-default btn-xs pull-right');
+      showPlatesLink.addClass('btn btn-default btn-xs controls-right');
 
       // Set up the collection
       
@@ -556,9 +556,20 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel,
         }
       }
       
-      if (_.isEmpty(self.model.get('pin_transfer_date_approved'))){
+      if (self.model.has('status_data')){
+        var found = _.find(self.model.get('status_data'), function(status_data){
+          var diffs = _.result(status_data, 'diffs');
+          if (diffs){
+            return diffs[1] == 'transfer_approved';
+          }
+        });
+        if (_.isUndefined(found)){
+          appModel.error(self.ERR_MSG_PIN_TRANSFER_NOT_APPROVED);
+        }
+      }else{
         appModel.error(self.ERR_MSG_PIN_TRANSFER_NOT_APPROVED);
       }
+      
       if (_.isEmpty(self.model.get('data_meeting_complete'))){
         appModel.error(self.ERR_MSG_DATA_MEETING_NOT_COMPLETED);
       }
@@ -690,7 +701,7 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel,
       $form_div.append(form.render().el);
       form.$el.append([
         '<button type="button" class="btn btn-default btn-xs" ',
-        'id="submit_button" >search</button>',
+        'id="submit_button" >Search</button>',
       ].join(''));
       $('#resource_content').append('<div id="plate_range_table"></div>');
 
@@ -715,10 +726,24 @@ function($, _, Backbone, layoutmanager, Iccbl, appModel,
       form.$el.find('form.form-horizontal').append(showFirstCopyOnly);
       form.$el.find('form.form-horizontal').append(showExistingControl);
       
-      PlateRangePrototype._createPlateRangeTable.call(this,
-        self.plate_range_collection, $('#plate_range_table'), false, 
-        ['library_screening_id', 'plate_locations', 'warnings','errors'],
-        self.model.get('facility_id'));
+      //PlateRangePrototype._createPlateRangeTable.call(this,
+      //  self.plate_range_collection, $('#plate_range_table'), false, 
+      //  ['library_screening_id', 'plate_locations', 'warnings','errors'],
+      //  self.model.get('facility_id'));
+
+      // ADDED on 20181031 to wait for collection to be fetched
+      // TODO: TEST: make sure update event is not triggered multiple times, 
+      // and is triggered in all cases.
+      self.plate_range_collection.on('update reset', function(){
+        var extra_cols = ['plate_locations', 'warnings','errors'];
+        if(showExistingControl.find('input[type=checkbox]').prop('checked')){
+          extra_cols.push('library_screening_id');
+        }
+        PlateRangePrototype._createPlateRangeTable.call(this,
+          self.plate_range_collection, $('#plate_range_table'), false, 
+          extra_cols, self.model.get('facility_id'));
+        
+      });
       
       showRetiredPlatesControl.find('input[type=checkbox]').change(function(e) {
         if (showFirstCopyOnly.find('input[type=checkbox]').prop('checked')){

@@ -12,14 +12,14 @@ from django.conf import settings
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ObjectDoesNotExist
 from django.http import HttpResponse
-from django.http.response import Http404, HttpResponseServerError
+from django.http.response import Http404, HttpResponseServerError, HttpResponseForbidden
 from django.shortcuts import render
 
 from db import WELL_ID_PATTERN
-from db.api import AttachedFileAuthorization, PublicationAuthorization
+from db.api import UserGroupAuthorization, PublicationAuthorization,\
+    ReagentResourceAuthorization
 from db.models import ScreensaverUser, Reagent, AttachedFile, Publication, \
     RawDataTransform, SmallMoleculeReagent
-from reports.api import UserGroupAuthorization
 from reports.serialize import XLSX_MIMETYPE
 
 
@@ -34,27 +34,23 @@ def main(request):
 @login_required
 def well_image(request, well_id):
 
-    # TODO: use group authorization - not required at ICCBL
-    auth = UserGroupAuthorization('reagent')
-    # if auth.has_read_authorization(
-    #     request.user, well_id) is not True:
-    #     return HttpResponse(status=403)
+
+    auth = ReagentResourceAuthorization('reagent')
     match = WELL_ID_PATTERN.match(well_id)
     if not match:
-        logger.warn('invalid well_id format: %d, pattern: %s' 
-            % (well_id,WELL_ID_PATTERN))
+        logger.warn('invalid well_id format: %r, pattern: %r',
+            well_id,WELL_ID_PATTERN.pattern)
         raise Http404('invalid well id format: %s' % well_id)
     else:
         _plate = match.group(1)
         _well_name = match.group(2)
         well_id = '%s:%s' % (_plate,_well_name)
-        if auth._is_resource_authorized(
-            request.user, 'read', resource_name='reagent') is not True:
+        if auth.is_restricted_view(request.user):
             smr = SmallMoleculeReagent.objects.get(
                 well_id=well_id)
             if smr.is_restricted_structure is True:
                 logger.warn('structure is restricted: %s', well_id)
-                raise Http404
+                return HttpResponseForbidden()
         
         _name = '%s%s.png' % (_plate,_well_name)
         structure_image_dir = os.path.abspath(settings.WELL_STRUCTURE_IMAGE_DIR)
@@ -70,41 +66,44 @@ def well_image(request, well_id):
             except Exception as e:
                 logger.exception('well_image exception for %r, %r' 
                     % (well_id, e))
-                raise HttpResponseServerError
+                return HttpResponseServerError()
         else:
             logger.debug('well_image for %s not found at "%s"', 
                 well_id, structure_image_path)
             raise Http404
 
-@login_required
-def smiles_image(request, well_id):
-    # TODO: not tested
-        
-    import rdkit.Chem
-    import rdkit.Chem.AllChem
-    import rdkit.Chem.Draw
-    reagent = Reagent.objects.get(well_id=well_id)
-    smiles = reagent.smallmoleculereagent.smiles
-    logger.info(str((well_id, str(smiles) )))
-    m = rdkit.Chem.MolFromSmiles(str(smiles))
-    rdkit.Chem.AllChem.Compute2DCoords(m)
-    im = rdkit.Chem.Draw.MolToImage(m)
-    response = HttpResponse(mimetype="image/png")
-    im.save(response, "PNG")
-    return response
+# @login_required
+# def smiles_image(request, well_id):
+#     # TODO: not tested
+#         
+#     import rdkit.Chem
+#     import rdkit.Chem.AllChem
+#     import rdkit.Chem.Draw
+#     reagent = Reagent.objects.get(well_id=well_id)
+#     smiles = reagent.smallmoleculereagent.smiles
+#     logger.info(str((well_id, str(smiles) )))
+#     m = rdkit.Chem.MolFromSmiles(str(smiles))
+#     rdkit.Chem.AllChem.Compute2DCoords(m)
+#     im = rdkit.Chem.Draw.MolToImage(m)
+#     response = HttpResponse(mimetype="image/png")
+#     im.save(response, "PNG")
+#     return response
 
 
 @login_required
 def publication_attached_file(request, publication_id):
+    if not UserGroupAuthorization('publication')\
+        ._is_resource_authorized(request.user, 'read'):
+        raise PermissionDenied
+    
     response = None
     try:
         publication = Publication.objects.get(publication_id=publication_id)
         auth = PublicationAuthorization('publication')
-        if auth.has_publication_read_authorization(
-            request.user, publication_id) is not True:
-            response = HttpResponse(status=403)
-        else:
-            response = _download_file(request,publication.attachedfile)
+        # if auth.has_publication_read_authorization(
+        #     request.user, publication_id) is not True:
+        #     response = HttpResponse(status=403)
+        response = _download_file(request,publication.attachedfile)
     except ObjectDoesNotExist,e:
         msg = 'could not find publication object for id: %r' % publication_id
         logger.exception(msg)
@@ -113,21 +112,22 @@ def publication_attached_file(request, publication_id):
 
 @login_required
 def attached_file(request, attached_file_id):
-    logger.info('request: %r', request)
+
+    if not UserGroupAuthorization('attachedfile')\
+        ._is_resource_authorized(request.user, 'read'):
+        raise PermissionDenied
+    
     response = None
     try:
         logger.info('get attached file: %r, %r', request, attached_file_id)
         af = AttachedFile.objects.get(attached_file_id=attached_file_id)
         logger.info('found: %r', af)
-        auth = AttachedFileAuthorization('attachedfile')
-        if auth.has_file_read_authorization(
-                request.user, attached_file_id) is not True:
-            logger.info('no read access...')
-            response = HttpResponse(status=403)
-        else:
-            logger.info('creating response...')
-            response = _download_file(request,af)
-            logger.info('response: %r', response)
+        # auth = AttachedFileAuthorization('attachedfile')
+        # if auth.has_file_read_authorization(
+        #         request.user, attached_file_id) is not True:
+        #     logger.info('no read access...')
+        #     response = HttpResponse(status=403)
+        response = _download_file(request,af)
     except ObjectDoesNotExist,e:
         msg = 'AttachedFile not found: %r' % attached_file_id
         logger.exception(msg)
@@ -159,6 +159,11 @@ def _download_file(request, attached_file):
 @login_required
 def screen_raw_data_transform(
         request,screen_facility_id):
+    
+    if not UserGroupAuthorization('rawdatatransform')\
+        ._is_resource_authorized(request.user, 'read'):
+        raise PermissionDenied
+
     logger.info('download raw_data_transform result for screen %r', 
         screen_facility_id)
     
@@ -182,6 +187,10 @@ def screen_raw_data_transform(
 @login_required
 def cpr_raw_data_transform(
         request,cherry_pick_request_id):
+    if not UserGroupAuthorization('rawdatatransform')\
+        ._is_resource_authorized(request.user, 'read'):
+        raise PermissionDenied
+
     logger.info('download raw_data_transform result for cpr %r', 
         cherry_pick_request_id)
 

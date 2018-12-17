@@ -1,15 +1,11 @@
-# Django settings for lims project on the HMS Orchestra system
-# Copy this file to settings.py and change local values for your installation
-
 from os import environ
+import sys
 
 try:
     from base_settings import *
 except ImportError:
-    import sys
     print >>sys.stderr, '''Base Settings not defined.  Please configure a version of
     base_settings.py for this site.'''
-    del sys
 
 # NOTE: the parent settings file defines the PROJECT_ROOT
 print 'PROJECT_ROOT: ', PROJECT_ROOT
@@ -25,7 +21,6 @@ except ImportError:
 # access through the docroot/.htaccess file.
 # (LEAKS environment variables, i.e. database password)
 DEBUG = False
-TEMPLATE_DEBUG = DEBUG
 
 # If not True, then only staff may log in to the system
 # see reports/auth.py
@@ -45,16 +40,15 @@ ADMINS = (
 
 MANAGERS = ADMINS
 
-
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql', 
-        'NAME': 'devscreensaver2', 
-        'USER': 'devscreensaver2web',
+        'NAME': 'screensaver', 
+        'USER': 'screensaverweb',
         'PASSWORD': '',
-        'HOST': 'dev.pgsql96.orchestra',
+        'HOST': 'pgsql96.orchestra',
         'PORT': '',                      # Set to empty string for default.
-    },
+    }
 }
 
 # Note that the SCREENSAVER_PGSQL variables can be found in the appropriate file at:
@@ -68,30 +62,19 @@ if 'SCREENSAVER_PGSQL_SERVER' in environ:
     _dbdefault['USER'] = environ['SCREENSAVER_PGSQL_USER']
     _dbdefault['PASSWORD'] = environ['SCREENSAVER_PGSQL_PASSWORD']
 
-
-
 # Hosts/domain names that are valid for this site; required if DEBUG is False
 # See https://docs.djangoproject.com/en/1.5/ref/settings/#allowed-hosts
-# NOTE that 'dev.screensaver2.med.harvard.edu' is an alias for
+# NOTE that 'dev.screensaver.med.harvard.edu' is an alias for
 # 'dev.orchestraweb.med.harvard.edu'
 ALLOWED_HOSTS = [
     '127.0.0.1',
     'localhost',
-    'dev.orchestraweb.med.harvard.edu', 
-    'dev.screensaver2.med.harvard.edu']
+    'orchestraweb.med.harvard.edu', 
+    'screensaver.med.harvard.edu']
 
-# Local time zone for this installation. Choices can be found here:
-# http://en.wikipedia.org/wiki/List_of_tz_zones_by_name
-# although not all choices may be available on all operating systems.
-# In a Windows environment this must be set to your system time zone.
 TIME_ZONE = 'US/Eastern'
-
-# Language code for this installation. All choices can be found here:
-# http://www.i18nguy.com/unicode/language-identifiers.html
 LANGUAGE_CODE = 'en-us'
-
 SITE_ID = 1
-
 AUTHENTICATION_BACKENDS = ('reports.auth.CustomAuthenticationBackend',)
 
 # Absolute path to the directory static files should be collected to.
@@ -106,9 +89,6 @@ STATIC_URL = '/_static/'
 
 # Additional locations of static files
 STATICFILES_DIRS = (
-    # Put strings here, like "/home/html/static" or "C:/www/django/static".
-    # Always use forward slashes, even on Windows.
-    # Don't forget to use absolute paths, not relative paths.
 )
 
 # List of finder classes that know how to find static files in
@@ -118,8 +98,7 @@ STATICFILES_FINDERS = (
     'django.contrib.staticfiles.finders.AppDirectoriesFinder',
 )
 
-# Make this unique, and don't share it with anybody.
-SECRET_KEY = 'tell_no_one1_xxxw##!!!xsls%%#)*@'
+SECRET_KEY = 'tell_no_1_update_on_install' 
 
 CACHES = {
     'default': {
@@ -168,7 +147,6 @@ CACHES = {
 WELL_STRUCTURE_IMAGE_DIR='/groups/screensaver/image_directory/structure-images'
 
 BACKGROUND_PROCESSING = True
-APP_PUBLIC_DATA.BACKGROUND_PROCESSING = BACKGROUND_PROCESSING
 
 # NOTE PROJECT_ROOT is abs path, so remove the first slash
 drive, path_and_file = os.path.splitdrive(PROJECT_ROOT)
@@ -192,7 +170,6 @@ def fix_path_for_o2(path):
     if parts[0] != 'n':
         parts.insert(0,'n')
     return os.path.join(os.path.sep,*parts) 
-#O2_PROJECT_ROOT=os.path.join(os.path.sep,'n',*get_path_parts(PROJECT_ROOT))
 O2_PROJECT_ROOT=fix_path_for_o2(PROJECT_ROOT)
 print 'new O2 project root', O2_PROJECT_ROOT
 # NOTE: if running on orchestra, should use PROJECT_ROOT here
@@ -203,9 +180,9 @@ BACKGROUND_PROCESSOR = {
     'job_output_directory': 
         os.path.join(O2_PROJECT_ROOT,'..','logs','background','job_output'),
     'credential_file': 
-        os.path.join(O2_PROJECT_ROOT, '..','production_data','sde_credentials.1.txt'),
+        os.path.join(O2_PROJECT_ROOT, '..','production_data','sde_credentials.txt'),
     'python_environ_script':
-        os.path.join(O2_PROJECT_ROOT, 'run_prod.webconf02.sh'),
+        os.path.join(O2_PROJECT_ROOT, 'run_prod.webconf.sh'),
     'background_process_script': 'reports.utils.background_client_util',
     # if "sbatch_settings" is set, use SLURM/sbatch to process
     'sbatch_settingsx': {
@@ -215,6 +192,11 @@ BACKGROUND_PROCESSOR = {
 	'open-mode':'append',
         },
     }
+
+# Settings that should be publicly visible
+APP_PUBLIC_DATA.BACKGROUND_PROCESSING = BACKGROUND_PROCESSING
+APP_PUBLIC_DATA.SESSION_COOKIE_AGE = SESSION_COOKIE_AGE
+APP_PUBLIC_DATA.TIME_ZONE = TIME_ZONE
 
 LOGGING = {
     'version': 1,
@@ -236,7 +218,7 @@ LOGGING = {
         'logfile': {
             'level':'DEBUG',
             'class':'logging.handlers.RotatingFileHandler',
-            'filename': "/www/dev.screensaver2.med.harvard.edu/support/logs/screensaver2.log",
+            'filename': "/www/screensaver.med.harvard.edu/support/logs/screensaver.log",
             'maxBytes': 5000000,
             'backupCount': 2,
             'formatter': 'simple',

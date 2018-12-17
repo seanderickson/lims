@@ -75,7 +75,7 @@ from reports import HEADER_APILOG_COMMENT, DJANGO_ACCEPT_PARAM, \
     HTTP_PARAM_AUTH, HTTP_PARAM_CONTENT_TYPE
 import reports; 
 from reports.api import compare_dicts, API_RESULT_DATA, API_RESULT_META
-from reports.dump_obj import dumpObj
+from reports.utils.dump_obj import dumpObj
 from reports.models import MetaHash, UserGroup, \
     UserProfile, ApiLog, Permission, Job
 import reports.schema as SCHEMA
@@ -87,6 +87,7 @@ from reports.serializers import CSVSerializer, SDFSerializer, \
     LimsSerializer, XLSSerializer
 import reports.utils.background_processor
 import reports.utils.log_utils
+import reports.utils.si_unit
 
 
 logger = logging.getLogger(__name__)
@@ -103,6 +104,8 @@ except:
     APP_ROOT_DIR = os.path.abspath(os.path.dirname(reports.__path__))
 
 DEBUG = False
+DEBUG_API_CLIENT = False
+
 
 def find_in_dict(key,content):
     ''' 
@@ -343,7 +346,8 @@ def assert_obj1_to_obj2( obj1, obj2, excludes=['resource_uri', '_line'], skip_nu
     for key in keys_to_search:
         result, msgs =  equivocal(obj1[key], obj2[key], skip_null_values=skip_null_values, key=key)
         if not result:
-            logger.debug('key: %r not equal: %r to %r', key, obj1[key], obj2[key])
+            if DEBUG:
+                logger.info('key: %r not equal: %r to %r', key, obj1[key], obj2[key])
             return False, ('msgs', msgs,'key', key, obj1[key], obj2[key], 
                 'obj1', obj1, 'obj2', obj2)
             
@@ -1080,6 +1084,44 @@ class XlsSerializerTest(SimpleTestCase):
                     
                     self.fail('xlsx input object not found')
 
+class SiUnitTest(TestCase):
+    
+    def test_convert_decimal(self):
+        
+        _data = [
+            # [raw_val, target_unit, decimals, multiplier, track_significance]
+            [['0.000040000', 1e-6, 1, 1, False], 
+                '40', 'No decimal is used when track significance is off'],
+            [['0.000040000', 1e-6, 1, 1, True], 
+                '40.0', 'One decimal is kept, due to track significance flag, and decimals=1'],
+            [['0.000040000', 1e-3, 1, 1, False], 
+                '0', 'No decimal is used when track significance is off'],
+            [['0.000040000', 1e-3, 1, 1, True], 
+                '0.0', 'One decimal is kept, due to track significance flag, and decimals=1'],
+            [['0.000040000', 1e-9, 1, 1, False], 
+                '40000', 'No decimal is used when track significance is off'],
+            [['0.000040000', 1e-9, 1, 1, True], 
+                '40000.0', 'One decimal is shown to indicate significance'],
+            [['0.0000400000', 1e-9, 1, 1, True], 
+                '40000.0', 'One decimal is shown because decimals=1'],
+            [['0.00004000000', 1e-9, 1, 1, True], 
+                '40000.0', 'One decimal is shown because decimals=1'],
+            [['0.00004000000', 1e-9, 2, 1, True], 
+                '40000.00', 'Two decimals are shown because decimals=2'],
+            [['0.00004000000', 1e-9, 2, 1, False], 
+                '40000', 'No decimal is shown because decimals=2, but track significance is off'],
+
+        ]
+        
+        multiplier = 1
+        track_significance = False
+        
+        for args,expected_result, note in _data:
+            result = reports.utils.si_unit.convert_decimal(*args)
+            logger.info('input: %r, result: %r, expected: %r, Note: %s', 
+                args, result, expected_result, note)
+            self.assertEqual(str(result), expected_result)
+        
    
 class LogCompareTest(TestCase):
     
@@ -1158,7 +1200,17 @@ class IResourceTestCase(unittest.TestCase):
         
         self._run_api_init_actions(
             input_actions_file, reinit_pattern=reinit_pattern)
+    
+    def _clear_server_caches(self):
         
+        resource_uri = '/'.join([BASE_URI,'resource/clear_all_caches'])
+        resp = self.api_client.get(
+            resource_uri, format='json', 
+            authentication=self.get_credentials())
+        self.assertTrue(
+            resp.status_code in [200,201], 
+            ('clear cache failed', resp.status_code,self.get_content(resp)))
+    
     def create_basic(self, username, password):
         """
         Creates & returns the HTTP ``Authorization`` header for use with BASIC
@@ -1578,6 +1630,10 @@ def setUpModule():
     else:
         print 'skip database metahash initialization when using keepdb'
 
+    logger.info('=== trigger clear_all_caches on the server...')
+    testContext = IResourceTestCase(methodName='_clear_server_caches')
+    testContext.setUp()
+    testContext._clear_server_caches()
 
     logger.info('=== setup Module done')
 
@@ -1586,7 +1642,10 @@ def tearDownModule():
 
 
 class TestApiClient(object):
-
+    '''
+    Patched version of tastypie.test.TestApiClient
+    TODO: show forks, if any
+    '''
 
     def __init__(self, serializer=None):
         """
@@ -1615,6 +1674,8 @@ class TestApiClient(object):
         if authentication is not None:
             kwargs[HTTP_PARAM_AUTH] = authentication
 
+        if DEBUG_API_CLIENT:
+            logger.info('GET: %r, %r', uri, kwargs)
         return self.client.get(uri, **kwargs)
 
     def post(
@@ -1639,6 +1700,8 @@ class TestApiClient(object):
         if authentication is not None:
             kwargs[HTTP_PARAM_AUTH] = authentication
 
+        if DEBUG_API_CLIENT:
+            logger.info('POST: %r, %r', uri, kwargs)
         return self.client.post(uri, **kwargs)
 
     def put(self, uri, format='json', data=None, authentication=None, **kwargs):
@@ -1662,6 +1725,8 @@ class TestApiClient(object):
         if authentication is not None:
             kwargs[HTTP_PARAM_AUTH] = authentication
 
+        if DEBUG_API_CLIENT:
+            logger.info('PUT: %r, %r', uri, kwargs)
         return self.client.put(uri, **kwargs)
 
     def patch(
@@ -1700,6 +1765,9 @@ class TestApiClient(object):
             r['CONTENT_LENGTH'] = 0
         
         r.update(kwargs)
+        
+        if DEBUG_API_CLIENT:
+            logger.info('PATCH: %r', r)
         return self.client.request(**r)
 
     def delete(
@@ -1722,6 +1790,8 @@ class TestApiClient(object):
         if authentication is not None:
             kwargs[HTTP_PARAM_AUTH] = authentication
 
+        if DEBUG_API_CLIENT:
+            logger.info('DELETE: %r, %r', uri, kwargs)
         return self.client.delete(uri, **kwargs)
     
 

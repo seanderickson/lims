@@ -97,7 +97,7 @@ function($, _, Backbone, appModel) {
       var route = this.get_route(uriStack);
 
       // TODO: this mirrors the handler for route match in main.js
-      document.title = 'Screensaver LIMS' + ': ' + route;
+      // document.title = 'Screensaver LIMS' + ': ' + route;
 
       console.log('route: ', route, options);
       
@@ -105,6 +105,9 @@ function($, _, Backbone, appModel) {
       // Replace false (default) to create browser history
       var options = _.extend({ trigger: false, replace:false }, options); 
       this.navigate( route, options );
+      _.defer(function(){
+        window.scrollTo(0, 0);
+      });
     }
 
   });

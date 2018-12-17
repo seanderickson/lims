@@ -118,11 +118,6 @@ define([
     
     defaults: {
 
-      // TODO: deprecate these variables
-      // use the REPORTS_API_URI, and DB_API_URI defined below
-      root_url: '/',  // used for the backbone history
-      api_root_url: '/reports/api/v1',
-
       path: '',
       actualStack: [],
       
@@ -230,7 +225,6 @@ define([
           Iccbl.appModel.jqXHRfail.apply(this,arguments); 
         });
       }
-
     },
     
     readCookie: function(name) {
@@ -266,7 +260,6 @@ define([
       // 'screensaveruser' is needed for the database app
       this.getModel('screensaveruser', window.user, 
         function(model){
-          console.log('user model:', model);
           // NOTE that Backbone.Model.toJSON returns a shallow copy as a object,
           // not as a JSON string.
           self.currentUser = model.toJSON();
@@ -288,7 +281,7 @@ define([
      * - list views read
      */
     setSearch: function(searchId, search_object){
-      console.log('setSearch', searchId, search_object)
+      if (DEBUG) console.log('setSearch', searchId, search_object)
       localStorage.setItem(''+searchId, JSON.stringify(search_object));
       this.getSearch(searchId);
     },
@@ -355,7 +348,7 @@ define([
     },
     
     getLabAffiliationOptions: function(callBack){
-      console.log('getLabAffiliationOptions...', callBack);
+      if (DEBUG) console.log('getLabAffiliationOptions...', callBack);
       var self = this;
       var prop = 'labAffiliationOptions';
       var options = this.get(prop);
@@ -366,7 +359,7 @@ define([
             var id = affiliation.get('lab_affiliation_id');
             var name = affiliation.get('name');
             var category = affiliation.get('category')
-            options.push({ val: id, label: category + ' - ' + name });
+            options.push({ val: id, label: name + ' (' + category + ')' });
           });
           self.set(prop,options);
           if (callBack) callBack(options);
@@ -387,7 +380,15 @@ define([
           libraries.each(function(library){
             var short_name = library.get('short_name');
             var library_name = library.get('library_name');
-            options.push({ val: short_name, label: short_name + ': ' + library_name });
+            
+            var label = short_name;
+            if (short_name != library_name){
+              label += ': ' + library_name;
+            }
+            label += ' (' + library.get('start_plate');
+            label += '-' + library.get('end_plate') + ')';
+            
+            options.push({ val: short_name, label: label });
           });
           self.set(prop,options);
           if (callBack) callBack(options);
@@ -396,7 +397,6 @@ define([
         if (callBack) callBack(options);
         else return options;
       }
-//      return options;
     },
 
     getPlateLocationTree: function(callBack, options){
@@ -433,7 +433,6 @@ define([
         if (callBack) callBack(locationHash);
         else return locationHash;
       }
-//      return locationHash;
     },
 
     getScreenOptions: function(callBack){
@@ -455,7 +454,6 @@ define([
         if (callBack) callBack(options);
         else return options;
       }
-//      return options;
     },
 
     getScreeningLibraryOptions: function(screen_type, callBack){
@@ -628,23 +626,35 @@ define([
         if (callBack) callBack(options);
         else return options;
       }
-//      return options;
     },
     
     getUserOptions: function(callBack){
       var self = this;
+      var is_super = this.getCurrentUser().is_superuser;
       var prop = 'userOptions';
       var options = this.get(prop);
       if(!options){
         self.getUsers(function(users){
           var options = [];
           users.each(function(user){
+            // Construct the option label:
+            // NOTE: for search box searching, must match the patttern:
+            // appState.USER_OPTION_PATTERN
+            // /([^\[]+)(\[(\w+)\])?(\:\s+(\d+))?/
+            // where (1=name) (3=ecommons) (4=ssID)
             var user_id = user.get('screensaver_user_id');
             var username = user.get('username');
+            var ecommons = user.get('ecommons')
             var name = user.get('name');
             var _label = name;
-            if(!_.isEmpty(username)) _label += ': ' + username;
-            _label += ' (' + user_id + ')';
+            if(!_.isEmpty(username)){
+              _label += ' [' + username + ']';
+            }else if (!_.isEmpty(ecommons)){
+              _label += ' [' + ecommons + ']';
+            }
+            if (is_super){
+              _label += ': ' + user_id;
+            }
             options.unshift({ val: user_id, label: _label});
           });
           self.set(prop,options);
@@ -706,20 +716,29 @@ define([
         if (callBack) callBack(options);
         else return options;
       }
-//      return options;
     },
     
     getUserIdsInGroupOptions: function(usergroup, callBack){
+      return this.getUserInGroupOptions(
+        usergroup, 'screensaver_user_id', '{name} ({screensaver_user_id})', callBack );
+    },
+    
+    getUsernamesInGroupOptions: function(usergroup, callBack){
+      return this.getUserInGroupOptions(
+        usergroup, 'username', '{name} ({username})', callBack );
+    },
+    
+    getUserInGroupOptions: function(usergroup, val_prop, label_prop, callBack){
       var self = this;
-      var prop = 'usergroup_' + usergroup + '_Options';
+      var prop = ['usergroup', usergroup, val_prop, label_prop, 'options'].join('_');
       var options = this.get(prop);
       if(!options){
         this.getUsersInGroup(usergroup, function(users){
           var options = [{ val:'',label:'' }];
           users.each(function(user){
-            var user_id = user.get('screensaver_user_id');
-            var name = user.get('name');
-            options.push({ val: user_id, label: name });
+            options.push({ 
+              val: user.get(val_prop), 
+              label: Iccbl.formatString(label_prop, user) });
           });
           self.set(prop,options);
           self.userProps[prop] = new Date();
@@ -829,7 +848,6 @@ define([
 
       var collection = this.get(prop);
       if(flush || _.isEmpty(collection)){
-        console.log('get all '+prop+' from the server...');
         var CollectionClass = Iccbl.CollectionOnClient.extend({
           url: url 
         });
@@ -874,7 +892,8 @@ define([
         'users', 
         this.dbApiUri + '/screensaveruser', 
         { 
-          exact_fields: ['username','name','email','sm_data_sharing_level','rnai_data_sharing_level'], 
+          exact_fields: ['username','name','email',
+            'sm_data_sharing_level','rnai_data_sharing_level'], 
           order_by: ['name']
         }, 
         callback );
@@ -1026,8 +1045,10 @@ define([
         var vocabulary = this.getVocabulary(scope);
         _.each(_.keys(vocabulary),function(choice){
           if(vocabulary[choice].is_retired){
-            console.log(
-              'skipping retired vocab: ',choice,vocabulary[choice].title );
+            if (DEBUG) {
+              console.log(
+                'skipping retired vocab: ',choice,vocabulary[choice].title );
+            }
           }else{
             choiceHash.push({ 
               val: choice, 
@@ -1067,7 +1088,7 @@ define([
         var matchedVocabularies = {};
         _.each(_.keys(vocabularies), function(candidateScope){
           if(candidateScope.match('^' + scope + '$')){
-            if (DEBUG) {
+            if (DEBUG){
                 console.log(
                 'matching: ' + '^' + scope + '$' + ', to: ' + candidateScope );
             }
@@ -1075,7 +1096,9 @@ define([
           }
         });
         if(!_.isEmpty(matchedVocabularies)){
-          console.log('matchedVocabularies', scope, matchedVocabularies );
+          if (DEBUG){
+            console.log('matchedVocabularies', scope, matchedVocabularies );
+          }
           return matchedVocabularies;
         }
         throw "Unknown vocabulary: " + scope;
@@ -1176,6 +1199,14 @@ define([
         
         
         if(callBack) callBack();                
+      }, null, function(jqXHR, textStatus, errorThrown){
+        // pass a special error handler, because getResources runs before 
+        // layout is rendered
+        var msg = self.parseJqXHRfail.apply(this, arguments);
+        if (jqXHR && _.has(jqXHR,'responseJSON') && !_.isEmpty(jqXHR.responseJSON) ) {
+          msg += '\n\n' + self.print_json(jqXHR.responseJSON);
+        }
+        window.alert(msg);
       });
       
       console.log('finished getResources')
@@ -1183,7 +1214,7 @@ define([
 
     createNewModel: function(resourceId, defaults) {
 
-      console.log('create new model for: ',resourceId, defaults );
+      if (DEBUG) console.log('create new model for: ',resourceId, defaults );
       var self = this;
       var resource = self.getResource(resourceId);
       return this.newModelFromResource(resource,defaults);
@@ -1208,7 +1239,6 @@ define([
               defaults[key] = JSON.parse(field.default);
             }
           }catch(e){
-            console.log('json parse error', key, field.default);
             if (field.data_type == 'date' && field.default == 'now'){
               defaults[key] = Iccbl.getISODateString(new Date());
             }else{
@@ -1339,24 +1369,37 @@ define([
         var options = _.filter(screenOptions, function(option){
           return _.contains(userScreens, option['val']);
         });
-        console.log('found user screens: ' + 
-          userModel.get('screensaver_user_id'), options);
+        if (DEBUG) {
+          console.log('found user screens: ' + 
+            userModel.get('screensaver_user_id'), options);
+        }
         return options;
     },
     
     _get_screen_member_choices: function(screenModel) {
-      // FIXME: should extend the Model for Screen
-      var members = _.object(
-        screenModel.get('collaborator_ids'),
-        screenModel.get('collaborator_names'));
-      members[screenModel.get('lead_screener_id')] = 
-        screenModel.get('lead_screener_name');
-      members[screenModel.get('lab_head_id')] = 
-        screenModel.get('lab_head_name');
-      members = _.map(_.pairs(members), function(pair){
-        return { 'val': pair[0], 'label': pair[1] + ': ' + pair[0] };
+      
+      var userOptions = this.getUserOptions();
+      var screenMembers = [
+        screenModel.get('lead_screener_id'),
+        screenModel.get('lab_head_id')
+      ];
+      var collaborator_ids = screenModel.get('collaborator_ids');
+      if (!_.isEmpty(collaborator_ids)){
+        screenMembers = _.union(screenMembers, collaborator_ids);
+      }
+      screenMembers = _.map(screenMembers, function(id){
+        return '' + id;
       });
-      return members;
+      var options = _.filter(userOptions, function(option){
+        return _.contains(screenMembers, '' + option['val']);
+      });
+      // reverse, default sorting
+      options.reverse();
+      if (DEBUG) {
+        console.log('found user screens: ' + 
+          userModel.get('screensaver_user_id'), options);
+      }
+      return options;
     },
     
     /**
@@ -1376,7 +1419,7 @@ define([
         key = key.join('/');
       }
       var url = options.url || resource.apiUri + '/' + key;
-      console.log('fetch model', url);
+      if (DEBUG) console.log('fetch model', url);
       var ModelClass = Backbone.Model.extend({
         url : url,
         defaults : { },
@@ -1406,7 +1449,7 @@ define([
           }
         }
       }).fail(function(){ 
-        console.log('fail...', failCallback);
+        console.log('instance fetch fail:', arguments);
         if (failCallback){
           failCallback.apply(this,arguments);
         }else{
@@ -1601,11 +1644,8 @@ define([
         }
       }).fail(function(){ Iccbl.appModel.jqXHRfail.apply(this,arguments); });      
     },
-    
-    /**
-     * Process a jQuery.jqXHR.fail callback for the ajax() call.
-     */
-    jqXHRfail: function(jqXHR, textStatus, errorThrown){
+
+    parseJqXHRfail: function(jqXHR, textStatus, errorThrown){
       console.log('jqXHRfail', textStatus, errorThrown);
       var msg = textStatus || 'Error';
       msg = msg.charAt(0).toUpperCase() + msg.slice(1);
@@ -1614,13 +1654,22 @@ define([
       }
       if (this.url){
         // * url will be set for most backbone objects doing the fetching
-        msg += ':\n ' + this.url;
+        if(_.isFunction(this.url)) msg += ':\n ' + this.url();
+        else msg += ':\n ' + this.url;
       }
       if (jqXHR){
         if (jqXHR.status){
           msg += ':\n status:' + jqXHR.status;
         }
       }
+      return msg;
+    },
+    
+    /**
+     * Process a jQuery.jqXHR.fail callback for the ajax() call.
+     */
+    jqXHRfail: function(jqXHR, textStatus, errorThrown){
+      var msg = Iccbl.appModel.parseJqXHRfail.apply(this, arguments);
       $(document).trigger('ajaxComplete');
       if (jqXHR && _.has(jqXHR,'responseJSON') && !_.isEmpty(jqXHR.responseJSON) ) {
         Iccbl.appModel.showJsonMessages(jqXHR.responseJSON);
@@ -1665,6 +1714,8 @@ define([
         str = str.replace(/^\s*,\s*$/gm,'')
         // remove empty lines
         str = str.replace(/^\s*$\n+/gm,'');
+        // convert escaped lines
+        str = str.replace(/\\n+/gm,'<br/>');
       }catch(e){
         console.log('print_json', e, obj);
         str = '' + obj;
@@ -1751,7 +1802,6 @@ define([
       }
     },
     
-    
     /**
      * Show a JSON object in a modal dialog:
      * - transform the object into a table using a depth-first traversal:
@@ -1759,7 +1809,7 @@ define([
      */
     showJsonMessages: function(jsonObj, options){
       
-      console.log('showJsonMessages: ', jsonObj);
+      if (DEBUG) console.log('showJsonMessages: ', jsonObj);
       var options = _.extend({
           buttons_on_top: false,
         }, options);
@@ -1783,6 +1833,7 @@ define([
         options['view'] = body;
       } else {
         bodyMsg = bodyMsg.replace(/\n/g, '<br/>');
+        bodyMsg = bodyMsg.replace(/[\t ]/g,'&nbsp;');
         options['body'] = bodyMsg;
       }
       Iccbl.appModel.showModalMessage(options);
@@ -1793,7 +1844,7 @@ define([
      * Uses stock JSON.stringify to generate display information in a modal dialog.
      */
     showJsonDirect: function(jsonObj, options){
-      console.log('showJsonMessages: ', jsonObj);
+      if (DEBUG) console.log('showJsonDirect: ', jsonObj);
       var options = _.extend({
           buttons_on_top: false,
         }, options);
@@ -1995,7 +2046,7 @@ define([
             return kv.join('=');
           }).join(Iccbl.appModel.SEARCH_DELIMITER);        
         var search_link = $('<a>',{
-            text: 'Comments',
+            text: 'Comments (Admins only)',
             target: '_blank',
             title: '',
             href: '#apilog/order/-date_time/' + search_ui_url
@@ -2047,9 +2098,6 @@ define([
         collection.each(function(model) {
           model.set('date', Iccbl.getDateString(model.get('date_time')));
         });
-        var TextWrapCell = Backgrid.Cell.extend({
-          className: 'text-wrap-cell'
-        });
         var colTemplate = {
           'cell' : 'string',
           'order' : -1,
@@ -2057,7 +2105,9 @@ define([
           'searchable': false,
           'editable' : false,
           'visible': true,
-          'headerCell': Backgrid.HeaderCell
+          'headerCell': Backgrid.HeaderCell.extend({
+            className: 'admin-field'
+          })
         };
         var columns = [
           _.extend({},colTemplate,{
@@ -2088,7 +2138,7 @@ define([
             'description' : 'Comment',
             'order': 1,
             'sortable': true,
-            'cell': TextWrapCell
+            'cell': Iccbl.StringCell
             })
         ];
         var colModel = new Backgrid.Columns(columns);
@@ -2369,8 +2419,8 @@ define([
       }
       
       if(post_data){
-        console.log('post_data found for download', post_data);
-        // create a form for posting
+        if (DEBUG) console.log('post_data found for download', post_data);
+        console.log('create a form for posting...');
         var postform = $("<form />", {
           method: 'POST',
           action: url
@@ -2407,6 +2457,13 @@ define([
       
       var formSchema = {};
       
+      var downloadOptions = self.getVocabularySelectOptions('resource.content_type');
+      downloadOptions = _.filter(downloadOptions, function(option){
+        return (
+            option.val != 'json' // never json
+            && _.contains(resource.content_types, option.val));
+      });
+      
       formSchema['use_vocabularies'] = {
         title: 'Use vocabulary labels',
         help: 'If selected, vocabulary key values will be replaced with labels',
@@ -2441,7 +2498,8 @@ define([
         title: 'Download type',
         help: 'Select the data format',
         key: 'content_type',
-        options: _.without(resource.content_types, 'json'), // never json
+        options: downloadOptions,
+//        options: _.without(resource.content_types, 'json'), // never json
         type: 'Select',
         validators: ['required'],
         template: _.template([
@@ -2488,7 +2546,6 @@ define([
       });
       
       form.listenTo(form, "change", function(e){
-        console.log('change');
         
         // NOTE: 20180910 - allow options for sdf as well
         //var content_type = form.getValue('content_type');
@@ -2523,7 +2580,6 @@ define([
           
           var errors = form.commit({ validate: true }); // runs schema and model validation
           if(!_.isEmpty(errors) ){
-            console.log('errors', errors);
             _.each(_.keys(errors), function(key){
               form.$el.find('[name="'+key +'"]')
                 .parents('.form-group,.input-group').addClass('has-error');
@@ -2602,7 +2658,7 @@ define([
       };
       
       var options = _.extend({}, defaultOptions, options);
-      console.log('options', options);
+      if (DEBUG) console.log('showModal options', options);
       
       if (!_.isUndefined(options.view)){
         delete options.body;
@@ -2617,7 +2673,6 @@ define([
                   console.log('cancel button click event, '); 
                   event.preventDefault();
                   $('#modal').modal('hide'); 
-//                  options.cancel();
                   options.cancel(event);
               },
               'click #modal-ok':function(event) {
@@ -2628,7 +2683,6 @@ define([
                     return;
                   }
                   $('#modal').modal('hide');
-//                  $('#modal').modal({show:false})
               }
           },
       });
@@ -2675,20 +2729,63 @@ define([
       } else {
         $('#modal_footer').hide();
       }
+      
+      $.fn.drags = function(opt) {
+        // Makes the target "handle" element draggable
+        // See: https://css-tricks.com/snippets/jquery/draggable-without-jquery-ui/
+        opt = $.extend({handle:"",cursor:"move"}, opt);
+
+        if(opt.handle === "") {
+            var $el = this;
+        } else {
+            var $el = this.find(opt.handle);
+        }
+
+        return $el.css('cursor', opt.cursor).on("mousedown", function(e) {
+            if(opt.handle === "") {
+                var $drag = $(this).addClass('draggable');
+            } else {
+                var $drag = $(this).addClass('active-handle').parent().addClass('draggable');
+            }
+            var z_idx = $drag.css('z-index'),
+                drg_h = $drag.outerHeight(),
+                drg_w = $drag.outerWidth(),
+                pos_y = $drag.offset().top + drg_h - e.pageY,
+                pos_x = $drag.offset().left + drg_w - e.pageX;
+            $drag.css('z-index', 1000).parents().on("mousemove", function(e) {
+                $('.draggable').offset({
+                    top:e.pageY + pos_y - drg_h,
+                    left:e.pageX + pos_x - drg_w
+                }).on("mouseup", function() {
+                    $(this).removeClass('draggable').css('z-index', z_idx);
+                });
+            });
+            e.preventDefault(); // disable selection
+        }).on("mouseup", function() {
+            if(opt.handle === "") {
+                $(this).removeClass('draggable');
+            } else {
+                $(this).removeClass('active-handle').parent().removeClass('draggable');
+            }
+        });
+
+      };
+      
       $modal.one('shown.bs.modal', function () {
         $('#modal').find('.form').find('input').first().focus();
-//        $modal.css('display','block');
+        $("#modal").drags({
+            handle: ".modal-header"
+        });
       });
       $modal.modal({
         backdrop: 'static',
         keyboard: false, // prevent the escape key from closing the modal
         show: true
       });
-    $('#modal').one('hidden.bs.modal', '.modal', function () {
-      console.log('hidden.bs.modal', arguments);
-    });
-//      $('#modal').modal({show:true});
-//      $modal.css('display','block');
+      
+      //$('#modal').one('hidden.bs.modal', '.modal', function () {
+      //  console.log('hidden.bs.modal', arguments);
+      //});
       return modalDialog;
     },
     
@@ -2710,7 +2807,7 @@ define([
   
   appState._form_template = _.template([
      '<div class="form-horizontal container" id="_form_template" >',
-     '<form data-fieldsets class="form form-horizontal container" autocomplete="off">',
+     '<form data-fieldsets class="form-horizontal container" autocomplete="off">',
      "</form>",
      '<div id="data-error" class="has-error" ></div>',
      "</div>"].join(''));      
@@ -2720,7 +2817,6 @@ define([
     '    <div class="" >',
     '      <div data-editor key="<%=key%>" style="min-height: 0px; padding-top: 0px; margin-bottom: 0px;" />',
     '      <div data-error class="text-danger" ></div>',
-//    '      <div><%= help %></div>',
     '    </div>',
     '  </div>',
   ].join(''));
@@ -2731,6 +2827,7 @@ define([
       </div>\
     </div>\
   ');
+  
   appState._horizontal_form_field_template = _.template([
     '<div class="form-group" >',
     '  <label class="control-label col-sm-6" for="<%= editorId %> "title="<%= help %>" ><%= title %></label>',
@@ -2771,7 +2868,12 @@ define([
 
   appState.API_PARAM_SHOW_OTHER_REAGENTS = 'show_other_reagents';
   appState.API_PARAM_SHOW_ALTERNATE_SELECTIONS = 'show_alternate_selections';
+
+  appState.API_PARAM_DC_IDS = 'dc_ids';
   
+  appState.API_PARAM_SHOW_RESTRICTED = 'show_restricted'
+  appState.API_PARAM_SHOW_ARCHIVED = 'show_archived'
+
   appState.API_PARAM_VOLUME_OVERRIDE = 'volume_override';
   appState.API_PARAM_SET_DESELECTED_TO_ZERO = 'set_deselected_to_zero';
   appState.API_PARAM_OVERRIDE = 'override';
@@ -2782,6 +2884,9 @@ define([
     ', number of terms entered: {actual_size}';
   appState.API_MSG_LCPS_INSUFFICIENT_VOLUME = 'Insufficient volume';
   appState.VOCAB_USER_CLASSIFICATION_PI = 'principal_investigator';
+  
+  appState.USER_OPTION_PATTERN = /([^:\[]+)(\[(\w+)\])?(\:\s+(\d+))?/;
+  //appState.USER_OPTION_PATTERN = /([A-Za-z\,\-\(\) ]+)(\[(\w+)\])?(\:\s+(\d+))?/;
   
   /**
    * URIStack search element SEARCH_DELIMITER
@@ -2799,9 +2904,12 @@ define([
   appState.MAX_RAW_SEARCHES_IN_URL = 10;
   appState.MAX_ROWS_IN_DIALOG_MSG = 20;
   
+  // Use MAX_PRECISION to remove floating point math errors
+  appState.MAX_PRECISION = 12;
+  
   // API Param elements are used by the API
   appState.API_PARAM_SEARCH_ID = 'search_id'
-  appState.API_PARAM_NESTED_SEARCH = 'nested_search';
+  appState.API_PARAM_NESTED_SEARCH = 'nested_search_data';
   appState.API_PARAM_SEARCH = 'search';
   appState.API_PARAM_ENCODED_SEARCH = 'esearch';
   

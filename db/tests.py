@@ -45,11 +45,11 @@ from db.api import API_MSG_SCREENING_PLATES_UPDATED, \
     LibraryCopyPlateResource, LibraryScreeningResource, \
     API_PARAM_SHOW_OTHER_REAGENTS, API_PARAM_SHOW_COPY_WELLS, \
     API_PARAM_SHOW_RETIRED_COPY_WELlS, API_PARAM_VOLUME_OVERRIDE, \
-    WellResource
+    WellResource, CopyWellResource
 import db.api
-from db.models import Reagent, Substance, Library, ScreensaverUser, \
-    UserChecklist, AttachedFile, ServiceActivity, Screen, Well, Publication, \
-    PlateLocation, LibraryScreening, LabAffiliation
+from db.models import Reagent, Library, ScreensaverUser, \
+    UserChecklist, AttachedFile, Screen, Well, Publication, \
+    PlateLocation, LibraryScreening, LabAffiliation, Activity
 import db.models
 from db.schema import VOCAB
 import db.schema as SCHEMA
@@ -90,7 +90,6 @@ START_PLATE = LIBRARY.START_PLATE
 END_PLATE = LIBRARY.END_PLATE
 SCREEN_TYPE = SCREEN.SCREEN_TYPE
 
-
 # Import other constants
 
 API_ACTION = VOCAB.apilog.api_action
@@ -98,9 +97,10 @@ ACCESS_LEVEL = VOCAB.screen.user_access_level_granted
 DSL = VOCAB.screen.data_sharing_level
 LCP_STATUS = VOCAB.lab_cherry_pick.status
 SCREEN_AVAILABILITY = VOCAB.screen.screen_result_availability
-
-logger = logging.getLogger(__name__)
-
+DATE_FORMAT = SCHEMA.DATE_FORMAT
+LCP_COPYWELL_KEY = db.api.LabCherryPickResource.LCP_COPYWELL_KEY
+VOCAB_USER_AGREEMENT_RNAI = db.api.UserAgreementResource.VOCAB_USER_AGREEMENT_RNAI
+VOCAB_USER_AGREEMENT_SM = db.api.UserAgreementResource.VOCAB_USER_AGREEMENT_SM
 
 BASE_URI = '/db/api/v1'
 BASE_REPORTS_URI = '/reports/api/v1'
@@ -110,15 +110,16 @@ except:
     APP_ROOT_DIR = os.path.abspath(os.path.dirname(db.__path__))
 BASE_URI_DB = '/db/api/v1'
 
-LCP_COPYWELL_KEY = db.api.LabCherryPickResource.LCP_COPYWELL_KEY
-VOCAB_USER_AGREEMENT_RNAI = db.api.UserAgreementResource.VOCAB_USER_AGREEMENT_RNAI
-VOCAB_USER_AGREEMENT_SM = db.api.UserAgreementResource.VOCAB_USER_AGREEMENT_SM
+logger = logging.getLogger(__name__)
 
 
 class DBResourceTestCase(IResourceTestCase):
-    """
-    Invoke _bootstrap_init_files on setup
-    """
+    '''
+    Create a DB specific test case parent class that will:
+    - invoke _bootstrap_init_files on setup,
+    - provide support test data creation functionality.
+    '''
+    
     def __init__(self,*args,**kwargs):
     
         super(DBResourceTestCase, self).__init__(*args,**kwargs)
@@ -126,7 +127,8 @@ class DBResourceTestCase(IResourceTestCase):
         self.sr_serializer = ScreenResultSerializer()
         self.test_admin_user = None
         settings.BACKGROUND_PROCESSING = False
-
+        settings.RESTRICT_ALL_SEQUENCES = False
+        
     def _bootstrap_init_files(self, reinit_pattern=None):
         logger.info( 'bootstrap reinit_pattern: %r', reinit_pattern)
         super(DBResourceTestCase, self)._bootstrap_init_files(
@@ -205,8 +207,10 @@ class DBResourceTestCase(IResourceTestCase):
             _data['vendor_identifier'] = 'ID-%d' % well_index
             _data['vendor_batch_id'] = 2
 
-            _data['sequence'] = ['ACTG','CATG','TACG','GACT','ATCG'][well_index%5]
-            _data['anti_sense_sequence'] = ['ACTG','CATG','TACG','GACT','ATCG'][-well_index%5]
+            _data['sequence'] = \
+                ['ACTG','CATG','TACG','GACT','ATCG'][well_index%5]
+            _data['anti_sense_sequence'] = \
+                ['ACTG','CATG','TACG','GACT','ATCG'][-well_index%5]
             vendor_gene_name = ['v_gene_name%d'%well_index]
             vendor_entrezgene_id = ['vendor_gene_%d'%well_index]
             vendor_entrezgene_symbols = ['vendor_entrezgene_sym_%d'%well_index]
@@ -246,28 +250,27 @@ class DBResourceTestCase(IResourceTestCase):
             _data[k] = v
         return _data
     
-    def create_copy(self, library_short_name, copy_name, 
-            usage_type="library_screening_plates", **kwargs ):
-        data = {
-            'library_short_name': library_short_name,
-            'copy_name': copy_name,
-            'usage_type': usage_type,
-        }
-        for k,v in kwargs.items():
-            data[k] = v
+    def create_copy(self, copy_input_data ):   
+
+        extra_required = ['initial_plate_well_volume', 'initial_plate_status',
+            'plate_type']
+        missing = set(extra_required)-set(copy_input_data.keys())
+        self.assertFalse(
+            missing, 'missing params for copy create: %r' % missing)
         
         resource_uri = BASE_URI_DB + '/librarycopy'
         resource_test_uri = '/'.join([
-            resource_uri,data['library_short_name'],
-            data['copy_name']])
+            resource_uri,copy_input_data['library_short_name'],
+            copy_input_data['copy_name']])
         copy_data = self._create_resource(
-            data, resource_uri, resource_test_uri, 
-            excludes=['initial_plate_well_volume','initial_plate_status'])
-        logger.info('created: %r', copy_data)
+            copy_input_data, resource_uri, resource_test_uri, 
+            excludes=['initial_plate_well_volume','initial_plate_status',
+                'plate_type'])
+        logger.info('created library copy: %r', copy_data)
         return copy_data
-
-
-    def create_plate_range(self, library_short_name, copy_name, start_plate, end_plate):
+    
+    def create_plate_range(
+            self, library_short_name, copy_name, start_plate, end_plate):
         
         return SCHEMA.PLATE.PLATE_RANGE_FORMAT.format(
             library_short_name=library_short_name, copy_name=copy_name,
@@ -283,7 +286,7 @@ class DBResourceTestCase(IResourceTestCase):
         
         _data = {
             'screen_facility_id': screen_facility_id,
-            'date_of_activity': _now().strftime("%Y-%m-%d"),
+            'date_of_activity': _now().strftime(DATE_FORMAT),
             'is_for_external_library_plates': False,
             'library_plates_screened': library_plates_screened,
             'number_of_replicates': 1,
@@ -313,7 +316,8 @@ class DBResourceTestCase(IResourceTestCase):
         logger.info('resp: %r', resp)
         
         self.assertTrue(API_RESULT_META in resp, '%r' % resp)
-        self.assertTrue(SCHEMA.API_MSG_RESULT in resp[API_RESULT_META], '%r' % resp)
+        self.assertTrue(
+            SCHEMA.API_MSG_RESULT in resp[API_RESULT_META], '%r' % resp)
         meta = resp[API_RESULT_META][SCHEMA.API_MSG_RESULT]
         
         self.assertTrue(len(resp[API_RESULT_DATA]) == 1)
@@ -337,23 +341,30 @@ class DBResourceTestCase(IResourceTestCase):
         
         if data:
             input_data.update(data)
-        if not set(['lab_head_id','lab_head_username']) & set(input_data.keys()):
+        if not set(['lab_head_id','lab_head_username'])\
+                & set(input_data.keys()):
             lab_head = self.create_lab_head()
             input_data['lab_head_id'] = str(lab_head['screensaver_user_id'])
         
         if 'lab_head_id' in input_data:
-            user_input_data = { 'lab_head_id': str(input_data['lab_head_id']) }
+            user_input_data = { 
+                'lab_head_id': str(input_data['lab_head_id']) }
         elif 'lab_head_username' in input_data:
-            user_input_data = { 'lab_head_username': input_data['lab_head_username'] }
+            user_input_data = { 
+                'lab_head_username': input_data['lab_head_username'] }
             
-        if not set(['lead_screener_id','lead_screener_username']) & set(input_data.keys()):
+        if not set(['lead_screener_id','lead_screener_username'])\
+                & set(input_data.keys()):
             lead_screener = self.create_screening_user(user_input_data)
-            input_data['lead_screener_id'] = str(lead_screener['screensaver_user_id'])
-        if not set(['collaborator_ids','collaborator_usernames']) & set(input_data.keys()):
+            input_data['lead_screener_id'] = \
+                str(lead_screener['screensaver_user_id'])
+        if not set(['collaborator_ids','collaborator_usernames'])\
+                & set(input_data.keys()):
             collaborator1 = self.create_screening_user(user_input_data)
             collaborator2 = self.create_screening_user(user_input_data)
             input_data['collaborator_ids'] = [
-                collaborator1['screensaver_user_id'], collaborator2['screensaver_user_id']]
+                collaborator1['screensaver_user_id'], 
+                collaborator2['screensaver_user_id']]
         if 'collaborator_ids' in input_data:
             # convert ids to strings for testing
             input_data['collaborator_ids'] = [ 
@@ -385,17 +396,6 @@ class DBResourceTestCase(IResourceTestCase):
         self.assertTrue(result, msg)
         return new_obj
     
-    def create_copy(self, copy_input_data ):   
-        resource_uri = BASE_URI_DB + '/librarycopy'
-        resource_test_uri = '/'.join([
-            resource_uri,copy_input_data['library_short_name'],
-            copy_input_data['copy_name']])
-        copy_data = self._create_resource(
-            copy_input_data, resource_uri, resource_test_uri, 
-            excludes=['initial_plate_well_volume','initial_plate_status'])
-        logger.info('created library copy: %r', copy_data)
-        return copy_data
-    
     def get_screen(self, facility_id, data_for_get=None):
         ''' Retrieve a Screen from the API'''
         resource_uri = '/'.join([BASE_URI_DB, 'screen', facility_id])
@@ -423,17 +423,6 @@ class DBResourceTestCase(IResourceTestCase):
             (resp.status_code, self.get_content(resp)))
         return self.deserialize(resp)
 
-#     def create_screensaveruser(self, data=None):
-#         ''' Create a test ScreensaverUser through the API'''
-#         
-#         input_data = ScreensaverUserFactory.attributes()
-#         if data:
-#             input_data.update(data)
-#         resource_uri = '/'.join([BASE_URI_DB, 'screensaveruser'])
-#         test_uri = '/'.join([resource_uri,input_data['username']])
-#         logger.info('create user: %r', input_data)
-#         return self._create_resource(input_data,resource_uri,test_uri)
-#     
     def create_staff_user(self, data=None):
         input_data = ScreensaverUserFactory.attributes()
         if data:
@@ -497,8 +486,8 @@ class DBResourceTestCase(IResourceTestCase):
         
         def post_input(input_file):
             # NOTE: create a detail URI; post_list is not implemented
-            resource_uri = \
-                BASE_URI_DB + '/screensaveruser/%s/useragreement/' % screensaver_user_id
+            resource_uri = BASE_URI_DB \
+                + '/screensaveruser/%s/useragreement/' % screensaver_user_id
             logger.info('POST user agreement %r to the server...', resource_uri)
             user_agreement_input['attached_file'] = input_file
             user_agreement_input['filename'] = filename
@@ -548,7 +537,6 @@ class DBResourceTestCase(IResourceTestCase):
             
         return user_agreement_output
     
-            
     def create_lab_affiliation(self, data=None):
         attributes = LabAffiliationFactory.attributes()
         if data is not None:
@@ -738,9 +726,10 @@ class DBResourceTestCase(IResourceTestCase):
         duplex_library_copy1_input = {
             'library_short_name': self.duplex_library1['short_name'],
             'copy_name': "copy1",
-            'usage_type': "cherry_pick_source_plates",
+            'usage_type': VOCAB.copy.usage_type.CHERRY_PICK_SOURCE_PLATES,
             'initial_plate_well_volume': '0.000010',
-            'initial_plate_status': 'available'
+            'initial_plate_status': VOCAB.plate.status.AVAILABLE,
+            'plate_type': VOCAB.plate.plate_type.ABGENE_384
         }  
         self.duplex_library_copy1 = self.create_copy(duplex_library_copy1_input)
         logger.info(
@@ -764,7 +753,7 @@ class DBResourceTestCase(IResourceTestCase):
                 'description': 'Non-positive field',
                 'replicate_ordinal': 2,
                 'is_follow_up_data': True,
-                'assay_readout_type': 'flourescence_intensity',
+                'assay_readout_type': 'fluorescence_intensity',
             },
             'F': {
                 'name': 'Field2_positive_indicator',
@@ -845,6 +834,9 @@ class DBResourceTestCase(IResourceTestCase):
         output_data = self.get_screenresult(screen_facility_id)
         
         ScreenResultSerializerTest.validate(self, input_data, output_data)
+        
+        logger.debug('created a screen result for %r, %r', 
+            screen_facility_id, output_data)
 
     def get_screenresult(self,screen_facility_id, username=None, data=None):
         
@@ -878,6 +870,10 @@ class DBResourceTestCase(IResourceTestCase):
  
 
 def setUpModule():
+    '''Perform test setup for the db module:
+    - create a super user,
+    - bootstrap metadata
+    '''
 
     logger.info('=== setup Module')
     keepdb = False
@@ -954,8 +950,12 @@ def setUpModule():
         })
         logger.info('admin screensaveruser created')
         DBResourceTestCase.admin_user = new_admin_user
-                
-    
+
+    logger.info('=== trigger clear_all_caches on the server...')
+    testContext = IResourceTestCase(methodName='_clear_server_caches')
+    testContext.setUp()
+    testContext._clear_server_caches()
+
     logger.info('=== setup Module done')
 
 def tearDownModule():
@@ -968,10 +968,16 @@ def tearDownModule():
     # User.objects.all().delete()
 
 class LibraryResource(DBResourceTestCase):
+    '''Test API functionality for libraries and related data'''
 
     def setUp(self):
 
         super(LibraryResource, self).setUp()
+        
+        # NOTE: for RNAi Library tests:
+        # settings.RESTRICT_ALL_SEQUENCES = False must be set, otherwise, 
+        # sequence information will be hidden by default.
+        # (see DBResrouceTestCase init method).
 
     def tearDown(self):
         logger.info('=== tearDown...')
@@ -985,14 +991,97 @@ class LibraryResource(DBResourceTestCase):
         PlateLocation.objects.all().delete()
         ApiLog.objects.all().delete()
     
+    
+    def test_c_copy_well_search_parser(self):
+        tests = (
+            ('50 A6 A7 A8 C', [
+                {'plates': [50], 'wellnames': ['A06','A07','A08'], 
+                    'copies': ['C'] }]),
+            ('50a6,b10,c20 C',[
+                {'plates': [50], 'wellnames': ['A06','B10','C20'], 
+                    'copies': ['C'] }]),
+            ('50a6 b10 c20 C',[
+                {'plates': [50], 'wellnames': ['A06','B10','C20'], 
+                    'copies': ['C'] }]),
+            ('50A6 C', [
+                {'well_ids': ['00050:A06'], 'copies': ['C'] }]),
+            ('00050:A06 A7 c10 C, D, E', [
+                {'plates': [50], 'wellnames': ['A06','A07','C10'], 
+                    'copies': ['C','D','E'] }]),
+            ('5000-5100 C,D', [
+                {'plate_ranges': [[5000,5100],], 'copies': ['C','D'] }]),
+            (
+            '50    A06 C,D\n'
+            '51    C10 C\n'
+            '53    F22 F\n', [
+                {'plates': [50], 'wellnames': ['A06'], 'copies': ['C','D']},
+                {'plates': [51], 'wellnames': ['C10'], 'copies': ['C']},
+                {'plates': [53], 'wellnames': ['F22'],'copies': ['F']} ]
+            ),
+            ('50-60 A1,A2 "Stock A"', [
+                {'plate_ranges': [[50,60],], 'wellnames': ['A01','A02'],
+                    'copies': ['Stock A']}]),
+            ('50-60 70-75 A1,A2 ZZ', [{
+                'plate_ranges': [[50,60],[70,75]], 'wellnames': ['A01','A02'],
+                'copies': ['ZZ']}]),
+            ('xxxy', {'errors': { 
+                SCHEMA.API_PARAM_SEARCH: 
+                    'Must specify either a plate, plate range, or well_id' }}),
+            ('A01 A02 ', {'errors': { 
+                SCHEMA.API_PARAM_SEARCH: 
+                    'Must specify either a plate, plate range, or well_id' }}),
+        )
+        
+        for (test_search, expected_searches) in tests:
+            logger.info('test: %r', test_search)
+            try:
+                parsed_searches = CopyWellResource.parse_well_search(test_search)
+                logger.info('returns: %r', parsed_searches)
+            except ValidationError, e:
+                if 'errors' not in expected_searches:
+                    self.fail('Expected search is not an error: %r, %r' 
+                        % (expected_searches,e))
+                else:
+                    expected_errors = expected_searches['errors']
+                    self.assertEqual(
+                        len(expected_errors), 
+                        len(e.errors))
+                    for key,expected_error_string in expected_errors.items():
+                        if key not in e.errors:
+                            self.fail('expected error key: %r, not found in %r'
+                                % (key, e.errors))
+                        parsed_error = e.errors[key]
+                        logger.info('error: %r', parsed_error)
+                        if len(parsed_error) == 1:
+                            parsed_error = parsed_error[0]
+                        logger.info('error: %r', parsed_error)
+                        self.assertTrue(expected_error_string in parsed_error,
+                            'expected: %r not found in %r' 
+                            % (expected_error_string, parsed_error))
+                    continue
+            
+            self.assertTrue(len(parsed_searches),len(expected_searches))
+            for i,expected_search in enumerate(expected_searches):
+                parsed_search = parsed_searches[i]
+                for k,v in expected_search.items():
+                    self.assertTrue(k in parsed_search, 
+                        'k: %r not in %r' % (k, parsed_search))
+                    v2 = parsed_search.get(k)
+                    self.assertEqual(v, v2, 
+                        'k: %r %r != %r' % (k, v,v2))
+    
     def test_b_well_search_parser(self):
         
         tests = (
-            ('50 A6 A7 A8', [{'plates': [50], 'wellnames': ['A06','A07','A08']}]),
-            ('50a6,b10,c20',[{'plates': [50], 'wellnames': ['A06','B10','C20']}]),
-            ('50a6 b10 c20',[{'plates': [50], 'wellnames': ['A06','B10','C20']}]),
+            ('50 A6 A7 A8', [{'plates': [50], 
+                'wellnames': ['A06','A07','A08']}]),
+            ('50a6,b10,c20',[{'plates': [50], 
+                'wellnames': ['A06','B10','C20']}]),
+            ('50a6 b10 c20',[{'plates': [50], 
+                'wellnames': ['A06','B10','C20']}]),
             ('50A6', [{'well_ids': ['00050:A06']}]),
-            ('00050:A06 A7 c10', [{'plates': [50], 'wellnames': ['A06','A07','C10']}]),
+            ('00050:A06 A7 c10', [{'plates': [50], 
+                'wellnames': ['A06','A07','C10']}]),
             (
             '50    A06\n'
             '51    C10\n'
@@ -1001,17 +1090,23 @@ class LibraryResource(DBResourceTestCase):
                 {'plates': [51], 'wellnames': ['C10']},
                 {'plates': [53], 'wellnames': ['F22']},]
             ),
-            ('50-60 A1,A2', [{'plate_ranges': [[50,60],], 'wellnames': ['A01','A02']}]),
+            ('50-60 A1,A2', [{
+                'plate_ranges': [[50,60],], 'wellnames': ['A01','A02']}]),
             ('50-60 70-75 A1,A2', [{
-                'plate_ranges': [[50,60],[70,75]], 'wellnames': ['A01','A02']}]),
-            ('xxxy', {'errors': { SCHEMA.API_PARAM_SEARCH: 'part not recognized' }}),
+                'plate_ranges': [[50,60],[70,75]], 
+                'wellnames': ['A01','A02']}]),
+            ('xxxy', {'errors': { 
+                SCHEMA.API_PARAM_SEARCH: 'part not recognized' }}),
             ('A01 A02 ', {'errors': { 
-                SCHEMA.API_PARAM_SEARCH: 'Must specify either a plate, plate range, or well_id' }}),
+                SCHEMA.API_PARAM_SEARCH: 
+                    'Must specify either a plate, plate range, or well_id' }}),
             ('A01 A02 1000', [{'plates':[1000], 'wellnames':['A01','A02']}]),
-            ('A01 A02 1000-1010', [{'plate_ranges':[[1000,1010],], 'wellnames':['A01','A02']}]),
+            ('A01 A02 1000-1010', [{'plate_ranges':[[1000,1010],], 
+                'wellnames':['A01','A02']}]),
             ((
             '50A06\n'
-            '00050:A07\n'), [{'well_ids': ['00050:A06']},{'well_ids': ['00050:A07']}]),
+            '00050:A07\n'), [{
+                'well_ids': ['00050:A06']},{'well_ids': ['00050:A07']}]),
             ((
             '00050:A06\n'
             '00050:A07\n'
@@ -1023,7 +1118,8 @@ class LibraryResource(DBResourceTestCase):
                 {'well_ids': ['00050:A06']},{'well_ids': ['00050:A07']},
                 {'well_ids': ['00051:A06']},{'well_ids': ['00051:A07']},
                 {'well_ids': ['00053:A07']},]),
-            ('00050:A06 50:A07 52A6', [{'well_ids': ['00050:A06','00050:A07','00052:A06']}]),
+            ('00050:A06 50:A07 52A6', [{
+                'well_ids': ['00050:A06','00050:A07','00052:A06']}]),
             ('00050:A06 50:A07 A6', {'errors': { 
                 SCHEMA.API_PARAM_SEARCH: 
                     'Well names may not be defined with multiple well_ids' }}),
@@ -1040,7 +1136,6 @@ class LibraryResource(DBResourceTestCase):
         for (test_search, expected_searches) in tests:
             logger.info('test: %r', test_search)
             try:
-                logger.info('search: %r', test_search)
                 parsed_searches = WellResource.parse_well_search(test_search)
                 logger.info('returns: %r', parsed_searches)
             except ValidationError, e:
@@ -1159,7 +1254,7 @@ class LibraryResource(DBResourceTestCase):
         index = 0
         platesize = 384
         plate = 1535        
-        substance_ids = set()
+        # substance_ids = set()
         # Examine wells - first plate only for speed
         for j in range(384):
             well_name = lims_utils.well_name_from_index(j, platesize)
@@ -1238,7 +1333,7 @@ class LibraryResource(DBResourceTestCase):
         index = 0
         platesize = 384
         plate = 1535        
-        substance_ids = set()
+        # substance_ids = set()
         # Examine wells - first plate only for speed
         for j in range(384):
             well_name = lims_utils.well_name_from_index(j, platesize)
@@ -1353,7 +1448,6 @@ class LibraryResource(DBResourceTestCase):
              })
 
         # 2. Patch some wells
-        logger.info('set some experimental wells...')
         experimental_well_count = 384
         plate = library_item[START_PLATE]
         input_well_data = [
@@ -1705,7 +1799,6 @@ class LibraryResource(DBResourceTestCase):
             WELL.WELL_ID: test_well_id})
         self.assertEqual(well_data[WELL.LIBRARY_WELL_TYPE], WELL_TYPE.EMPTY)
         
-        
         # 4.b experimental -> undefined
         test_undefined_well = {
             WELL.WELL_ID: test_well_id,
@@ -1725,7 +1818,6 @@ class LibraryResource(DBResourceTestCase):
         
         # 5. TODO: experimental -> undefined/empty, after screen results are loaded
         # - should generate an error
-        
         
     def validate_wells(self, input_data, output_data, fields):
         ''' 
@@ -1757,155 +1849,8 @@ class LibraryResource(DBResourceTestCase):
             #     ('substance_id not unique', substance_id, substance_ids))
             # substance_ids.add(substance_id)
         
-    def test10_create_library_copy_specific_wells(self):
-
-        logger.info('test10_create_library_copy ...')
-        
-        # 1. Create Library
-        logger.info('create library a library...')
-        start_plate = 1000
-        end_plate = 1005
-        plate_size = 384
-        library_data = self.create_library({
-            START_PLATE: start_plate, 
-            END_PLATE: end_plate,
-            'plate_size': plate_size,
-            SCREEN_TYPE: 'small_molecule' })
-        short_name = library_data['short_name']
-        
-        # 2. Create Library Wells: wells have various concentrations 
-        logger.info('create and load well data, plates: %r-%r...', 
-            start_plate, end_plate)
-        well_input_data = {}
-        for plate in range(start_plate, end_plate+1):
-            for i in range(0,plate_size):
-                # Create test wells, concentrations will be varied
-                well_input = self.create_small_molecule_test_well(
-                    plate,i,library_well_type='experimental')
-                well_input_data[well_input['well_id']] = well_input
-        resource_name = 'well'
-        resource_uri = '/'.join([
-            BASE_URI_DB,'library', short_name, resource_name])
-        resp = self.api_client.put(
-            resource_uri, format='sdf', 
-            data={ 'objects': well_input_data.values()}, 
-            authentication=self.get_credentials(), 
-            **{ 'limit': 0, 'includes': '*'} )
-        self.assertTrue(
-            resp.status_code in [200], 
-            (resp.status_code, self.get_content(resp)))
-        
-        # 3. Create a Library Copy:
-        # - will also create Plates: 
-        # -- initial_well_volume will be set
-        # -- because the well concentrations vary, 
-        # Plate.concentration fields are not set
-        logger.info('Create library copy...')
-        copy_input_data = {
-            'library_short_name': library_data['short_name'],
-            'copy_name': "A",
-            'usage_type': "library_screening_plates",
-            'initial_plate_well_volume': Decimal('0.000040')
-        }        
-        resource_uri = BASE_URI_DB + '/librarycopy'
-        resource_test_uri = '/'.join([
-            resource_uri,copy_input_data['library_short_name'],
-            copy_input_data['copy_name']])
-        library_copy = self._create_resource(
-            copy_input_data, resource_uri, resource_test_uri, 
-            excludes=['initial_plate_well_volume'])
-
-        # 4. Verify created Plates
-        logger.info('Verify plates created...')
-        uri = '/'.join([resource_test_uri,'plate'])
-        data_for_get={ 'limit': 0 }        
-        data_for_get.setdefault('includes', ['*'])
-        resp = self.api_client.get(
-            uri, format='json', authentication=self.get_credentials(), 
-            data=data_for_get)
-        self.assertTrue(
-            resp.status_code in [200], 
-            (resp.status_code,self.get_content(resp)))
-        new_obj = self.deserialize(resp)
-        start_plate = int(library_data[START_PLATE])
-        end_plate = int(library_data[END_PLATE])
-        number_of_plates = end_plate-start_plate+1
-        self.assertEqual(len(new_obj[API_RESULT_DATA]),number_of_plates)
-        for plate_data in new_obj[API_RESULT_DATA]:
-            self.assertEqual(library_copy['copy_name'],plate_data['copy_name'])
-            plate_number = int(plate_data['plate_number'])
-            self.assertTrue(
-                plate_number>=start_plate and plate_number<=end_plate,
-                'wrong plate_number: %r' % plate_data)
-            self.assertEqual(
-                Decimal(copy_input_data['initial_plate_well_volume']),
-                Decimal(plate_data['well_volume']))
-            self.assertTrue(plate_data['molar_concentration'] is None)
-            self.assertTrue(plate_data['mg_ml_concentration'] is None)
-            # Min Molar concentration is set, because copy_wells were created
-            self.assertTrue(plate_data['min_molar_concentration'] is not None)
-            # Min mg/ml concentration not set, as copy_wells only have molar
-            self.assertTrue(plate_data['min_mg_ml_concentration'] is None)
-            self.assertEqual(plate_data['status'], 'not_specified')
-            
-        # 5. Verify created CopyWells
-        logger.info('Verify copy_wells created (check varying concentrations)')
-        uri = '/'.join([
-            BASE_URI_DB,
-            'library',
-            copy_input_data['library_short_name'],
-            'copy',
-            copy_input_data['copy_name'],
-            'copywell'])
-        data_for_get={ 'limit': 0 }        
-        data_for_get.setdefault('includes', ['*'])
-        resp = self.api_client.get(
-            uri, format='json', authentication=self.get_credentials(), 
-            data=data_for_get)
-        self.assertTrue(
-            resp.status_code in [200], 
-            (resp.status_code,self.get_content(resp)))
-        new_obj = self.deserialize(resp)
-        copy_wells_returned = new_obj[API_RESULT_DATA]
-        self.assertEqual(len(copy_wells_returned),len(well_input_data))
-
-        for copy_well_data in copy_wells_returned:
-            self.assertEqual(
-                library_copy['copy_name'],copy_well_data['copy_name'])
-            self.assertTrue(
-                copy_well_data['plate_number'] >= start_plate
-                and copy_well_data['plate_number'] <= end_plate,
-                'copy_well returned for wrong plate: %r' % copy_well_data )
-            well_input = well_input_data.get(copy_well_data['well_id'], None)
-            self.assertTrue(well_input is not None, 
-                'copy well not in wells: %r' % copy_well_data)
-            if well_input['library_well_type'] == 'experimental':
-                self.assertEqual(
-                    Decimal(copy_input_data['initial_plate_well_volume']),
-                    Decimal(copy_well_data['initial_volume']))
-                self.assertEqual(
-                    copy_well_data['initial_volume'], 
-                    copy_well_data['volume'])
-                self.assertEqual(
-                    Decimal(well_input['molar_concentration']),
-                    Decimal(copy_well_data['molar_concentration']), 
-                    'molar concentration mismatch: %r output %r' 
-                    % (well_input,copy_well_data))
-                self.assertTrue(copy_well_data['mg_ml_concentration'] is None)
-            else:
-                self.assertTrue(
-                    copy_well_data['initial_volume'] is None,
-                    'non-experimental well has data: %r' % copy_well_data)
-                self.assertTrue(copy_well_data['volume'] is None,
-                    'non-experimental well has data: %r' % copy_well_data)
-                self.assertTrue(copy_well_data['molar_concentration'] is None,
-                    'non-experimental well has data: %r' % copy_well_data)
-        return (library_data, library_copy, copy_wells_returned)
-
-    def test10a_create_library_copy_simple_wells(self):
-
-        logger.info('test10a_create_library_copy_simple_wells ...')
-        logger.info('creates a library wells with single concentration')
+    def test10_create_copy_plates(self):
+        logger.info('test10_create_copy_plates ...')
         
         # 1. Create a Library
         logger.info('create library a library...')
@@ -1919,17 +1864,19 @@ class LibraryResource(DBResourceTestCase):
             SCREEN_TYPE: 'small_molecule' })
         short_name = library_data['short_name']
         
-        # 2. Create Library Wells: wells all have the same concentration 
+        # 2. Create Library Wells
         logger.info('create and load well data, plates: %r-%r...', 
             start_plate, end_plate)
         well_input_data = {}
-        single_molar_concentration = '0.010'
         for plate in range(start_plate, end_plate+1):
             for i in range(0,plate_size):
-                well_input = self.create_small_molecule_test_well(
-                    plate,i)
-                if well_input['library_well_type'] == 'experimental':
-                    well_input['molar_concentration'] = single_molar_concentration
+                if i < plate_size -1:
+                    well_input = self.create_small_molecule_test_well(
+                        plate,i,library_well_type='experimental')
+                else:
+                    # let one be empty
+                    well_input = self.create_small_molecule_test_well(
+                        plate,i, library_well_type='empty')
                 well_input_data[well_input['well_id']] = well_input
         resource_name = 'well'
         resource_uri = '/'.join([
@@ -1949,15 +1896,15 @@ class LibraryResource(DBResourceTestCase):
             'library_short_name': library_data['short_name'],
             'copy_name': "A",
             'usage_type': "library_screening_plates",
-            'initial_plate_well_volume': '0.000040'
+            'initial_plate_well_volume': '0.000040',
+            'initial_plate_status': VOCAB.plate.status.AVAILABLE,
+            'plate_type': VOCAB.plate.plate_type.ABGENE_384
         }        
+        library_copy = self.create_copy(copy_input_data)
         resource_uri = BASE_URI_DB + '/librarycopy'
         resource_test_uri = '/'.join([
             resource_uri,copy_input_data['library_short_name'],
             copy_input_data['copy_name']])
-        library_copy = self._create_resource(
-            copy_input_data, resource_uri, resource_test_uri, 
-            excludes=['initial_plate_well_volume'])
         
         # 4. Verify created Plates
         logger.info('Verify plates created...')
@@ -1975,7 +1922,10 @@ class LibraryResource(DBResourceTestCase):
         end_plate = int(library_data[END_PLATE])
         number_of_plates = end_plate-start_plate+1
         self.assertEqual(len(new_obj[API_RESULT_DATA]),number_of_plates)
-        for plate_data in new_obj[API_RESULT_DATA]:
+        
+        plates_data = new_obj[API_RESULT_DATA]
+        
+        for plate_data in plates_data:
             self.assertEqual(library_copy['copy_name'],plate_data['copy_name'])
             plate_number = int(plate_data['plate_number'])
             self.assertTrue(
@@ -1984,25 +1934,35 @@ class LibraryResource(DBResourceTestCase):
             self.assertEqual(
                 Decimal(copy_input_data['initial_plate_well_volume']),
                 Decimal(plate_data['well_volume']))
-            self.assertEqual(
-                Decimal(single_molar_concentration),
-                Decimal(plate_data['min_molar_concentration']))
-            self.assertEqual(
-                Decimal(single_molar_concentration),
-                Decimal(plate_data['max_molar_concentration']))
             self.assertTrue(plate_data['molar_concentration'] is None)
             self.assertTrue(plate_data['mg_ml_concentration'] is None)
+            # Min Molar concentration is set, because copy_wells were created
+            self.assertTrue(plate_data['min_molar_concentration'] is not None)
+            # Min mg/ml concentration not set, as copy_wells only have molar
             self.assertTrue(plate_data['min_mg_ml_concentration'] is None)
+            
+            self.assertEqual(
+                copy_input_data['initial_plate_status'], plate_data['status'])
+            self.assertEqual(
+                copy_input_data['plate_type'], plate_data['plate_type'])
 
-        # 5. Verify CopyWell data can be queried, 
-        # but that all have single concentration
-        logger.info('Verify copy_wells created ()...')
+        return (library_data, library_copy, plates_data, well_input_data)
+        
+    def test10a_create_copy_wells(self):
+
+        logger.info('test10a_create_copy_wells...')
+            
+        (library_data, copy_data, plates_data, well_input_data) = \
+            self.test10_create_copy_plates()
+            
+        # 5. Verify created CopyWells
+        logger.info('Verify copy_wells created (check varying concentrations)')
         uri = '/'.join([
             BASE_URI_DB,
             'library',
-            copy_input_data['library_short_name'],
+            copy_data['library_short_name'],
             'copy',
-            copy_input_data['copy_name'],
+            copy_data['copy_name'],
             'copywell'])
         data_for_get={ 'limit': 0 }        
         data_for_get.setdefault('includes', ['*'])
@@ -2016,19 +1976,20 @@ class LibraryResource(DBResourceTestCase):
         copy_wells_returned = new_obj[API_RESULT_DATA]
         self.assertEqual(len(copy_wells_returned),len(well_input_data))
 
+
         for copy_well_data in copy_wells_returned:
             self.assertEqual(
-                library_copy['copy_name'],copy_well_data['copy_name'])
+                copy_data['copy_name'],copy_well_data['copy_name'])
             self.assertTrue(
-                copy_well_data['plate_number'] >= start_plate
-                and copy_well_data['plate_number'] <= end_plate,
+                copy_well_data['plate_number'] >= library_data['start_plate']
+                and copy_well_data['plate_number'] <= library_data['end_plate'],
                 'copy_well returned for wrong plate: %r' % copy_well_data )
             well_input = well_input_data.get(copy_well_data['well_id'], None)
             self.assertTrue(well_input is not None, 
                 'copy well not in wells: %r' % copy_well_data)
             if well_input['library_well_type'] == 'experimental':
                 self.assertEqual(
-                    Decimal(copy_input_data['initial_plate_well_volume']),
+                    Decimal(copy_data['avg_plate_volume']),
                     Decimal(copy_well_data['initial_volume']))
                 self.assertEqual(
                     Decimal(copy_well_data['initial_volume']), 
@@ -2047,7 +2008,8 @@ class LibraryResource(DBResourceTestCase):
                     'non-experimental well has data: %r' % copy_well_data)
                 self.assertTrue(copy_well_data['molar_concentration'] is None,
                     'non-experimental well has data: %r' % copy_well_data)
-        return (library_data, library_copy, copy_wells_returned)
+
+        return (library_data, copy_data, copy_wells_returned)
         
     def test11_create_library_copy_invalids(self):
         # TODO: try to create duplicate copy names
@@ -2059,8 +2021,8 @@ class LibraryResource(DBResourceTestCase):
 
         logger.info('test12_modify_copy_wells ...')
     
-        (library_data, copy_data, plate_data) = \
-            self.test10_create_library_copy_specific_wells()
+        (library_data, copy_data, copy_wells_data) = \
+            self.test10a_create_copy_wells()
         end_plate = int(library_data[END_PLATE])
         start_plate = int(library_data[START_PLATE])
         short_name = library_data['short_name']
@@ -2083,8 +2045,8 @@ class LibraryResource(DBResourceTestCase):
         
         copywell_data = new_obj[API_RESULT_DATA]
         expected_wells = plate_size;
-        logger.info('returned copywell: %r', copywell_data[0])
-        logger.info('returned copywell: %r', copywell_data[-1])
+        logger.info('1.returned copywell: %r', copywell_data[0])
+        logger.info('last returned copywell: %r', copywell_data[-1])
         self.assertEqual(len(copywell_data),expected_wells)
         
         logger.info('patch a copywell...')
@@ -2114,15 +2076,14 @@ class LibraryResource(DBResourceTestCase):
     def test13_plate_locations(self):
 
         logger.info('test13_plate_locations ...')
-        (library_data, copy_data, plate_data) = \
-            self.test10_create_library_copy_specific_wells()
+        (library_data, copy_data, copy_wells_data) = \
+            self.test10a_create_copy_wells()
         
         end_plate = library_data[END_PLATE]
         start_plate = library_data[START_PLATE]
         short_name = library_data['short_name']
         
         # 1. Simple test
-#         lps_format = '{library_short_name}:{copy_name}:{start_plate}-{end_plate}'
         lps_format = SCHEMA.PLATE.PLATE_RANGE_FORMAT
         copy_plate_ranges = [
             lps_format.format(
@@ -2282,8 +2243,8 @@ class LibraryResource(DBResourceTestCase):
         
         logger.info('test17_batch_edit_copyplate_info ...')
         
-        (library_data, copy_data, plate_data) = \
-            self.test10_create_library_copy_specific_wells()
+        (library_data, copy_data, copy_wells_data) = \
+            self.test10a_create_copy_wells()
         end_plate = library_data[END_PLATE]
         start_plate = library_data[START_PLATE]
         short_name = library_data['short_name']
@@ -2325,11 +2286,13 @@ class LibraryResource(DBResourceTestCase):
             API_RESULT_META in post_response, '%r' % post_response)
         meta = post_response[API_RESULT_META]
         self.assertTrue(SCHEMA.API_MSG_RESULT in meta, '%r' % post_response)
+        self.assertTrue('plate' in meta[SCHEMA.API_MSG_RESULT])
+        meta = meta[SCHEMA.API_MSG_RESULT]['plate']
         self.assertTrue(
-            SCHEMA.API_MSG_SUBMIT_COUNT in meta[SCHEMA.API_MSG_RESULT], 
+            SCHEMA.API_MSG_SUBMIT_COUNT in meta, 
             '%r' % post_response)
         self.assertTrue(
-            meta[SCHEMA.API_MSG_RESULT][SCHEMA.API_MSG_SUBMIT_COUNT]==6, 
+            meta[SCHEMA.API_MSG_SUBMIT_COUNT]==6, 
             'Wrong "%r" count: %r' 
                 % (SCHEMA.API_MSG_SUBMIT_COUNT, meta))
         logger.info('post_response: %r', post_response)
@@ -2361,7 +2324,7 @@ class LibraryResource(DBResourceTestCase):
                     'plate data: expected: %r, rcvd: %r'
                     % (plate_info[field],plate_data_output[field]))
             self.assertEqual(
-                _now().date().strftime("%Y-%m-%d"), 
+                _now().date().strftime(DATE_FORMAT), 
                 plate_data_output['date_plated'],
                 'expected date_plated: %r, %r' 
                     %(_now().date(), plate_data_output['date_plated']))
@@ -2392,9 +2355,11 @@ class LibraryResource(DBResourceTestCase):
             API_RESULT_META in post_response, '%r' % post_response)
         meta = post_response[API_RESULT_META]
         self.assertTrue(SCHEMA.API_MSG_RESULT in meta, '%r' % post_response)
+        self.assertTrue('plate' in meta[SCHEMA.API_MSG_RESULT])
+        meta = meta[SCHEMA.API_MSG_RESULT]['plate']
         self.assertTrue(
-            SCHEMA.API_MSG_SUBMIT_COUNT in meta[SCHEMA.API_MSG_RESULT], '%r' % post_response)
-        self.assertTrue(meta[SCHEMA.API_MSG_RESULT][SCHEMA.API_MSG_SUBMIT_COUNT]==6, 
+            SCHEMA.API_MSG_SUBMIT_COUNT in meta, '%r' % post_response)
+        self.assertTrue(meta[SCHEMA.API_MSG_SUBMIT_COUNT]==6, 
             'Wrong "%r" count: %r' 
             % (SCHEMA.API_MSG_SUBMIT_COUNT, meta))
         logger.info('post_response: %r', post_response)
@@ -2422,7 +2387,7 @@ class LibraryResource(DBResourceTestCase):
         for plate_data_output in plates_data_output:
             self.assertEqual('retired', plate_data_output['status'])
             self.assertEqual(
-                _now().date().strftime("%Y-%m-%d"), 
+                _now().date().strftime(DATE_FORMAT), 
                 plate_data_output['date_retired'],
                 'expected date_plated: %r, %r' 
                     %(_now().date(), plate_data_output['date_plated']))
@@ -2431,8 +2396,8 @@ class LibraryResource(DBResourceTestCase):
         
         logger.info('test16_batch_edit_copyplate_location ...')
 
-        (library_data, copy_data, plate_data) = \
-            self.test10_create_library_copy_specific_wells()
+        (library_data, copy_data, copy_wells_data) = \
+            self.test10a_create_copy_wells()
         end_plate = library_data[END_PLATE]
         start_plate = library_data[START_PLATE]
         short_name = library_data['short_name']
@@ -2474,12 +2439,15 @@ class LibraryResource(DBResourceTestCase):
             API_RESULT_META in post_response, '%r' % post_response)
         meta = post_response[API_RESULT_META]
         self.assertTrue(SCHEMA.API_MSG_RESULT in meta, '%r' % post_response)
-        logger.info('meta: %r', meta)
+        self.assertTrue('plate_location' in meta[SCHEMA.API_MSG_RESULT])
+        meta = meta[SCHEMA.API_MSG_RESULT]['plate_location']
+        logger.info('meta: %r', meta)    
         plate_location_msg = \
             'Plate Location Result: {room}-{freezer}-{shelf}-{bin}'\
                 .format(**plate_location_input)
-        self.assertTrue(plate_location_msg in meta[SCHEMA.API_MSG_RESULT])
-        plate_location_result = meta[SCHEMA.API_MSG_RESULT][plate_location_msg]
+        
+        self.assertTrue(plate_location_msg in meta)
+        plate_location_result = meta[plate_location_msg]
         self.assertTrue(
             SCHEMA.API_MSG_UPDATED in plate_location_result, '%r' % plate_location_result)
         self.assertTrue(plate_location_result[SCHEMA.API_MSG_UPDATED]==6, 
@@ -2562,8 +2530,8 @@ class LibraryResource(DBResourceTestCase):
 
         logger.info('test15_modify_copyplate_info ...')
         
-        (library_data, copy_data, plate_data) = \
-            self.test10_create_library_copy_specific_wells()
+        (library_data, copy_data, copy_wells_data) = \
+            self.test10a_create_copy_wells()
         end_plate = library_data[END_PLATE]
         start_plate = library_data[START_PLATE]
         short_name = library_data['short_name']
@@ -2643,7 +2611,7 @@ class LibraryResource(DBResourceTestCase):
                     'plate data: expected: %r, rcvd: %r'
                     % (new_plate_data[field],plate_data[field]))
                 self.assertEqual(
-                    _now().date().strftime("%Y-%m-%d"), 
+                    _now().date().strftime(DATE_FORMAT), 
                     plate_data['date_plated'],
                     'expected date_plated: %r, %r' 
                         %(_now().date(), plate_data['date_plated']))
@@ -2656,8 +2624,8 @@ class LibraryResource(DBResourceTestCase):
 
         logger.info('test14_modify_copy_plate_locations ...')
         
-        (library_data, copy_data, plate_data) = \
-            self.test10_create_library_copy_specific_wells()
+        (library_data, copy_data, copy_wells_data) = \
+            self.test10a_create_copy_wells()
         end_plate = library_data[END_PLATE]
         start_plate = library_data[START_PLATE]
         short_name = library_data['short_name']
@@ -2880,8 +2848,9 @@ class LibraryResource(DBResourceTestCase):
         filename = (
             '%s/db/static/test_data/libraries/clean_data_small_molecule.sdf'
                 % APP_ROOT_DIR )
-
-        data_for_get = { 'limit': 0, 'includes': ['*'] }
+        
+        # Note: include chembank_id because visibility was set to "none"
+        data_for_get = { 'limit': 0, 'includes': ['*','chembank_id','molfile'] }
         data_for_get[DJANGO_ACCEPT_PARAM] = SDF_MIMETYPE
 
         logger.info('Open and PUT file: %r', filename)
@@ -2937,8 +2906,8 @@ class LibraryResource(DBResourceTestCase):
         filename = ( APP_ROOT_DIR 
             + '/db/static/test_data/libraries/clean_data_small_molecule_update.sdf')
 
-        data_for_get = { 'limit': 0, 'includes': ['*', '-structure_image'] }
-        data_for_get[DJANGO_ACCEPT_PARAM] = SDF_MIMETYPE
+#         data_for_get = { 'limit': 0, 'includes': ['*', '-structure_image'] }
+#         data_for_get[DJANGO_ACCEPT_PARAM] = SDF_MIMETYPE
 
         logger.info('Open and PATCH file: %r', filename)
         with open(filename) as input_file:
@@ -3083,9 +3052,12 @@ class LibraryResource(DBResourceTestCase):
         expected_errors = [
             [u'01536:A01', {
                 u'line': 1, 
-                u'mg_ml_concentration': [u"parse error: Invalid literal for Decimal: u'bad_value'"]}],
+                u'mg_ml_concentration': 
+                    [u"parse error: Invalid literal for Decimal: u'bad_value'"]}],
             [u'01536:A03', {
-                u'library_well_type': [u"'experimentalxxx' is not one of [u'undefined', u'experimental', u'empty', u'dmso', u'library_control', u'rnai_buffer']"], 
+                u'library_well_type': 
+                    [u"'experimentalxxx' is not one of "
+                        "[u'undefined', u'experimental', u'empty', u'dmso', u'library_control', u'rnai_buffer']"], 
                 u'line': 131}],
             [u'01536:A04', {
                 u'pubchem_cid': [u"parse error: invalid literal for int() with base 10: '558309aaa'"], 
@@ -3098,7 +3070,8 @@ class LibraryResource(DBResourceTestCase):
                 u'molecular_mass': [u"parse error: Invalid literal for Decimal: u'bbb368.46602'"]}],
             [u'01536:A09', {
                 u'line: 607': u'duplicate', 
-                u'library_well_type': [u"'void' is not one of [u'undefined', u'experimental', u'empty', u'dmso', u'library_control', u'rnai_buffer']"], 
+                u'library_well_type': [u"'void' is not one of "
+                    "[u'undefined', u'experimental', u'empty', u'dmso', u'library_control', u'rnai_buffer']"], 
                 u'line': 576}],              
             [u'line: 301', {
                 u'well_id': u'required'}]]
@@ -3218,32 +3191,43 @@ class LibraryResource(DBResourceTestCase):
 
             expected_errors = [
                 [u'55001:A06', {
-                    u'vendor_entrezgene_id': [u"parse error: invalid literal for int() with base 10: '22848a'"], 
+                    u'vendor_entrezgene_id': 
+                        [u"parse error: invalid literal for int() with base 10: '22848a'"], 
                     u'line': 7}],
                 [u'55001:A08', {
                     u'line': 6, 
-                    u'molar_concentration': [u"parse error: Invalid literal for Decimal: u'1 uM'"]}],
+                    u'molar_concentration': 
+                        [u"parse error: Invalid literal for Decimal: u'1 uM'"]}],
                 [u'55001:A09', {
                     u'library_well_type': 
-                        u'Reagent fields may only be specified for a library_well_type in: '
-                        '(experimental, library_control), reagent fields specified: [vendor_identifier, vendor_name]', 
+                        'Reagent fields may only be specified for a library_well_type in: '
+                        '(experimental, library_control), '
+                        'reagent fields specified: [vendor_identifier, vendor_name]', 
                     u'line': 5}],
                 [u'55001:A11', {
                     u'library_well_type': [
-                        u"'buffer1' is not one of [u'undefined', u'experimental', u'empty', u'dmso', u'library_control', u'rnai_buffer']"], 
+                        u"'buffer1' is not one of "
+                        "[u'undefined', u'experimental', u'empty', u'dmso', u'library_control', u'rnai_buffer']"], 
                     u'line': 12}],
                 [u'55001:A15', {
                     u'vendor_identifier': 
-                        u'vendor_name and vendor_identifier must both be specified, or neither should be specified', 
-                        u'vendor_name': u'vendor_name and vendor_identifier must both be specified, or neither should be specified'}],
+                        u'vendor_name and vendor_identifier must both be '
+                        'specified, or neither should be specified', 
+                    u'vendor_name': 
+                        u'vendor_name and vendor_identifier must both be '
+                        'specified, or neither should be specified'}],
                 [u'55001:A20', {
                     u'vendor_identifier': u'Required if sequence is specified'}],
                 [u'55001:A21', {
                     u'library_well_type': [u'required'], 
                     u'line': 3}],
                 [u'55001:A22', {
-                    u'vendor_identifier': u'vendor_name and vendor_identifier must both be specified, or neither should be specified', 
-                    u'vendor_name': u'vendor_name and vendor_identifier must both be specified, or neither should be specified'}],
+                    u'vendor_identifier': 
+                        u'vendor_name and vendor_identifier must both be '
+                        'specified, or neither should be specified', 
+                    u'vendor_name': 
+                        u'vendor_name and vendor_identifier must both be '
+                        'specified, or neither should be specified'}],
                 [u'55001:A23', {
                     u'silencing_reagent_type': u'Required if sequence is specified'}],
                 [u'55001:A24', {
@@ -3269,7 +3253,6 @@ class LibraryResource(DBResourceTestCase):
                     # NOTE: error message may vary, not checking at this time
                     # self.assertEqual(error[key],expected_error[key])
                 
-            
     def test8_sirna_duplex(self):
         
         logger.info('test8_sirna_duplex ...')
@@ -4192,7 +4175,7 @@ class ScreenResultResource(DBResourceTestCase):
                 'description': 'field 3 description',
                 'replicate_ordinal': 2,
                 'is_follow_up_data': True,
-                'assay_readout_type': 'flourescence_intensity',
+                'assay_readout_type': 'fluorescence_intensity',
             },
             'H': {
                 'ordinal': 3,
@@ -4388,7 +4371,7 @@ class ScreenResultResource(DBResourceTestCase):
         #         'returned value',screen[key]))
 
         key = 'assay_readout_types'
-        expected_value = ['luminescence', 'flourescence_intensity']
+        expected_value = ['luminescence', 'fluorescence_intensity']
         self.assertTrue(set(screen[key]) <= set(expected_value),
             (key,'expected_value',expected_value,
                 'returned value',screen[key]))
@@ -4738,7 +4721,7 @@ class ScreenResultResource(DBResourceTestCase):
                 'description': 'field 3 description',
                 'replicate_ordinal': 2,
                 'is_follow_up_data': True,
-                'assay_readout_type': 'flourescence_intensity',
+                'assay_readout_type': 'fluorescence_intensity',
             },
             'H': {
                 'ordinal': 3,
@@ -4861,7 +4844,7 @@ class ScreenResultResource(DBResourceTestCase):
                 'description': 'field 3 description',
                 'replicate_ordinal': 2,
                 'is_follow_up_data': True,
-                'assay_readout_type': 'flourescence_intensity',
+                'assay_readout_type': 'fluorescence_intensity',
             },
             'H': {
                 'ordinal': 3,
@@ -5043,7 +5026,7 @@ class ScreenResultResource(DBResourceTestCase):
                 'description': 'field 3 description',
                 'replicate_ordinal': 2,
                 'is_follow_up_data': True,
-                'assay_readout_type': 'flourescence_intensity',
+                'assay_readout_type': 'fluorescence_intensity',
             },
             'H': {
                 'ordinal': 3,
@@ -5184,7 +5167,11 @@ class ScreenResource(DBResourceTestCase):
             self.assertEqual(value, screen_item[key], 
                 'key %r, val: %r not expected: %r' 
                     % (key, value, screen_item[key]))
-        logger.debug('screen created: %r', screen_item)
+            
+        key = 'data_privacy_expiration_date'
+        val = screen_item.get(key)
+        self.assertIsNone(val, 
+            'should not have %r: %r' % (key, val))
         
 
     def test1a_create_screen_using_natural_keys(self):
@@ -5389,25 +5376,16 @@ class ScreenResource(DBResourceTestCase):
             'copy_name': "A",
             'usage_type': "library_screening_plates",
             'initial_plate_well_volume': '0.000010',
-            'initial_plate_status': 'available'
+            'initial_plate_status': VOCAB.plate.status.AVAILABLE,
+            'plate_type': VOCAB.plate.plate_type.ABGENE_384
         }  
-        resource_uri = BASE_URI_DB + '/librarycopy'
-        resource_test_uri = '/'.join([
-            resource_uri,library_copy1_input['library_short_name'],
-            library_copy1_input['copy_name']])
-        library_copy1 = self._create_resource(
-            library_copy1_input, resource_uri, resource_test_uri, 
-            excludes=['initial_plate_well_volume','initial_plate_status'])
+        library_copy1 = self.create_copy(library_copy1_input)
         logger.info('created: %r', library_copy1)
  
         library_copy2_input = library_copy1_input.copy()
         library_copy2_input['library_short_name'] = library2['short_name']
-        resource_test_uri = '/'.join([
-            resource_uri,library_copy2_input['library_short_name'],
-            library_copy2_input['copy_name']])
-        library_copy2 = self._create_resource(
-            library_copy2_input, resource_uri, resource_test_uri,
-            excludes=['initial_plate_well_volume','initial_plate_status'])
+
+        library_copy2 = self.create_copy(library_copy2_input)
         logger.info('created: %r', library_copy2)
         
         logger.info('create screen...')        
@@ -5443,6 +5421,7 @@ class ScreenResource(DBResourceTestCase):
         # Only modify one well here
         copywell_input = copywell_data[0]
         copywell_id = copywell_input['copywell_id']
+#         copywell_log_id = copywell_input['library_short_name'] + '/' + copywell_input['copywell_id']
         logger.info('copywell input: %r', copywell_input)
         copywell_plate = '%s/%s' % (
             copywell_input['copy_name'],str(copywell_input['plate_number']))
@@ -5561,11 +5540,13 @@ class ScreenResource(DBResourceTestCase):
                 expected_volume, Decimal(new_copywell_data['volume'])) )
 
         # 1.D Check logs (17 plate, 1 copywell)
+        ls_uri_key = 'libraryscreening/screen/{screen_facility_id}/{activity_id}'.format(
+            **library_screening_output)
         data_for_get={ 
             'limit': 0, 
             'includes': ['*'],
             'ref_resource_name': 'libraryscreening', 
-            'key': library_screening_output['activity_id'],
+            'uri': ls_uri_key,
             'api_action': API_ACTION.CREATE
         }
         apilogs = self.get_list_resource(
@@ -5573,7 +5554,7 @@ class ScreenResource(DBResourceTestCase):
             data_for_get=data_for_get )
         logger.debug('logs: %d', len(apilogs))
         self.assertTrue(
-            len(apilogs) == 1, 'too many apilogs found: %r' % apilogs)
+            len(apilogs) == 1, 'exactly one apilog should be found: %r' % apilogs)
         apilog = apilogs[0]
         logger.info('apilog: %r', apilog)
         
@@ -5674,11 +5655,13 @@ class ScreenResource(DBResourceTestCase):
                 expected_volume, Decimal(deallocated_copywell_data['volume'])))
         
         # 2.D Check logs (1 plate, 1 copywell)
+        ls_uri_key = 'libraryscreening/screen/{screen_facility_id}/{activity_id}'.format(
+            **library_screening_output)
         data_for_get={ 
             'limit': 0, 
             'includes': ['*'],
             'ref_resource_name': 'libraryscreening', 
-            'key': library_screening_output['activity_id'],
+            'uri': ls_uri_key,
             'api_action': API_ACTION.PATCH
         }
         apilogs = self.get_list_resource(
@@ -5774,36 +5757,21 @@ class ScreenResource(DBResourceTestCase):
             'usage_type': "library_screening_plates",
             'initial_plate_well_volume':
                  '{:.9f}'.format(min_allowed_small_molecule_volume + valid_test_volume*5),
-            'initial_plate_status': 'available'
+            'initial_plate_status': VOCAB.plate.status.AVAILABLE,
+            'plate_type': VOCAB.plate.plate_type.ABGENE_384
         }  
-        resource_uri = BASE_URI_DB + '/librarycopy'
-        resource_test_uri = '/'.join([
-            resource_uri,library_copy1_input['library_short_name'],
-            library_copy1_input['copy_name']])
-        library_copy1 = self._create_resource(
-            library_copy1_input, resource_uri, resource_test_uri, 
-            excludes=['initial_plate_well_volume','initial_plate_status'])
+        library_copy1 = self.create_copy(library_copy1_input)
         logger.info('created: %r', library_copy1)
 
         library_copy1_cpp_input = library_copy1_input.copy()
         library_copy1_cpp_input['usage_type'] = 'cherry_pick_source_plates'
         library_copy1_cpp_input['copy_name'] = 'A1_cpsp'
-        resource_test_uri = '/'.join([
-            resource_uri,library_copy1_cpp_input['library_short_name'],
-            library_copy1_cpp_input['copy_name']])
-        library_copy1_cpp = self._create_resource(
-            library_copy1_cpp_input, resource_uri, resource_test_uri, 
-            excludes=['initial_plate_well_volume','initial_plate_status'])
+        library_copy1_cpp = self.create_copy(library_copy1_cpp_input)
         logger.info('created: %r', library_copy1_cpp)
         
         library_copy2_input = library_copy1_input.copy()
         library_copy2_input['library_short_name'] = library2['short_name']
-        resource_test_uri = '/'.join([
-            resource_uri,library_copy2_input['library_short_name'],
-            library_copy2_input['copy_name']])
-        library_copy2 = self._create_resource(
-            library_copy2_input, resource_uri, resource_test_uri,
-            excludes=['initial_plate_well_volume','initial_plate_status'])
+        library_copy2 = self.create_copy(library_copy2_input)
         logger.info('created: %r', library_copy2)
         
         logger.info('create screen...')        
@@ -5866,6 +5834,7 @@ class ScreenResource(DBResourceTestCase):
         logger.info('test %r', msg)
         invalid_input2 = library_screening_input.copy()
         invalid_input2[key] =  value
+        logger.info('library screening data: %r', invalid_input2)
         errors, resp = self._create_resource(
             invalid_input2, resource_uri, resource_test_uri, expect_fail=True)
         self.assertTrue(resp.status_code==400, msg)
@@ -5957,6 +5926,7 @@ class ScreenResource(DBResourceTestCase):
         # 10.b Inspect the returned library screening
         for k,v in library_screening_input.items():
             v2 = library_screening_output[k]
+            logger.debug('k: %r, v: %r, v2: %r', k, v, v2)
             self.assertTrue(equivocal(v,v2),
                 'test key: %r:%r != %r' % (k, v, v2))
 
@@ -6019,11 +5989,13 @@ class ScreenResource(DBResourceTestCase):
 
         # 10.e Logs
         
+        ls_uri_key = 'libraryscreening/screen/{screen_facility_id}/{activity_id}'.format(
+            **library_screening_output)
         data_for_get={ 
             'limit': 0, 
             'includes': ['*'],
             'ref_resource_name': 'libraryscreening', 
-            'key': library_screening_output['activity_id'],
+            'uri': ls_uri_key,
             'api_action': API_ACTION.CREATE
         }
         apilogs = self.get_list_resource(
@@ -6132,11 +6104,13 @@ class ScreenResource(DBResourceTestCase):
         # 11.c Inspect PATCH logs after adding a plate range
         logger.info('new plate ranges: %r', 
             library_screening_output2['library_plates_screened'])
+        ls_uri_key = 'libraryscreening/screen/{screen_facility_id}/{activity_id}'.format(
+            **library_screening_output)
         data_for_get={ 
             'limit': 0, 
             'includes': ['*'],
             'ref_resource_name': 'libraryscreening', 
-            'key': library_screening_output2['activity_id'],
+            'uri': ls_uri_key,
             'api_action': API_ACTION.PATCH
         }
         apilogs = self.get_list_resource(
@@ -6144,7 +6118,7 @@ class ScreenResource(DBResourceTestCase):
             data_for_get=data_for_get )
         logger.info('logs: %r', apilogs)
         self.assertTrue(
-            len(apilogs) == 1, 'too many apilogs found: %r' % apilogs)
+            len(apilogs) == 1, 'expected exactly one apilog: %r' % apilogs)
         apilog = apilogs[0]
         self.assertTrue(apilog['diff_keys'] is not None, 'no diff_keys' )
         self.assertTrue('library_plates_screened' in apilog['diff_keys'])
@@ -6325,6 +6299,7 @@ class ScreenResource(DBResourceTestCase):
             if k == 'library_plates_screened':
                 continue # see next test, below
             v2 = library_screening_output4[k]
+            logger.debug('k: %r, v: %r, v2: %r', k, v, v2)
             self.assertTrue(equivocal(v,v2),
                 'test key: %r:%r != %r' % (k, v, v2))
         logger.info('created library screening, with single-plate range: %r',
@@ -6374,7 +6349,7 @@ class ScreenResource(DBResourceTestCase):
         # self.assertTrue(find_in_dict(key2, errors), 
         #     'test: %s, not in errors: %r' %(key2,errors))
 
-        
+        logger.info('test2_create_library_screening - done')
         
     def test3_create_publication(self):
 
@@ -6550,85 +6525,85 @@ class ScreenResource(DBResourceTestCase):
             logger.exception('exception when trying to locate: %r', uri)
             raise
     
-    def test5_pin_transfer_approval(self):
-        
-        logger.info('test5_pin_transfer_approval...')
-        # Create a Screen
-        data = {
-            SCREEN_TYPE: 'small_molecule',
-        }
-        screen_item = self.create_screen(data=data)
-        
-        self.assertTrue(
-            'facility_id' in screen_item, 
-            'the facility_id was not created')
-        
-        for key, value in data.items():
-            self.assertEqual(value, screen_item[key], 
-                'key %r, val: %r not expected: %r' 
-                % (key, value, screen_item[key]))
-
-        logger.info('screen created: %r', screen_item)
-
-        self.pin_transfer_user = self.create_staff_user({ 
-            'username': 'pin_transfer_admin1'
-        })
-
-        # 1. Set the pin_transfer data
-        # FIXME: admin approved pin tranfer user only
-        pin_transfer_data_expected = {
-            'pin_transfer_approved_by_username': self.pin_transfer_user['username'],
-            'pin_transfer_date_approved': _now().date().strftime("%Y-%m-%d"),
-            'pin_transfer_comments': 'test pin_transfer_comments' }
-        
-        screen_update_data = {
-            'facility_id': screen_item['facility_id']
-            }
-        screen_update_data.update(pin_transfer_data_expected)
-        resource_uri = \
-            BASE_URI_DB + '/screen/' + screen_update_data['facility_id']
-        resp = self.api_client.patch(
-            resource_uri, 
-            format='json', data=screen_update_data, 
-            authentication=self.get_credentials())
-        self.assertTrue(
-            resp.status_code in [200], 
-            (resp.status_code, self.get_content(resp)))
-        
-        logger.info('get the updated pin_transfer screen data')
-        new_screen_item = self.get_single_resource(resource_uri)
-        logger.info('retrieved: %r', new_screen_item)
-        for key,val in pin_transfer_data_expected.items():
-            self.assertEqual(
-                new_screen_item[key],pin_transfer_data_expected[key],
-                'key: %r, %r, %r' 
-                % (key,new_screen_item[key],pin_transfer_data_expected[key]))
-            
-        # 2. Modify the pin_transfer comment
-        screen_update_data = {
-            'facility_id': screen_item['facility_id']
-            }
-        screen_update_data['pin_transfer_comments'] = \
-            'New test pin transfer comment'
-        resp = self.api_client.patch(
-            resource_uri, 
-            format='json', data=screen_update_data,
-            authentication=self.get_credentials())
-        self.assertTrue(
-            resp.status_code in [200], 
-            (resp.status_code, self.get_content(resp)))
-        
-        logger.info('get the updated pin_transfer screen data')
-        new_screen_item = self.get_single_resource(resource_uri)
-        for key,val in pin_transfer_data_expected.items():
-            if key == 'pin_transfer_comments':
-                self.assertEqual(new_screen_item[key],screen_update_data[key])
-            else:
-                self.assertEqual(new_screen_item[key],
-                    pin_transfer_data_expected[key],
-                    'key: %r, %r, %r' 
-                    % (key,new_screen_item[key],
-                        pin_transfer_data_expected[key]))
+#     def test5_pin_transfer_approval(self):
+#         
+#         logger.info('test5_pin_transfer_approval...')
+#         # Create a Screen
+#         data = {
+#             SCREEN_TYPE: 'small_molecule',
+#         }
+#         screen_item = self.create_screen(data=data)
+#         
+#         self.assertTrue(
+#             'facility_id' in screen_item, 
+#             'the facility_id was not created')
+#         
+#         for key, value in data.items():
+#             self.assertEqual(value, screen_item[key], 
+#                 'key %r, val: %r not expected: %r' 
+#                 % (key, value, screen_item[key]))
+# 
+#         logger.info('screen created: %r', screen_item)
+# 
+#         self.pin_transfer_user = self.create_staff_user({ 
+#             'username': 'pin_transfer_admin1'
+#         })
+# 
+#         # 1. Set the pin_transfer data
+#         # FIXME: admin approved pin tranfer user only
+#         pin_transfer_data_expected = {
+#             'pin_transfer_approved_by_username': self.pin_transfer_user['username'],
+#             'pin_transfer_date_approved': _now().date().strftime(DATE_FORMAT),
+#             'pin_transfer_comments': 'test pin_transfer_comments' }
+#         
+#         screen_update_data = {
+#             'facility_id': screen_item['facility_id']
+#             }
+#         screen_update_data.update(pin_transfer_data_expected)
+#         resource_uri = \
+#             BASE_URI_DB + '/screen/' + screen_update_data['facility_id']
+#         resp = self.api_client.patch(
+#             resource_uri, 
+#             format='json', data=screen_update_data, 
+#             authentication=self.get_credentials())
+#         self.assertTrue(
+#             resp.status_code in [200], 
+#             (resp.status_code, self.get_content(resp)))
+#         
+#         logger.info('get the updated pin_transfer screen data')
+#         new_screen_item = self.get_single_resource(resource_uri)
+#         logger.info('retrieved: %r', new_screen_item)
+#         for key,val in pin_transfer_data_expected.items():
+#             self.assertEqual(
+#                 new_screen_item[key],pin_transfer_data_expected[key],
+#                 'key: %r, %r, %r' 
+#                 % (key,new_screen_item[key],pin_transfer_data_expected[key]))
+#             
+#         # 2. Modify the pin_transfer comment
+#         screen_update_data = {
+#             'facility_id': screen_item['facility_id']
+#             }
+#         screen_update_data['pin_transfer_comments'] = \
+#             'New test pin transfer comment'
+#         resp = self.api_client.patch(
+#             resource_uri, 
+#             format='json', data=screen_update_data,
+#             authentication=self.get_credentials())
+#         self.assertTrue(
+#             resp.status_code in [200], 
+#             (resp.status_code, self.get_content(resp)))
+#         
+#         logger.info('get the updated pin_transfer screen data')
+#         new_screen_item = self.get_single_resource(resource_uri)
+#         for key,val in pin_transfer_data_expected.items():
+#             if key == 'pin_transfer_comments':
+#                 self.assertEqual(new_screen_item[key],screen_update_data[key])
+#             else:
+#                 self.assertEqual(new_screen_item[key],
+#                     pin_transfer_data_expected[key],
+#                     'key: %r, %r, %r' 
+#                     % (key,new_screen_item[key],
+#                         pin_transfer_data_expected[key]))
     
     def test6_service_activity(self):
         logger.info('test6_service_activity...')
@@ -6648,14 +6623,15 @@ class ScreenResource(DBResourceTestCase):
 
         service_activity_post = {
             'screen_facility_id': screen_item['facility_id'],
-            'type': "image_analysis",
+            'type': "training_acumen",
+            'classification': SCHEMA.VOCAB.activity.classification.TRAINING,
             'comments': "test",
             'date_of_activity': "2015-10-27",
             'funding_support': "clardy_grants",
             'performed_by_user_id': performed_by_user['screensaver_user_id'],
         }
         
-        resource_uri = BASE_URI_DB + '/serviceactivity'
+        resource_uri = BASE_URI_DB + '/activity'
         resp = self.api_client.post(
             resource_uri, 
             format='json', 
@@ -6673,24 +6649,44 @@ class ScreenResource(DBResourceTestCase):
         self.assertTrue(
             resp.status_code in [200], 
             (resp.status_code, self.get_content(resp)))
-        new_obj = self.deserialize(resp)
+        new_service_activity = self.deserialize(resp)[API_RESULT_DATA][0]
         result,msgs = assert_obj1_to_obj2(
-            service_activity_post, new_obj[API_RESULT_DATA][0])
+            service_activity_post, new_service_activity)
         self.assertTrue(result,msgs)
 
-        # Test apilog
+        logger.info('Test apilog...')
         resource_uri = BASE_REPORTS_URI + '/apilog'
         data_for_get={ 
             'limit': 0, 
-            'ref_resource_name': 'serviceactivity', 
+            'ref_resource_name': 'activity', 
         }
         apilogs = self.get_list_resource(
             resource_uri, data_for_get=data_for_get )
         self.assertTrue(
             len(apilogs) == 1, 'too many apilogs found: %r' % apilogs)
         apilog = apilogs[0]
-        logger.debug('serviceactivity log: %r', apilog)
+        logger.debug('activity log: %r', apilog)
         self.assertTrue(apilog['api_action'] == 'CREATE')
+        
+        logger.info('test6_service_activity: test PATCH date...')
+        
+        patch_data = {
+            'date_of_activity': '2018-11-08'
+        }
+        resource_uri = '/'.join(map(str,
+            [BASE_URI_DB, 'activity', new_service_activity['activity_id']]))
+        resp = self.api_client.patch(
+            resource_uri, 
+            format='json', 
+            data=patch_data, 
+            authentication=self.get_credentials(), 
+            **{ 'limit': 0, 'includes': '*'} )
+        self.assertTrue(
+            resp.status_code in [200], 
+            (resp.status_code, self.get_content(resp)))
+        patched_activity = self.deserialize(resp)[API_RESULT_DATA][0]
+        logger.info('patched_activity: %r', patched_activity)
+        self.assertEqual(patch_data['date_of_activity'],patched_activity['date_of_activity'])
         
                 
     def test_7_create_confirmed_positive_study(self):
@@ -6856,7 +6852,7 @@ class ScreenResource(DBResourceTestCase):
                     rv[col_map['confirmed_4']], 0 )
             elif rv['well_id'] == '%05d:A05' % self.pool_library1[START_PLATE]:
                 self.assertEqual(
-                    rv[col_map['Weighted Average']], '1.0' )
+                    rv[col_map['Weighted Average']], '1' )
                 self.assertEqual(
                     rv[col_map['Number of Screens']], 1 )
                 self.assertEqual(
@@ -7165,9 +7161,10 @@ class CherryPickRequestResource(DBResourceTestCase):
         library_copy1_input = {
             'library_short_name': self.library1['short_name'],
             'copy_name': "copy1",
-            'usage_type': "cherry_pick_source_plates",
+            'usage_type': VOCAB.copy.usage_type.CHERRY_PICK_SOURCE_PLATES,
             'initial_plate_well_volume': '0.000010',
-            'initial_plate_status': 'available'
+            'initial_plate_status': VOCAB.plate.status.AVAILABLE,
+            'plate_type': VOCAB.plate.plate_type.ABGENE_384
         }  
         self.library1_copy1 = self.create_copy(library_copy1_input)
         logger.info('created library copy1: %r', self.library1_copy1)
@@ -7202,9 +7199,10 @@ class CherryPickRequestResource(DBResourceTestCase):
         library_copy3_input = {
             'library_short_name': self.library1['short_name'],
             'copy_name': "copy3",
-            'usage_type': "library_screening_plates",
+            'usage_type': VOCAB.copy.usage_type.LIBRARY_SCREENING_PLATES,
             'initial_plate_well_volume': '0.000010',
-            'initial_plate_status': 'available'
+            'initial_plate_status': VOCAB.plate.status.AVAILABLE,
+            'plate_type': VOCAB.plate.plate_type.ABGENE_384
         }  
         self.library1_copy3 = self.create_copy(library_copy3_input)
 
@@ -7215,9 +7213,10 @@ class CherryPickRequestResource(DBResourceTestCase):
         library_copy4_input = {
             'library_short_name': self.library1['short_name'],
             'copy_name': "copy4",
-            'usage_type': "library_screening_plates",
+            'usage_type': VOCAB.copy.usage_type.LIBRARY_SCREENING_PLATES,
             'initial_plate_well_volume': '0.000010',
-            'initial_plate_status': 'retired'
+            'initial_plate_status': VOCAB.plate.status.RETIRED,
+            'plate_type': VOCAB.plate.plate_type.ABGENE_384
         }  
         self.library1_copy4 = self.create_copy(library_copy4_input)
 
@@ -8097,7 +8096,7 @@ class CherryPickRequestResource(DBResourceTestCase):
             BASE_URI_DB, 'cherrypickrequest', 
             str(cpr_data['cherry_pick_request_id'])])
         new_cpr_data = self.get_single_resource(resource_uri)
-        expected_date = _now().date().strftime("%Y-%m-%d")
+        expected_date = _now().date().strftime(DATE_FORMAT)
         self.assertEqual(new_cpr_data['date_volume_reserved'],expected_date)
 
         # TODO: Test logs:
@@ -9775,7 +9774,7 @@ class ScreensaverUserResource(DBResourceTestCase):
         logger.info('delete resources')
         UserChecklist.objects.all().delete()
         AttachedFile.objects.all().delete()
-        ServiceActivity.objects.all().delete()
+        Activity.objects.all().delete()
         logger.info('delete users, including: %r', self.username)
         Screen.objects.all().delete()
         ScreensaverUser.objects.all().exclude(username=self.username).delete()
@@ -9845,6 +9844,7 @@ class ScreensaverUserResource(DBResourceTestCase):
         }
         
         # 1.A Verify that user must be a lab head or have a lab_head
+        logger.info('1.A Verify that user must be a lab head or have a lab_head...')
         resp = self.api_client.post(
             resource_uri, format='json', data=simple_user_input, 
             authentication=self.get_credentials(), **_data_for_get)
@@ -9852,7 +9852,6 @@ class ScreensaverUserResource(DBResourceTestCase):
             resp.status_code == 400, 
             (resp.status_code, self.get_content(resp)))
         new_obj = self.deserialize(resp)
-        logger.info('resp: %r', new_obj)
         self.assertTrue(API_RESULT_ERROR in new_obj)
         self.assertTrue('lab_head_id' in new_obj[API_RESULT_ERROR])
         self.assertTrue('classification' in new_obj[API_RESULT_ERROR])
@@ -9860,11 +9859,13 @@ class ScreensaverUserResource(DBResourceTestCase):
         # 1.B Create the user as a lab_head
 
         # 1.B.1 Create lab affiliation
+        
         lab_affiliation = self.create_lab_affiliation()
         simple_user_input['lab_affiliation_id'] = lab_affiliation['lab_affiliation_id']
         simple_user_input['classification'] = VOCAB.screen.user_role.PRINCIPAL_INVESTIGATOR
 
         # 1.B.2 Create user with only ecommons
+        logger.info('1.B Create the user as a lab_head...')
         resp = self.api_client.post(
             resource_uri, format='json', data=simple_user_input, 
             authentication=self.get_credentials(), **_data_for_get)
@@ -9872,6 +9873,7 @@ class ScreensaverUserResource(DBResourceTestCase):
             resp.status_code in [200,201], 
             (resp.status_code, self.get_content(resp)))
         new_obj = self.deserialize(resp)
+        logger.info('1.B done... %r', new_obj)
         self.assertTrue(API_RESULT_DATA in new_obj)
         self.assertEqual(len(new_obj[API_RESULT_DATA]),1,
             'more than one object returned for: %r, returns: %r'
@@ -9886,7 +9888,8 @@ class ScreensaverUserResource(DBResourceTestCase):
         
         user_update = {'ecommons_id': 'testerxxxx'}
         resource_uri = '/'.join([
-            BASE_URI_DB,'screensaveruser',simple_user_input['ecommons_id']])
+            BASE_URI_DB,'screensaveruser',created_user['username']])
+        logger.info('1.C Verify that the ecommons cannot be changed...')
         resp = self.api_client.patch(
             resource_uri, 
             format='json', data=user_update, 
@@ -9896,7 +9899,22 @@ class ScreensaverUserResource(DBResourceTestCase):
             (resp.status_code, self.get_content(resp)))
         resp_data = self.deserialize(resp)
         logger.info('(expected) error response: %r', resp_data)
+        self.assertTrue(API_RESULT_ERROR in resp_data)
+        self.assertTrue('ecommons_id' in resp_data[API_RESULT_ERROR])
         
+        user_update = {'username': 'testerxxxx'}
+        resource_uri = '/'.join(map(str,[
+            BASE_URI_DB,'screensaveruser',created_user['screensaver_user_id']]))
+        logger.info('1.C Verify that the username cannot be changed...')
+        resp = self.api_client.patch(
+            resource_uri, 
+            format='json', data=user_update, 
+            authentication=self.get_credentials())
+        self.assertTrue(
+            resp.status_code in [400], 
+            (resp.status_code, self.get_content(resp)))
+        resp_data = self.deserialize(resp)
+        logger.info('(expected) error response: %r', resp_data)
         self.assertTrue(API_RESULT_ERROR in resp_data)
         self.assertTrue('username' in resp_data[API_RESULT_ERROR])
         
@@ -9993,7 +10011,10 @@ class ScreensaverUserResource(DBResourceTestCase):
         # 2.B Verify user2 is a lab member
         user1_output_data2 = self.get_single_resource(
             resource_uri, 
-            {'screensaver_user_id': user1_output_data['screensaver_user_id']})
+            {
+                'screensaver_user_id': user1_output_data['screensaver_user_id'],
+                'includes': ['lab_member_ids']
+            })
         self.assertTrue('lab_member_ids' in user1_output_data2)
         lab_member_ids = user1_output_data2['lab_member_ids']
         self.assertTrue(
@@ -10081,7 +10102,10 @@ class ScreensaverUserResource(DBResourceTestCase):
         # 2.B Verify user2 is a lab member
         lab_head_updated = self.get_single_resource(
             resource_uri, 
-            {'screensaver_user_id': lab_head['screensaver_user_id']})
+            {
+                'screensaver_user_id': lab_head['screensaver_user_id'],
+                'includes': ['lab_member_ids']
+            })
         self.assertTrue('lab_member_ids' in lab_head_updated)
         lab_member_ids = lab_head_updated['lab_member_ids']
         self.assertTrue(
@@ -10139,7 +10163,10 @@ class ScreensaverUserResource(DBResourceTestCase):
         # 2.B Verify user2 is a lab member
         lab_head_updated = self.get_single_resource(
             resource_uri, 
-            {'screensaver_user_id': lab_head['screensaver_user_id']})
+            {
+                'screensaver_user_id': lab_head['screensaver_user_id'],
+                'includes': ['lab_member_ids']
+            })
         self.assertTrue('lab_member_ids' in lab_head_updated)
         lab_member_ids = lab_head_updated['lab_member_ids']
         self.assertTrue(
@@ -10617,6 +10644,10 @@ class ScreensaverUserResource(DBResourceTestCase):
         logger.info('test10_user_agreement_updator...')
         
         # Setup
+        base_resource_uri = \
+            BASE_URI_DB + '/screensaveruser/{screensaver_user_id}/useragreement'
+
+        
         # Create a lab head, as all users must either be a lab head or have one
         ua_user = self.create_lab_head({
             'is_active': False })
@@ -10637,8 +10668,7 @@ class ScreensaverUserResource(DBResourceTestCase):
             'type': VOCAB_USER_AGREEMENT_SM,
             'data_sharing_level': 2,
             }
-        resource_uri = \
-            BASE_URI_DB + '/screensaveruser/%s/useragreement/' % test_su_id
+        resource_uri = base_resource_uri.format(**ua_user)
         resp = self.api_client.patch(
             resource_uri, 
             format='json', 
@@ -10655,8 +10685,6 @@ class ScreensaverUserResource(DBResourceTestCase):
         post_kwargs[HTTP_PARAM_AUTH] = authentication
         post_kwargs[HEADER_APILOG_COMMENT] = test_comment
         post_kwargs[DJANGO_ACCEPT_PARAM] = JSON_MIMETYPE
-        resource_uri = \
-            BASE_URI_DB + '/screensaveruser/%s/useragreement/' % test_su_id
         logger.info('POST user agreement %r to the server...', resource_uri)
         resp = self.django_client.post(
             resource_uri, content_type=MULTIPART_CONTENT, 
@@ -10683,8 +10711,6 @@ class ScreensaverUserResource(DBResourceTestCase):
         logger.info('Open and POST file: %r', filepath)
         with open(filepath) as input_file:
             # NOTE: create a detail URI; post_list is not implemented
-            resource_uri = \
-                BASE_URI_DB + '/screensaveruser/%s/useragreement/' % test_su_id
             logger.info('POST user agreement %r to the server...', resource_uri)
             user_agreement_input['attached_file'] = input_file
             user_agreement_input['filename'] = filename
@@ -10701,9 +10727,8 @@ class ScreensaverUserResource(DBResourceTestCase):
         
         # 1.A Verify User Agreement was created
         
-        resource_uri = '/'.join([
-            BASE_URI_DB,'useragreement', test_su_id,VOCAB_USER_AGREEMENT_SM])
-        user_agreement_output = self.get_single_resource(resource_uri)
+        user_agreement_output = self.get_single_resource(
+            resource_uri + '/' + VOCAB_USER_AGREEMENT_SM)
         
         logger.info('user agreement created: %r', user_agreement_output)
         self.assertEqual(
@@ -10715,15 +10740,17 @@ class ScreensaverUserResource(DBResourceTestCase):
         self.assertEqual(
             user_agreement_input['date_active'],
             user_agreement_output['date_active'])
-        
+        self.assertEqual(
+            user_agreement_input['filename'],
+            user_agreement_output['filename'])
         # 1.B Verify that the attached file was created 
         
         self.assertTrue('file_id' in user_agreement_output)
         
         file_id = str(user_agreement_output['file_id'])
-        resource_uri = '/'.join([
+        af_uri = '/'.join([
             BASE_URI_DB, 'attachedfile', file_id])
-        af_output_data = self.get_single_resource(resource_uri)
+        af_output_data = self.get_single_resource(af_uri)
 
         self.assertEqual(
             af_output_data['type'],
@@ -10755,10 +10782,8 @@ class ScreensaverUserResource(DBResourceTestCase):
         # 1.C Verify that the DSL is shown on the ScreensaverUser, 
         # and the user is "is_active"
         
-        resource_uri = BASE_URI_DB + '/screensaveruser'
-        resource_uri = '/'.join([resource_uri,ua_user['username']])
-        user_data = self.get_single_resource(resource_uri)
-        
+        su_uri = BASE_URI_DB + '/screensaveruser/{username}'.format(**ua_user)
+        user_data = self.get_single_resource(su_uri)
         self.assertEqual(
             user_data['sm_data_sharing_level'],
             user_agreement_input['data_sharing_level'])
@@ -10767,7 +10792,7 @@ class ScreensaverUserResource(DBResourceTestCase):
 
         # 1.d check logs
          
-        resource_uri = BASE_REPORTS_URI + '/apilog'
+        apilog_uri = BASE_REPORTS_URI + '/apilog'
         data_for_get={ 
             'limit': 0, 
             'ref_resource_name': 'screensaveruser', 
@@ -10775,7 +10800,7 @@ class ScreensaverUserResource(DBResourceTestCase):
             'diff_keys__contains': 'sm_data_sharing_level' 
         }
         apilogs = self.get_list_resource(
-            resource_uri, data_for_get=data_for_get )
+            apilog_uri, data_for_get=data_for_get )
         logger.info('logs: %r', apilogs)
         self.assertEqual(
             len(apilogs),1, 'wrong apilog count: %r' % apilogs)
@@ -10792,7 +10817,7 @@ class ScreensaverUserResource(DBResourceTestCase):
             'parent_log': parent_log['id'] 
         }
         apilogs = self.get_list_resource(
-            resource_uri, data_for_get=data_for_get )
+            apilog_uri, data_for_get=data_for_get )
         logger.info('child logs (useragreement): %r', apilogs)
         self.assertEqual(
             len(apilogs),1, 'wrong apilog count: %r' % apilogs)
@@ -10808,7 +10833,6 @@ class ScreensaverUserResource(DBResourceTestCase):
             'screensaver_user_id': test_su_id,
             'data_sharing_level': 5,
             }
-        resource_uri = BASE_URI_DB + '/useragreement'
         resp = self.api_client.patch(
             resource_uri, 
             format='json', 
@@ -10830,7 +10854,6 @@ class ScreensaverUserResource(DBResourceTestCase):
             'screensaver_user_id': test_su_id,
             'date_notified': '2017-10-23',
             }
-        resource_uri = BASE_URI_DB + '/useragreement'
         resp = self.api_client.patch(
             resource_uri, 
             format='json', 
@@ -10852,25 +10875,24 @@ class ScreensaverUserResource(DBResourceTestCase):
         
         # 2.E POST/PATCH a new file; verify that previous file is deleted from the system
         
-        # 2.F Verify that attached file may not be deleted unless not attached 
+        logger.info('2.F Verify that attached file may not be deleted unless not attached...')
         # to a user agreement
         file_id = str(user_agreement_output3['file_id'])
-        resource_uri = '/'.join([
+        af_uri = '/'.join([
             BASE_URI_DB, 'attachedfile', file_id])
         resp = self.api_client.delete(
-            resource_uri, authentication=self.get_credentials())
+            af_uri, authentication=self.get_credentials())
         self.assertTrue(
             resp.status_code == 400, 
             (resp.status_code, self.get_content(resp)))
         
-        # 3. Patch - expired
+        logger.info('3. Patch - expired...')
         
         user_agreement_input3a = {
             'type': VOCAB_USER_AGREEMENT_SM,
             'screensaver_user_id': test_su_id,
             'status': 'expired',
             }
-        resource_uri = BASE_URI_DB + '/useragreement'
         resp = self.api_client.patch(
             resource_uri, 
             format='json', 
@@ -10885,19 +10907,17 @@ class ScreensaverUserResource(DBResourceTestCase):
         self.assertEqual('expired', user_agreement_output3a['status'])
         
         self.assertEqual(
-            _now().date().strftime("%Y-%m-%d"),
+            _now().date().strftime(DATE_FORMAT),
             user_agreement_output3a['date_expired'])
         logger.info('after patch expired: %r', user_agreement_output3a)
+        
         # 3.A Verify that the User has is_active==False
-        
-        resource_uri = BASE_URI_DB + '/screensaveruser'
-        resource_uri = '/'.join([resource_uri,ua_user['username']])
-        user_data = self.get_single_resource(resource_uri)
-        
+
+        user_data = self.get_single_resource(su_uri)
         self.assertEqual(
             user_data['is_active'], False)
         
-        # 4. Reset the User Agreement:
+        logger.info('4. Reset the User Agreement...')
         # Requires a new POST, with attached file
         # if date_notified, date_expired were set, then they are unset
         
@@ -10912,8 +10932,6 @@ class ScreensaverUserResource(DBResourceTestCase):
             user_agreement_input4['filename'] = filename
 
             # NOTE: create a detail URI; post_list is not implemented
-            resource_uri = \
-                BASE_URI_DB + '/screensaveruser/%s/useragreement/' % test_su_id
             logger.info('POST user agreement %r to the server...', resource_uri)
             resp = self.django_client.post(
                 resource_uri, content_type=MULTIPART_CONTENT, 
@@ -10942,25 +10960,23 @@ class ScreensaverUserResource(DBResourceTestCase):
             self.assertIsNone(user_agreement_output4['date_notified'])
             self.assertIsNone(user_agreement_output4['date_expired'])
         
-        # 4.A Verify that previous attached file may now be deleted 
+        logger.info('4.A Verify that previous attached file may now be deleted...')
         file_id = str(user_agreement_output3['file_id'])
-        resource_uri = '/'.join([
+        af_uri = '/'.join([
             BASE_URI_DB, 'attachedfile', file_id])
         resp = self.api_client.delete(
-            resource_uri, authentication=self.get_credentials())
+            af_uri, authentication=self.get_credentials())
         self.assertTrue(
             resp.status_code == 204, 
             (resp.status_code, self.get_content(resp)))
         
-        # 4.B Reset the User Agreement to None
+        logger.info('4.B Reset the User Agreement to None...')
 
         user_agreement_input4a = {
             'type': VOCAB_USER_AGREEMENT_SM,
             'screensaver_user_id': test_su_id,
-            'status': 'inactive'
+            'status': SCHEMA.VOCAB.user_agreement.status.INACTIVE
             }
-        resource_uri = \
-            BASE_URI_DB + '/screensaveruser/%s/useragreement/' % test_su_id
         resp = self.api_client.patch(
             resource_uri, 
             format='json', 
@@ -10981,44 +10997,259 @@ class ScreensaverUserResource(DBResourceTestCase):
         self.assertIsNone(user_agreement_output4a['date_expired'])
         self.assertIsNone(user_agreement_output4a['file_id'])
         self.assertIsNone(user_agreement_output4a['filename'])
-        self.assertIsNone(user_agreement_output4a['data_sharing_level'])
-        VOCAB_UA_STATUS_INACTIVE = 'inactive'
-        self.assertEqual(user_agreement_output4a['status'], VOCAB_UA_STATUS_INACTIVE)
+        self.assertEqual(
+            user_agreement_output4a['status'], 
+            SCHEMA.VOCAB.user_agreement.status.INACTIVE)
         logger.info('status: %r', user_agreement_output4a)
         
 
     def test11_update_lab_head_dsl(self):
         
         # Verify that the lab member dsl's are updated on lab head update.
+
+        lab_head = self.create_lab_head({
+            'is_active': False })
+        self.assertFalse(lab_head['is_active'])
+        test_lh_id = str(lab_head['screensaver_user_id'])
+
+        # TODO: Create specific Group/Permissions for User Agreement        
+        ua_admin = self.create_staff_user({ 
+            'username': 'attached_file_admin1',
+            'is_superuser': True,
+            'is_active': True
+        })
         
-        # TODO: Business rules:
-        # 1. User DSL must match Lab Head (PI) DSL
-        # 1.a On updating user's SMUA, should the validation limit the DSL choice to 
-        # match the PI's?
-        # 2. On updating PI's SMUA, should batch operation include updating the
-        # lab member DSL's?
-        # 3. Does PI SMUA expiration affect Lab Member SMUA expiration?
+        # 1. Post the lab head UA
         
-        pass
+        test_comment = 'test lab head comment for user agreement'
+        authentication=self.get_credentials()
+        post_kwargs = { 'limit': 0, 'includes': ['*'] }
+        post_kwargs[HTTP_PARAM_AUTH] = authentication
+        post_kwargs[HEADER_APILOG_COMMENT] = test_comment
+        post_kwargs[DJANGO_ACCEPT_PARAM] = JSON_MIMETYPE
         
+        user_agreement_input = {
+            'type': VOCAB_USER_AGREEMENT_SM,
+            'data_sharing_level': 2,
+            'date_active': '2017-10-22'
+            }
+        filename = 'iccbl_sm_user_agreement_march2015.pdf'
+        filepath = \
+            '%s/db/static/test_data/useragreement/%s' %(APP_ROOT_DIR,filename)
+        logger.info('Open and POST file: %r', filepath)
+        with open(filepath) as input_file:
+            resource_uri = \
+                BASE_URI_DB + '/screensaveruser/%s/useragreement/' % test_lh_id
+            logger.info('POST user agreement %r to the server...', resource_uri)
+            user_agreement_input['attached_file'] = input_file
+            user_agreement_input['filename'] = filename
+            resp = self.django_client.post(
+                resource_uri, content_type=MULTIPART_CONTENT, 
+                data=user_agreement_input, **post_kwargs)
+            if resp.status_code not in [200]:
+                logger.info(
+                    'resp code: %d, resp: %r, content: %r', 
+                    resp.status_code, resp, resp.content)
+            self.assertTrue(
+                resp.status_code in [200], 
+                (resp.status_code))
         
-        # TODO: test user/lab head/screen DSL combinations
-        # - user cannot be created as non-lab head without a lab head (unless staff)
-        # - DSL must match lab head
-        # - change Lab Head DSL changes user DSL
+        # 1.A Verify User Agreement was created
         
+        resource_uri = '/'.join([
+            BASE_URI_DB,'useragreement', test_lh_id,VOCAB_USER_AGREEMENT_SM])
+        user_agreement_output = self.get_single_resource(resource_uri)
         
-        # User agreement
-        # - attached file
-        # - date active (checklist item event)
-        # - dsl level
-        # - date expired
-    # TODO: test expire dsl: create a "UserAgreementResource.expire"
+        logger.info('user agreement created: %r', user_agreement_output)
+        self.assertEqual(
+            user_agreement_input['type'], 
+            user_agreement_output['type'])
+        self.assertEqual(
+            user_agreement_input['data_sharing_level'], 
+            user_agreement_output['data_sharing_level'])
+        self.assertEqual(
+            user_agreement_input['date_active'],
+            user_agreement_output['date_active'])
+
+        # 2. Create lab_member UA
+        logger.info('2. Assign a user to the Lab Head...')
+        user_data = {
+            'username': 'test4screeningUser', 
+            'lab_head_id': test_lh_id
+        }
+        lab_member = self.create_screening_user(data=user_data)
+        lab_member_id = str(lab_member['screensaver_user_id'])
+        logger.info('User: %r (with lab head set)', lab_member)
+        
+        self.assertEqual(
+            str(lab_member['lab_head_id']), test_lh_id)
+        self.assertEqual(lab_member['lab_name'], lab_head['lab_name'])
+        self.assertEqual(
+            lab_member['lab_affiliation_category'], 
+            lab_head['lab_affiliation_category'])
+
+        # 2.B Verify user2 is a lab member
+        
+        resource_uri = BASE_URI_DB + '/screensaveruser'
+        resource_uri = '/'.join([resource_uri,lab_head['username']])
+        lab_head_updated = self.get_single_resource(
+            resource_uri, 
+            {
+                'screensaver_user_id': lab_head['screensaver_user_id'],
+                'includes': ['lab_member_ids']
+            })
+        self.assertTrue('lab_member_ids' in lab_head_updated)
+        lab_member_ids = lab_head_updated['lab_member_ids']
+        self.assertTrue(
+            str(lab_member['screensaver_user_id']) in lab_member_ids,
+            'lab_member_ids: %r, does not contain: %r'
+            % (lab_member_ids, lab_member['screensaver_user_id']))
+        
+        # 2.a Invalid; lab_member UA dsl != lab_head UA
+        
+        user_agreement_input = {
+            'type': VOCAB_USER_AGREEMENT_SM,
+            'data_sharing_level': 3,
+            'date_active': '2017-10-22'
+            }
+        logger.info('Open and POST file: %r', filepath)
+        with open(filepath) as input_file:
+            resource_uri = \
+                BASE_URI_DB + '/screensaveruser/%s/useragreement/' % lab_member_id
+            logger.info('POST user agreement %r to the server...', resource_uri)
+            user_agreement_input['attached_file'] = input_file
+            user_agreement_input['filename'] = filename
+            resp = self.django_client.post(
+                resource_uri, content_type=MULTIPART_CONTENT, 
+                data=user_agreement_input, **post_kwargs)
+            if resp.status_code not in [400]:
+                logger.info(
+                    'resp code: %d, resp: %r, content: %r', 
+                    resp.status_code, resp, resp.content)
+            self.assertTrue(
+                resp.status_code in [400], 
+                (resp.status_code))
+            data = self.deserialize(resp)
+            logger.info('response: %r', data) 
+            data = data[API_RESULT_ERROR]
+            key = 'data_sharing_level'
+            error_messages = find_in_dict(key, data)
+            self.assertTrue(error_messages is not None, 
+                'Error: response error not found: %r, obj: %r' %(key, data))
+            logger.info('error messages: %r', error_messages)
+            self.assertEqual(len(error_messages),1)
+            self.assertEqual(error_messages[0], 'Must match Lab Head value: 2')
+        
+        # 2.b valid; lab_member UA dsl == lab_head UA
+        
+        user_agreement_input = {
+            'type': VOCAB_USER_AGREEMENT_SM,
+            'data_sharing_level': 2,
+            'date_active': '2017-10-22'
+            }
+        filename = 'iccbl_sm_user_agreement_march2015.pdf'
+        filepath = \
+            '%s/db/static/test_data/useragreement/%s' %(APP_ROOT_DIR,filename)
+        logger.info('Open and POST file: %r', filepath)
+        with open(filepath) as input_file:
+            resource_uri = \
+                BASE_URI_DB + '/screensaveruser/%s/useragreement/' % lab_member_id
+            logger.info('POST user agreement %r to the server...', resource_uri)
+            user_agreement_input['attached_file'] = input_file
+            user_agreement_input['filename'] = filename
+            resp = self.django_client.post(
+                resource_uri, content_type=MULTIPART_CONTENT, 
+                data=user_agreement_input, **post_kwargs)
+            if resp.status_code not in [200]:
+                logger.info(
+                    'resp code: %d, resp: %r, content: %r', 
+                    resp.status_code, resp, resp.content)
+            self.assertTrue(
+                resp.status_code in [200], 
+                (resp.status_code))
+
+        # 3. Update the lab head UA
+        
+        # 3.a requires override
+        test_comment = 'test lab head user agreement level change will invalidate lab_member UAs'
+        logger.info(test_comment)
+        logger.info('3.a - fail, requires override')
+        user_agreement_input = {
+            'type': VOCAB_USER_AGREEMENT_SM,
+            'data_sharing_level': 3,
+            'date_active': '2017-10-22'
+            }
+        logger.info('Open and POST file: %r', filepath)
+        with open(filepath) as input_file:
+            resource_uri = \
+                BASE_URI_DB + '/screensaveruser/%s/useragreement/' % test_lh_id
+            logger.info('POST user agreement %r to the server...', resource_uri)
+            user_agreement_input['attached_file'] = input_file
+            user_agreement_input['filename'] = filename
+            resp = self.django_client.post(
+                resource_uri, content_type=MULTIPART_CONTENT, 
+                data=user_agreement_input, **post_kwargs)
+            # Expect Fail, requires override
+            if resp.status_code not in [400]:
+                logger.info(
+                    'resp code: %d, resp: %r, content: %r', 
+                    resp.status_code, resp, resp.content)
+            self.assertTrue(
+                resp.status_code in [400], 
+                (resp.status_code))
+        
+            resp = self.deserialize(resp)
+            logger.info('resp: %r', resp)
+            self.assertTrue(API_RESULT_ERROR in resp)
+            errors = resp[API_RESULT_ERROR]
+            self.assertTrue(API_PARAM_OVERRIDE in errors) 
+            self.assertEqual(errors[API_PARAM_OVERRIDE], 'required')
+            
+            # 3.b Try again, with override
+            override_resource_uri = \
+                resource_uri + '?' + API_PARAM_OVERRIDE + '=true' \
+            
+            resp = self.django_client.post(
+                override_resource_uri, content_type=MULTIPART_CONTENT, 
+                data=user_agreement_input, **post_kwargs)
+            # Expect Fail, requires override
+            if resp.status_code not in [200]:
+                logger.info(
+                    'resp code: %d, resp: %r, content: %r', 
+                    resp.status_code, resp, resp.content)
+            self.assertTrue(
+                resp.status_code in [200], 
+                (resp.status_code))
+            
+        # 3.c Verify that the lab member UA is deactivated
+        resource_uri = \
+            BASE_URI_DB + '/screensaveruser/%s/useragreement/' % lab_member_id
+            
+        resp = self.api_client.get(
+            resource_uri,
+            authentication=self.get_credentials(),
+            data={ 
+                'type': VOCAB_USER_AGREEMENT_SM,
+                'limit': 0, 'includes': '*'} )
+        self.assertTrue(
+            resp.status_code == 200, 
+            ('error, lab member UA should be deactivated', resp.status_code, 
+                self.get_content(resp)))
+
+        resp = self.deserialize(resp)
+        
+        data = resp[API_RESULT_DATA]
+        logger.info('data: %r', data)
+        
+        for ua_returned in data:
+            logger.info('ua: %r', ua_returned)
+            self.assertEqual(
+                ua_returned.get('status'),
+                SCHEMA.VOCAB.user_agreement.status.INACTIVE)
         
     def test12_service_activity(self):
         
         logger.info('test5_service_activity...')
-#         self.test0_create_user();
         # Create a lab head, as all users must either be a lab head or have one
         serviced_user = self.create_lab_head()
         
@@ -11029,21 +11260,22 @@ class ScreensaverUserResource(DBResourceTestCase):
         performed_by_user2 = self.create_staff_user(
             { 'username': 'service_activity_performer2'})
 
-        service_activity_post = {
+        activity_post = {
             'serviced_user_id': serviced_user['screensaver_user_id'],
+            'classification': SCHEMA.VOCAB.activity.classification.OTHER,
             'type': "image_analysis",
-            'comments': "test",
+            'comments': "test 12 comments user service",
             'date_of_activity': "2015-10-27",
             'funding_support': "clardy_grants",
             'performed_by_user_id': performed_by_user['screensaver_user_id'],
         }
 
         # 1. Create        
-        resource_uri = BASE_URI_DB + '/serviceactivity'
+        resource_uri = BASE_URI_DB + '/activity'
         resp = self.api_client.post(
             resource_uri, 
             format='json', 
-            data=service_activity_post, 
+            data=activity_post, 
             authentication=self.get_credentials())
         self.assertTrue(
             resp.status_code in [200,201,202], 
@@ -11058,43 +11290,43 @@ class ScreensaverUserResource(DBResourceTestCase):
             resp.status_code in [200], 
             (resp.status_code, self.get_content(resp)))
         new_obj = self.deserialize(resp)
-        logger.info('new service activity result: %r', new_obj)
+        logger.info('new (service) activity result: %r', new_obj)
         self.assertTrue(API_RESULT_DATA in new_obj)
         new_obj = new_obj[API_RESULT_DATA][0]
         result,msgs = assert_obj1_to_obj2(
-            service_activity_post, new_obj)
+            activity_post, new_obj)
         self.assertTrue(result,msgs)
 
         # 1a. Test apilog
         resource_uri = BASE_REPORTS_URI + '/apilog'
         data_for_get={ 
             'limit': 0, 
-            'ref_resource_name': 'serviceactivity', 
+            'ref_resource_name': 'activity', 
         }
         apilogs = self.get_list_resource(
             resource_uri, data_for_get=data_for_get )
         self.assertTrue(
             len(apilogs) == 1, 'too many apilogs found: %r' % apilogs)
         apilog = apilogs[0]
-        logger.debug('serviceactivity log: %r', apilog)
+        logger.debug('activity log: %r', apilog)
         self.assertTrue(apilog['api_action'] == 'CREATE')
         self.assertEquals(
             apilog['uri'], 
-            'screensaveruser/{serviced_user_id}/serviceactivity/{activity_id}'
+            'activity/screensaveruser/{serviced_user_id}/{activity_id}'
                 .format(**new_obj))
         
         # TODO: test with a serviced screen
         
         # 2. patch
-        service_activity_post = {
+        activity_post = {
             'activity_id': new_obj['activity_id'],
             'performed_by_user_id': performed_by_user2['screensaver_user_id']}
 
-        resource_uri = BASE_URI_DB + '/serviceactivity'
+        resource_uri = BASE_URI_DB + '/activity'
         resp = self.api_client.patch(
             resource_uri, 
             format='json', 
-            data=service_activity_post, 
+            data=activity_post, 
             authentication=self.get_credentials())
         self.assertTrue(
             resp.status_code in [200,201,202], 
@@ -11109,19 +11341,19 @@ class ScreensaverUserResource(DBResourceTestCase):
             resp.status_code in [200], 
             (resp.status_code, self.get_content(resp)))
         new_obj = self.deserialize(resp)
-        logger.info('new service activity result: %r', new_obj)
+        logger.info('new (service) activity result: %r', new_obj)
         self.assertTrue(API_RESULT_DATA in new_obj)
         self.assertEquals(1, len(new_obj[API_RESULT_DATA]))
         new_obj = new_obj[API_RESULT_DATA][0]
         result,msgs = assert_obj1_to_obj2(
-            service_activity_post, new_obj)
+            activity_post, new_obj)
         self.assertTrue(result,msgs)
         
         # 2.a Test apilog
         resource_uri = BASE_REPORTS_URI + '/apilog'
         data_for_get={ 
             'limit': 0, 
-            'ref_resource_name': 'serviceactivity',
+            'ref_resource_name': 'activity',
             'diff_keys': 'performed_by_user_id' 
         }
         apilogs = self.get_list_resource(
@@ -11129,17 +11361,17 @@ class ScreensaverUserResource(DBResourceTestCase):
         self.assertEqual(len(apilogs),1, 
             'wrong number of apilogs found: %r' % apilogs)
         apilog = apilogs[0]
-        logger.info('serviceactivity log: %r', apilog)
+        logger.info('activity log: %r', apilog)
         self.assertTrue(apilog['api_action'] == 'PATCH')
         self.assertEquals(
             apilog['uri'], 
-            'screensaveruser/{serviced_user_id}/serviceactivity/{activity_id}'
+            'activity/screensaveruser/{serviced_user_id}/{activity_id}'
                 .format(**new_obj))
         
-        # 3 delete serviceactivity
-        logger.info('Delete service activity...')
+        # 3 delete activity
+        logger.info('Delete (service) activity...')
         resource_uri = '/'.join([
-            BASE_URI_DB,'serviceactivity',str(new_obj['activity_id'])])
+            BASE_URI_DB,'activity',str(new_obj['activity_id'])])
         resp = self.api_client.delete(
             resource_uri, authentication=self.get_credentials())
         self.assertTrue(
@@ -11158,7 +11390,7 @@ class ScreensaverUserResource(DBResourceTestCase):
         resource_uri = BASE_REPORTS_URI + '/apilog'
         data_for_get={ 
             'limit': 0, 
-            'ref_resource_name': 'serviceactivity',
+            'ref_resource_name': 'activity',
             'api_action': 'DELETE'
         }
         apilogs = self.get_list_resource(
@@ -11166,11 +11398,11 @@ class ScreensaverUserResource(DBResourceTestCase):
         self.assertTrue(
             len(apilogs) == 1, 'too many apilogs found: %r' % apilogs)
         apilog = apilogs[0]
-        logger.info('serviceactivity log: %r', apilog)
+        logger.info('activity log: %r', apilog)
         self.assertTrue(apilog['api_action'] == 'DELETE')
         self.assertEquals(
             apilog['uri'], 
-            'screensaveruser/{serviced_user_id}/serviceactivity/{activity_id}'
+            'activity/screensaveruser/{serviced_user_id}/{activity_id}'
                 .format(**new_obj))
 
 
@@ -11296,7 +11528,11 @@ class DataSharingLevel(DBResourceTestCase):
             screen['facility_id']: screen 
                 for screen in reference_screens}
         self.reference_screens = reference_screens
-        logger.info('reference_screens: %r', reference_screens.keys())
+        for facility_id, screen in self.reference_screens.items():
+            logger.info('screen: %r, has screen result: %r', 
+                facility_id, 
+                SCREEN_AVAILABILITY.get_lookup_dict().get(screen.get('has_screen_result')))
+
         screens_by_lead = defaultdict(set)
         for facility_id,screen in reference_screens.items():
             lead_screener = reference_users_by_id[screen['lead_screener_id']]
@@ -11374,15 +11610,15 @@ class DataSharingLevel(DBResourceTestCase):
     def setup_library(self):
         
         short_name = 'library1'
-        resource_uri = '/'.join([BASE_URI_DB, 'library',short_name])
-        self.library1 = self.get_entity(resource_uri)
+        library_resource_uri = '/'.join([BASE_URI_DB, 'library',short_name])
+        self.library1 = self.get_entity(library_resource_uri)
         if self.library1 is None:
             logger.info('library not found, creating: %s', short_name)
             self.library1 = self.create_library({
-                'short_name': short_name,
+                LIBRARY.SHORT_NAME: short_name,
                 START_PLATE: 1, 
                 END_PLATE: 20,
-                SCREEN_TYPE: 'small_molecule' })
+                SCREEN_TYPE: 'small_molecule'})
     
             logger.info('create wells...')
             plate = 1
@@ -11406,6 +11642,21 @@ class DataSharingLevel(DBResourceTestCase):
                 resp.status_code in [200], 
                 (resp.status_code, self.get_content(resp)))
 
+            # NOTE: set the library as released so that the screeners can see it
+            library_patch = {
+                LIBRARY.IS_RELEASED: True                 
+            }
+            resp = self.api_client.patch(
+                library_resource_uri, format='json', data=library_patch, 
+                authentication=self.get_credentials(), 
+                **{ 'limit': 0, 'includes': '*'} )
+            self.assertTrue(
+                resp.status_code in [200], 
+                (resp.status_code, self.get_content(resp)))
+            new_library_data = self.get_library(short_name)
+            self.assertTrue(new_library_data[LIBRARY.IS_RELEASED])
+            self.assertIsNone(new_library_data[LIBRARY.PREVIEW_LOG_ID])
+            
     def get_screenresult_json(self, screen_facility_id, username=None, data=None):
         data_for_get = { 'includes': '*' }
         if data is not None:
@@ -11431,7 +11682,7 @@ class DataSharingLevel(DBResourceTestCase):
 
     def get_screens(self, username, data=None):
         
-        data_for_get = { 'includes': '*' }
+        data_for_get = { 'includes': '*', 'limit': 0 }
         if data is not None:
             data_for_get.update(data)
         
@@ -11448,7 +11699,7 @@ class DataSharingLevel(DBResourceTestCase):
         return new_data
     
     def get_reagents(self, username=None, data=None):
-        data_for_get = { 'includes': '*' }
+        data_for_get = { 'includes': '*', 'limit': 0 }
         if data is not None:
             data_for_get.update(data)
         
@@ -11466,7 +11717,7 @@ class DataSharingLevel(DBResourceTestCase):
     
     def get_datacolumns(self, username=None, data=None):
         
-        data_for_get = { 'includes': '*' }
+        data_for_get = { 'includes': '*', 'limit': 0 }
         if data is not None:
             data_for_get.update(data)
         
@@ -11636,6 +11887,10 @@ class DataSharingLevel(DBResourceTestCase):
         reference_screens = self.get_list_resource(BASE_URI + '/screen') 
         reference_screens = { screen['facility_id']: screen 
             for screen in reference_screens}
+        for facility_id, screen in self.reference_screens.items():
+            logger.info('screen: %r, has screen result: %r', 
+                facility_id, 
+                SCREEN_AVAILABILITY.get_lookup_dict().get(screen.get('has_screen_result')))
 
         # Retrieve screens as the user        
         reported_screens = self.get_screens(user[SU.USERNAME])
@@ -11752,11 +12007,16 @@ class DataSharingLevel(DBResourceTestCase):
         reference_screens = self.get_list_resource(BASE_URI + '/screen') 
         reference_screens = { screen['facility_id']: screen 
             for screen in reference_screens}
+        for facility_id, screen in self.reference_screens.items():
+            logger.info('screen: %r, has screen result: %r', 
+                facility_id, 
+                SCREEN_AVAILABILITY.get_lookup_dict().get(screen.get('has_screen_result')))
 
         reference_data_columns = self.get_datacolumns()
         logger.info('reference datacolumns: %r', 
             [(dc['screen_facility_id'],dc['name'],dc['user_access_level_granted'])
                 for dc in reference_data_columns])
+        logger.info('expected_screens_access_levels: %r', expected_screens_access_levels)
         reference_data_columns_by_title = { dc['title']:dc for dc in reference_data_columns }
         if expected_positive_count_by_col_title:
             for title, count in expected_positive_count_by_col_title.items():
@@ -11786,7 +12046,8 @@ class DataSharingLevel(DBResourceTestCase):
                     continue
                 dcs = dc_by_screen.get(facility_id,None)
                 if not dcs:
-                    self.fail('no datacolumns found: %r' % facility_id)
+                    self.fail('no ref datacolumns found: %r, expected access_level: %r' 
+                        % (facility_id, access_level))
                 for dc in dcs:
                     logger.debug(
                         'access_level: %r, dc: %r', 
@@ -11868,10 +12129,10 @@ class DataSharingLevel(DBResourceTestCase):
         expected_wells = set(wellids_to_test)
         reported_wells = set(reported_reagents.keys())
         self.assertEqual(expected_wells, reported_wells,
-            'not all wells were found: missing: %r, extra: %r' %
-            (expected_wells-reported_wells, reported_wells-expected_wells))
+            'not all wells were found: missing: %r, expected: %r, reported: %r' %
+            (expected_wells-reported_wells, expected_wells, reported_wells))
         for well_id, reagent in reported_reagents.items():
-            logger.info('reported reagent: %s %r', well_id, reagent)
+            logger.debug('reported reagent: %s %r', well_id, reagent)
             for dc_id, dc in reported_datacolumns.items():
                 dc_name = 'dc_{screen_facility_id}_{data_column_id}'.format(**dc)
                 if dc_id in level1_datacolums:
@@ -12032,7 +12293,7 @@ class DataSharingLevel(DBResourceTestCase):
                         # does the converse, converting them into "NT", "NP", False
                         # This test is finding the overlapping positives
                         # 20180321
-                        logger.info('dc: %r, %r', dc['key'], dc_type)
+                        logger.debug('dc: %r, %r', dc['key'], dc_type)
                         if access_level > ACCESS_LEVEL.OVERLAPPING_ONLY:
                             self.assertEqual(
                                 reference_value, value,
@@ -12091,29 +12352,47 @@ class DataSharingLevel(DBResourceTestCase):
 
         user = self.reference_users['lead_screener1a']
         own_screens = self.screens_by_lead[user['username']]
+        other_screens = set()
+        for username, screens in self.screens_by_lead.items():
+            if username != user['username']:
+                other_screens.update(screens)
+        logger.info('user: %r, own screens: %r', user['username'], own_screens)
+        logger.info('other screens: %r', other_screens)
         logger.info('screens by lead: %r', self.screens_by_lead)
 
-        logger.info('user: %r, own screens: %r', user['username'], own_screens)
-        
+        well_ids_to_create = ['00001:A0%d'%i for i in range(1,6)]
+        logger.info('Add screen results so other screens are "active"...')
+        for screen_facility_id in other_screens:
+            self.create_screen_result_for_test(
+                screen_facility_id, well_ids_to_create)
+
+        # Print current screen result status
+        reference_screens = self.get_list_resource(BASE_URI + '/screen') 
+        self.reference_screens = { 
+            screen['facility_id']: screen 
+                for screen in reference_screens}
+        for facility_id, screen in self.reference_screens.items():
+            logger.info('screen: %r, has screen result: %r', 
+                facility_id, 
+                SCREEN_AVAILABILITY.get_lookup_dict().get(screen.get('has_screen_result')))
+
         # Get the Screen schema for the user
         screen_schema = self.get_schema('screen', user['username'])
         self.assertIsNotNone(screen_schema)
         
         fields_by_level = self.get_fields_by_level(screen_schema['fields'])
         
-        logger.info(
-            '1. Visibility before data deposit (own & level 0 screens only)')
+        logger.info('1. Visibility before data deposit (own & 0 screens)')
         
         expected_screens_access_levels = defaultdict(set)
         expected_screens_access_levels[2] = \
             set(self.screens_by_level[0]) - set(own_screens)
+
         expected_screens_access_levels[3] = set(own_screens)
         self.do_visibility_test(
             screen_schema['fields'], user, expected_screens_access_levels)
 
-        logger.info(
-            '2. After data deposit')
-        well_ids_to_create = ['00001:A0%d'%i for i in range(1,6)]
+        logger.info('2. After data deposit')
          
         logger.info('2.a non-qualifying deposit (level 2 screen for level 1 user)')
         # - Screen visibility should be unchanged
@@ -12124,15 +12403,13 @@ class DataSharingLevel(DBResourceTestCase):
         expected_positive_count_by_col_title = {
             '%s [%s]' % ('Field2_positive_indicator',screen_facility_id): 1 }
         # test that user can get own screen result
-        
         screen_result = self.get_screenresult(
             screen_facility_id, user['username'])
- 
+  
         self.do_visibility_test(
             screen_schema['fields'], user, expected_screens_access_levels)
         
-        logger.info(
-            '2.b qualifying deposit, can now see data for level 1,2 screens')
+        logger.info('2.b qualifying deposit, can now see data for level 1,2 screens')
         screen_facility_id = own_screens[1]
         self.create_screen_result_for_test(
             screen_facility_id, well_ids_to_create,
@@ -12155,9 +12432,9 @@ class DataSharingLevel(DBResourceTestCase):
             user, expected_screens_access_levels,
             expected_positive_count_by_col_title=expected_positive_count_by_col_title)
         
-        logger.info(
-            '2.c Create overlapping data in a level 2 Screen')
         screen_facility_id = self.screens_by_lead['lead_screener2a'][2]
+        logger.info('2.c Create overlapping data in level 2 Screen: %r', 
+            screen_facility_id)
         self.create_screen_result_for_test(
             screen_facility_id, well_ids_to_create,
             confirmed_positive_wells=['00001:A02','00001:A03'])
@@ -12187,12 +12464,17 @@ class DataSharingLevel(DBResourceTestCase):
         self.do_screenresult_test(user, own_screens[1], 3,
             mutual_wells=['00001:A02'])
 
-        logger.info(
-            '3 remove screen result')
+        logger.info('3 remove screen result for %r', screen_facility_id)
         delete_url = '/'.join([
             BASE_URI, 'screenresult',screen_facility_id])
         self.api_client.delete(delete_url, authentication=self.get_credentials())
 
+        # Create a non-overlap result for this screen, so it is "valid", but 
+        # should -not- be visible, because it is level 2 - mutual, and no 
+        # confirmed positive wells are present this time.
+        self.create_screen_result_for_test(
+            screen_facility_id, well_ids_to_create)
+        
         self.do_visibility_test(
             screen_schema['fields'], user, 
             expected_screens_access_levels_after_deposit_no_overlap)
@@ -12205,9 +12487,30 @@ class DataSharingLevel(DBResourceTestCase):
 
         user = self.reference_users['lead_screener2a']
         own_screens = self.screens_by_lead[user['username']]
-        logger.info('screens by lead: %r', self.screens_by_lead)
+        other_screens = set()
+        for username, screens in self.screens_by_lead.items():
+            if username != user['username']:
+                other_screens.update(screens)
         logger.info('user: %r, own screens: %r', user['username'], own_screens)
-        
+        logger.info('other screens: %r', other_screens)
+        logger.info('screens by lead: %r', self.screens_by_lead)
+
+        well_ids_to_create = ['00001:A0%d'%i for i in range(1,6)]
+        logger.info('Add screen results so other screens are "active"...')
+        for screen_facility_id in other_screens:
+            self.create_screen_result_for_test(
+                screen_facility_id, well_ids_to_create)
+
+        # Print current screen result status
+        reference_screens = self.get_list_resource(BASE_URI + '/screen') 
+        self.reference_screens = { 
+            screen['facility_id']: screen 
+                for screen in reference_screens}
+        for facility_id, screen in self.reference_screens.items():
+            logger.info('screen: %r, has screen result: %r', 
+                facility_id, 
+                SCREEN_AVAILABILITY.get_lookup_dict().get(screen.get('has_screen_result')))
+
         # Get the Screen schema for the user
         screen_schema = self.get_schema('screen', user['username'])
         self.assertIsNotNone(screen_schema)
@@ -12280,18 +12583,21 @@ class DataSharingLevel(DBResourceTestCase):
         self.do_visibility_test(
             screen_schema['fields'], user, expected_screens_access_levels)
 
-#         self.do_reagent_cols_test(user, screen_facility_id, expected_screens_access_levels,
-#             ['00001:A01','00001:A02','00001:A03'])
         self.do_reagent_cols_test(user, ['00001:A01','00001:A02','00001:A03'])
 
         self.do_data_columns_test(user, expected_screens_access_levels)
 
-        logger.info(
-            '3 remove screen result')
+        logger.info('3 remove screen result for %r', screen_facility_id)
         delete_url = '/'.join([
             BASE_URI, 'screenresult',screen_facility_id])
         self.api_client.delete(
             delete_url, authentication=self.get_credentials())
+        # Create a non-overlap result for this screen, so it is "valid", but 
+        # should -not- be visible, because it is level 2 - mutual, and no 
+        # confirmed positive wells are present this time.
+        self.create_screen_result_for_test(
+            screen_facility_id, well_ids_to_create)
+        
         self.do_visibility_test(
             screen_schema['fields'], user, 
             expected_screens_access_levels_after_deposit_no_overlap)
@@ -13395,10 +13701,6 @@ class RawDataTransformer(DBResourceTestCase):
                     else:
                         self.assertTrue(row['Type'], 'X')
                         self.assertEqual(row['Pre-Loaded Controls'], None)
-                    
-                    
-                    
-                    
                     
                 # TODO:
                 # c. transformation (1536->384)

@@ -6,22 +6,6 @@ body {
 #menu {
   background-color: rgba(197, 210, 219, 0.3);
 }
-@media (min-width: 568px) {
-  .container {
-    width: inherit;
-  }
-}
-@media (min-width: 992px) {
-  .container {
-    width: inherit;
-  }
-}
-@media (min-width: 1200px) {
-  .container {
-    width: ;
-  }
-}  
-
 .btn.disabled, a.btn.disabled {
     pointer-events: auto;
 }
@@ -169,8 +153,14 @@ padding: 3px 15px;
 .backgrid thead th,
 .backgrid td {
   border: 1px solid #DDD;
+  white-space: normal;
 /*   vertical-align: top; */
 }
+
+.label-as-badge {
+    border-radius: 10px;
+}
+
 div.backgrid-paginator {
   display: inline;
 /*  text-align: left; */
@@ -197,6 +187,18 @@ div.backgrid-paginator {
 .backgrid .delete-cell {
   text-align: center;
 }
+
+.table-hover tbody tr:hover td, .table-hover tbody tr:hover th {
+  background-color: #94fcba;
+}
+
+.duplex-table thead th,
+.duplex-table td {
+ font-weight: bold;
+ text-align: left;
+ vertical-align: top;
+}
+
 
 /** wellselector **/
 
@@ -227,10 +229,12 @@ td.wellselector.select-row-cell {
 
 td.wellselector.selected {
   background-color: rgba(255, 0, 0, 1);
+  color: lightblue;
 }
 
 td.wellselector.select-row-cell.selected {
   background-color: rgba(255, 0, 0, .3);
+  color: black;
 }
 
 th.wellselector.selected {
@@ -246,6 +250,9 @@ table.selector_table tr.selected {
   background-color: rgba(0, 255, 37, 0.33);
 }
 
+.checklist td.active {
+  background-color: #ffffb3;
+}
 
 /** Styles for using a table for detail view (may use data-list style instead, below)*/
 
@@ -394,25 +401,32 @@ todo: these selectors should be redone
  border-top: 0px;
 }
 
+td.text-wrap-cell-wide {
+  text-overflow: inherit;
+  white-space: inherit;
+  vertical-align: middle;
+  min-width: 400px;
+}
+
 td.text-wrap-cell {
   text-overflow: inherit;
   white-space: inherit;
-  vertical-align: top;
+  vertical-align: middle;
   min-width: 250px;
 }
 
 td.text-wrap-cell-narrow {
   text-overflow: inherit;
   white-space: inherit;
-  vertical-align: top;
+  vertical-align: middle;
   min-width: 200px;
 }
 
 td.text-wrap-cell-extra-narrow {
   text-overflow: inherit;
   white-space: inherit;
-  vertical-align: top;
-  min-width: 100px;
+  vertical-align: middle;
+  min-width: 70px;
 }
 
 .backgrid.nested-table th {
@@ -475,7 +489,8 @@ td.text-wrap-cell-extra-narrow {
   font-family: sans-serif;
 }
 
-td.dl-title.admin-field {
+.admin-field, th.admin-field, td.admin-field,
+td.admin-field a, th.admin-field a  {
  color: maroon;
 }
 
@@ -560,3 +575,43 @@ table.backgrid.left-align td{
 {
     opacity:0.5 !important;
 }
+
+.pull-right button{
+  float: right !important;
+}
+.pull-left button{
+  float: left !important;
+}
+
+@media (min-width: 568px) {
+  .container {
+    width: inherit;
+  }
+}
+@media (min-width: 992px) {
+  .container {
+    width: inherit;
+  }
+}
+@media (min-width: 768px) {
+  .controls-right {
+    float: right !important; 
+  }
+  .controls-left {
+    float: left !important; 
+  }
+ 
+}
+@media (max-width: 767px) {
+  .app_container {
+    padding-left: 0px;
+  }
+  
+  .controls-right {
+    float: none;
+  }
+  .controls-left {
+    float: none;
+  }
+}  
+

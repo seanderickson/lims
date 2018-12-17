@@ -10,6 +10,9 @@ from django.db import migrations, models
 
 logger = logging.getLogger(__name__)
 
+def temp_migrate_breaker(apps,schema_editor):
+    raise Exception('xxx stop migration xxx')
+
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -17,20 +20,6 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        
-        migrations.CreateModel(
-            name='WellQueryIndex',
-            fields=[
-                ('id', models.AutoField(
-                    verbose_name='ID', serialize=False, auto_created=True, 
-                    primary_key=True)),
-                ('query', models.ForeignKey(to='db.CachedQuery')),
-                ('well', models.ForeignKey(to='db.Well')),
-            ],
-            options={
-                'db_table': 'well_query_index',
-            },
-        ),
         
         migrations.AlterField(
             model_name='attachedfile',
@@ -52,13 +41,9 @@ class Migration(migrations.Migration):
         migrations.DeleteModel(
             name='ScreenFundingSupportLink',
         ),
-        migrations.RemoveField(
-            model_name='serviceactivity',
-            name='funding_support_link',
-        ),
-        # Note: funding_support_link is an alias for funding_support_id
-        # migrations.RunSQL(
-        #     'ALTER TABLE service_activity DROP COLUMN funding_support_id; '),
+
+        migrations.RunSQL(
+            'ALTER TABLE service_activity DROP COLUMN funding_support_id; '),
         migrations.DeleteModel(
             name='FundingSupport',
         ),
@@ -72,82 +57,38 @@ class Migration(migrations.Migration):
         
         migrations.DeleteModel(
             name='TransfectionAgent'),
-                  
-        migrations.RemoveField(
-            model_name='reagent',
-            name='library_contents_version',
-        ),
-        migrations.DeleteModel(
-            name='LibraryContentsVersion'),
-            
-        migrations.RemoveField(
-            model_name='ScreeningRoomUser',
-            name='last_notified_smua_checklist_item_event'),
 
-        migrations.RemoveField(
-            model_name='ScreeningRoomUser',
-            name='last_notified_rnaiua_checklist_item_event'),
+#         migrations.RemoveField(
+#             model_name='ScreeningRoomUser',
+#             name='last_notified_smua_checklist_item_event'),
+# 
+#         migrations.RemoveField(
+#             model_name='ScreeningRoomUser',
+#             name='last_notified_rnaiua_checklist_item_event'),
 
-# TODO: remove: UserChecklistItem replaced by UserChecklist
-#         migrations.AlterUniqueTogether(
-#             name='userchecklistitem',
-#             unique_together=set([]),
-#         ),
-#         migrations.RemoveField(
-#             model_name='userchecklistitem',
-#             name='admin_user',
-#         ),
-#         migrations.RemoveField(
-#             model_name='userchecklistitem',
-#             name='screensaver_user',
-#         ),
-#         migrations.DeleteModel(
-#             name='UserChecklistItem',
-#         ),
         migrations.DeleteModel(
             name='AttachedFileType',
-        ),
-        migrations.DeleteModel(
-            name='UserChecklistItem',
-        ),
-
-        # TODO: service_activity depends on funding support
-#         migrations.RunSQL('DROP TABLE funding_support; '),
-        
-        migrations.RemoveField(
-            model_name='datacolumnderivedfromlink',
-            name='derived_data_column',
-        ),
-        migrations.RemoveField(
-            model_name='datacolumnderivedfromlink',
-            name='derived_from_data_column',
-        ),
-        migrations.DeleteModel(
-            name='DataColumnDerivedFromLink',
         ),
 
         # Operations already handled in migration 0002
        
-        migrations.AlterField(
-            model_name='cherrypickrequest',
-            name='volume_approved_by',
-            field=models.ForeignKey(
-                related_name='approved_cherry_pick', to='db.ScreensaverUser', 
-                null=True),
-        ),
-        migrations.AlterField(
-            model_name='cherrypickrequest',
-            name='requested_by',
-            field=models.ForeignKey(
-                related_name='requested_cherry_pick', to='db.ScreensaverUser'),
-        ),
+#         migrations.AlterField(
+#             model_name='cherrypickrequest',
+#             name='volume_approved_by',
+#             field=models.ForeignKey(
+#                 related_name='approved_cherry_pick', to='db.ScreensaverUser', 
+#                 null=True),
+#         ),
+#         migrations.AlterField(
+#             model_name='cherrypickrequest',
+#             name='requested_by',
+#             field=models.ForeignKey(
+#                 related_name='requested_cherry_pick', to='db.ScreensaverUser'),
+#         ),
         migrations.RemoveField(
             model_name='well',
             name='latest_released_reagent',
         ),
-        
-        migrations.RemoveField(
-            model_name='well', name='deprecation_admin_activity'),
         
         migrations.DeleteModel(
             name='AnnotationValue',
@@ -173,39 +114,60 @@ class Migration(migrations.Migration):
             model_name='plate',
             name='retired_activity_id',
         ),
+#         migrations.RunPython(temp_migrate_breaker),
+
+# NOTE: 20180926 does not work, presumably because the fk for this has been altered in 0002
+#         migrations.RemoveField(
+#             model_name='screen',
+#             name='pin_transfer_admin_activity',
+#         ),
+        
 
 #         migrations.RemoveField(
 #             model_name='screenresult',
 #             name='experimental_well_count',
 #         ),
-        
-        # TODO: remove lab head as separate model
-        migrations.AlterField(
-            model_name='labhead',
-            name='screensaver_user',
-            field=models.OneToOneField(primary_key=True, serialize=False, to='db.ScreensaverUser'),
+
+
+        migrations.DeleteModel(
+            name='ChecklistItemEvent',
         ),
-#         migrations.RemoveField(
-#             model_name='screen',
-#             name='transfection_agent',
-#         ),
-#         migrations.RenameField(
-#             model_name='screen', 
-#             old_name='transfection_agent_text', 
-#             new_name='transfection_agent'
-#         ),
         
-        # TODO: reinstate for final migration; leaving fields in the db for 
-        # now - 20170607
-        # migrations.RemoveField(
-        #     model_name='screen',
-        #     name='project_id',
-        # ),
-        # migrations.RemoveField(
-        #     model_name='screen',
-        #     name='project_phase',
-        # ),
+        migrations.DeleteModel(
+            name='ChecklistItem',
+        ),
         
+        migrations.DeleteModel(
+            name='AdministratorUser',
+        ),
+        migrations.DeleteModel(
+            name='ScreeningRoomUser'),
+                  
+        migrations.DeleteModel(
+            name='LabHead',
+        ),
+        
+        migrations.DeleteModel(
+            name='ScreensaverUserRole',
+        ),
+
+        # 20180920 - leaving this here for archival purposes
+        # migrations.RunSQL('''
+        #     DROP TABLE screening_room_user_facility_usage_role;
+        # '''),
+
+        migrations.RemoveField(
+            model_name='LabActivity',
+            name='screen',
+        ),
+        migrations.RemoveField(
+            model_name='ScreensaverUser',
+            name='login_id'),
+            
+        migrations.RunSQL('''
+            alter table screensaver_user drop column digested_password ;
+        '''),
+
         # FIXME: not working on orchestra: moved to manual migration 0002
         # Keep here to convince makemigrations that this is done
         migrations.AlterUniqueTogether(

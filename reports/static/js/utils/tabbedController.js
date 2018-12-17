@@ -36,6 +36,7 @@ function($, _, Backgrid, Iccbl, appModel, EditView, tabbedTemplate, DetailLayout
           var group = displayed_tabbed_resources[key].group;
           if (!_.isUndefined(group)){
             if (!appModel.hasGroup(group)){
+              if (appModel.DEBUG) console.log('group permission tab removed:', group);
               delete displayed_tabbed_resources[key];
             }
           }else{
@@ -45,6 +46,7 @@ function($, _, Backgrid, Iccbl, appModel, EditView, tabbedTemplate, DetailLayout
             }
             if (permission!==''){
               if (!appModel.hasPermission(permission, 'read')) {
+                if (appModel.DEBUG) console.log('resource permission tab removed:', group);
                 delete displayed_tabbed_resources[key];
               }
             }

@@ -8,7 +8,7 @@ define([
   var GenericSelector = Backbone.View.extend({
     
     /** default to span4, adjust as needed **/
-    className : 'pull-down pull-right',
+    className : 'pull-down controls-right',
     
     initialize : function(attributes, options) {
 

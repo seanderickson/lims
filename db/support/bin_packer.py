@@ -210,9 +210,9 @@ if __name__ == "__main__":
         level=log_level, 
         format='%(msecs)d:%(module)s:%(lineno)d:%(levelname)s: %(message)s')        
 
-
     # for testing purposes, name of the package is its size
     packages = [ { 'name': p, 'size': p } for p in args.package_array ]
     packed_bins = pack_bins(args.capacity, packages)
     
     print 'packed_bins', packed_bins
+    

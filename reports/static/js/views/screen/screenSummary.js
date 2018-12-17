@@ -40,8 +40,8 @@ define([
 
     tabbed_resources: {
       detail: { 
-        description: 'Details', 
-        title: 'Details', 
+        description: 'Screening summary overview', 
+        title: 'Overview', 
         invoke: 'setDetail'
       },
       libraryscreening: {
@@ -397,7 +397,8 @@ define([
       var self = this;
       var defaults = {
         screen_facility_id: self.model.get('facility_id'),
-        screen_type: self.model.get('screen_type')
+        screen_type: self.model.get('screen_type'),
+        classification: 'screening'
       };
       var newModel = appModel.createNewModel('libraryscreening', defaults);
 
@@ -420,6 +421,7 @@ define([
     },
     
     setScreenings: function(delegateStack) {
+      console.log('setScreenings', delegateStack);
       var self = this;
       var lsResource = appModel.getResource('libraryscreening'); 
       
@@ -461,12 +463,12 @@ define([
         if (appModel.hasPermission('libraryscreening','write')) {
           var $addLibraryScreeningButton = $(
             '<a class="btn btn-default btn-sm" role="button" \
-            id="addLibraryScreening" href="#">Add Library Screening Visit</a>');
+            id="addLibraryScreening" href="#">Add library screening visit</a>');
           $addLibraryScreeningButton.click(self.addLibraryScreening);
           extraControls.push($addLibraryScreeningButton);
         }
-        lsResource.fields['activity_class']['visibility'] = ['l','d'];
-        lsResource.fields['type']['visibility'] = [];
+        lsResource.fields['classification']['visibility'] = [];
+        lsResource.fields['screen_facility_id']['visibility'] = [];
         
         _.each(_.values(lsResource.fields), function(fi){
           if (_.result(fi.display_options, 'optgroup')=='screen'){

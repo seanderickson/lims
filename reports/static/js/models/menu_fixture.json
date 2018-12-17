@@ -59,6 +59,21 @@
       "expanded": false,
       "view": "",
       "submenus": {
+        "activity":{
+          "view": "",
+          "expanded": false,
+          "submenus": {
+            "activity_service": {
+              "view": "list"
+            },
+            "activity_lab": {
+              "view": "list"
+            },
+            "activity_all": {
+              "view": "list"
+            }
+          }          
+        },
         "librarycopy": {
           "view": "list",
           "expanded": false,
@@ -84,31 +99,17 @@
           }
         },
         "copywell": {
-          "view": "list",
-          "expanded": false,
-          "submenus": {
-            "copywell_sm_cpr": {
-              "view": "list"
-            },
-            "copywell_rnai_cpr": {
-              "view": "list"
-            }
-          }          
-        },
-        "platelocation": {
           "view": "list"
         },
-        "libraryscreening": {
+        "platelocation": {
           "view": "list"
         },
         "reagent":{
           "view": "list",
           "expanded": false,
+          "alias": "compound_search",
           "submenus": {
             "smallmoleculereagent":{
-              "view": "list"
-            },
-            "compound_search": {
               "view": "list"
             },
             "silencingreagent":{
@@ -118,21 +119,6 @@
         },
         "labaffiliation": {
           "view": "list"
-        },
-        "activity":{
-          "view": "",
-          "expanded": false,
-          "submenus": {
-            "activity_service": {
-              "view": "list"
-            },
-            "activity_lab": {
-              "view": "list"
-            },
-            "activity_all": {
-              "view": "list"
-            }
-          }          
         },
         "attachedfile":{
           "view": "list"

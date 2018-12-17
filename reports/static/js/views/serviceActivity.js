@@ -23,19 +23,17 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
       self.screen = args.screen;
       self.user = args.user;
       
-      var fields = self.model.resource.fields;
-      
       var detailView = DetailView.extend( {
         
         afterRender: function(){
           
           DetailView.prototype.afterRender.apply(this,arguments);
 
-          if (appModel.hasPermission('serviceactivity', 'write')){
+          if (appModel.hasPermission('activity', 'write')){
             var add_another_button = $([
               '<button class="btn btn-default btn-sm " role="button" ',
               'id="add_another_sa_button" title="Add another Service Activity" >',
-              'Add another Service Activity',
+              'Add another service activity',
               '</button>'
               ].join(''));
             $('#generic-detail-buttonpanel-left').append(add_another_button);
@@ -57,7 +55,7 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
         }
       }, self._args);
       
-      var editView = EditView.extend({
+      var ActivityEditView = EditView.extend({
         
         save_success: function(data, textStatus, jqXHR){
           // 20180912 - no need to display (kls4)
@@ -79,7 +77,7 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
         },
         
         afterRender: function(){
-
+          var editFormSelf = this;
           EditView.prototype.afterRender.apply(this,arguments);
           if(appModel.hasPermission('usergroup', 'edit')){
             var addServiceActivityPerformerButton = $([
@@ -93,10 +91,29 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
               var urlPath = ['usergroup','serviceActivityPerformers','edit'];
               appModel.router.navigate(urlPath.join('/'),{trigger:true});
             });
-          }          
+          }
+          
+          self.listenTo(editFormSelf, "classification:change", function(e){
+            var classification = editFormSelf.getValue('classification');
+            console.log('classification change: ', classification);
+            var type_vocab_ref = self.model.resource.fields['type']['vocabulary_scope_ref'];
+            type_vocab_ref = type_vocab_ref.replace('*', classification);
+            var type_vocab = Iccbl.appModel.getVocabularySelectOptions(type_vocab_ref);
+            var chosenSelectEl = editFormSelf.$el.find('[key="type"]')
+              .find('.chosen-select');
+            chosenSelectEl.empty();
+            
+            _.each(type_vocab, function(v){
+              chosenSelectEl.append($('<option>',{
+                value: v.val }).text(v.label));
+            });
+            chosenSelectEl.trigger('chosen:updated');
+          });
+          
+          
         }//editView.afterRender
       }, self._args);//editView
-      args.EditView = editView;
+      args.EditView = ActivityEditView;
       args.DetailView = detailView;
       
       DetailLayout.prototype.initialize.call(this,args);
@@ -126,6 +143,9 @@ function($, _, Backbone, Backgrid, layoutmanager, Iccbl, appModel,
         
       function setupEditView(callback){
         var resource = self.model.resource;
+        
+        // Only use performed_by_userid from the UI
+        self.model.resource.fields['performed_by_username']['editability'] = [];
         appModel.getUserIdsInGroupOptions('serviceActivityPerformers', function(options){
           resource.fields['performed_by_user_id'].choiceHash = options;
   

@@ -23,7 +23,6 @@ define([
   'utils/tabbedController',
   'templates/generic-detail-stickit.html',
   'templates/generic-detail-stickit-one-column.html'
-//  'templates/generic-detail-screen.html'
 ], function($, _, Backbone, Backgrid, Iccbl, layoutmanager, appModel, 
             ScreenSummaryView, ScreenDataView, CherryPickRequestView, 
             ActivityListView, ServiceActivityView, LibraryScreeningView, 
@@ -31,7 +30,7 @@ define([
             TabbedController, detailTemplate, detailOneColTemplate) {
 
   var ScreenView = TabbedController.extend({
-    isAdmin: false,
+    showAdmin: false,
     OK_STATUSES: ['accepted','ongoing'],
     COMPLETED_STATUSES: ['completed','completed_duplicate_with_ongoing' ],
     
@@ -56,6 +55,13 @@ define([
         this.tabbed_resources['cherrypickrequest'] = this.screen_tabbed_resources['cherrypickrequest'];
         this.tabbed_resources['activities'] = this.screen_tabbed_resources['activities'];
       }
+      if (access_level >= 2 && self.model.get('has_screen_result') == 1){
+        this.tabbed_resources['data'] = this.screen_tabbed_resources['data'];
+      }
+      if (!_.isEmpty(self.model.get('study_type'))){
+        this.showAdmin = true;
+      }
+      
       _.bindAll(this, 'addLibraryScreening','addServiceActivity');
       
     },
@@ -88,7 +94,7 @@ define([
       },
       summary : {
         description : 'Summary of Library Screening transfer activities',
-        title : 'Transfer Summary',
+        title : 'Screening Summary',
         invoke : 'setSummary',
         permission: 'screensummary'
       },
@@ -175,17 +181,17 @@ define([
         fields['reconfirmation_screens'].visibility=['d'];
       }
       
-      // Hack to change group name:
-      _.each(fields, function(field){
-        if (field.display_options && 
-            field.display_options.group == 'Pin Transfer / RNAi Transfection'){
-          if (self.model.get('screen_type')=='small_molecule'){
-            field.display_options.group = 'Pin Transfer';
-          } else {
-            field.display_options.group = 'RNAi Transfection';
-          }
-        }
-      });
+      //// Hack to change group name:
+      //_.each(fields, function(field){
+      //  if (field.display_options && 
+      //      field.display_options.group == 'Pin Transfer / RNAi Transfection'){
+      //    if (self.model.get('screen_type')=='small_molecule'){
+      //      field.display_options.group = 'Pin Transfer';
+      //    } else {
+      //      field.display_options.group = 'RNAi Transfection';
+      //    }
+      //  }
+      //});
       
       // Manage visible fields; admin fields
       var editableKeys = model.resource.updateKeys();
@@ -204,7 +210,10 @@ define([
       });
       var detailKeys = model.resource.detailKeys();
       var adminKeys = model.resource.adminKeys();
-      if (!self.isAdmin){
+      var adminVisibilityOverrides = [
+        'screened_experimental_well_count','assay_readout_types','comments'];
+      adminKeys = _.difference(adminKeys, adminVisibilityOverrides);
+      if (!self.showAdmin){
         detailKeys = _.difference(detailKeys, adminKeys);
       }
       
@@ -286,29 +295,27 @@ define([
       
       // Custom showEdit function allows lazy loading of user choices fields
       // FIXME: it would be better to extend DetailLayout.showEdit
-      var showEdit = function(updateModel) {
+      var showEdit = function showEdit(updateModel) {
         var self = this;
         var model = updateModel || self.model;
         var fields = model.resource.fields;
         
-        appModel.initializeAdminMode(function() {
-          
+        function setupEdit() {
           // FIXME: if "edit" page is reloaded, option lists here may not be loaded
           // - caused by search_box dynamic form ajax request contention
           // - result is that the choices are not populated here
           // - fix lazy load search box options; or force showEdit to block 
           // until loaded
-          
           var userOptions = appModel.getUserOptions();
           fields['collaborator_ids'].choiceHash = userOptions;
           fields['lead_screener_id'].choiceHash = (
               [{ val: '', label: ''}].concat(userOptions));
           fields['lab_head_id'].choiceHash = (
               appModel.getPrincipalInvestigatorOptions() );
-          if (_.has(fields,'pin_transfer_approved_by_username')){
-            fields['pin_transfer_approved_by_username'].choiceHash = (
-                appModel.getAdminUserOptions() );
-          }
+          //if (_.has(fields,'pin_transfer_approved_by_username')){
+          //  fields['pin_transfer_approved_by_username'].choiceHash = 
+          //    appModel.getUsernamesInGroupOptions('pinTransferApprovers');
+          //}
           
           // pick just the non-billing fields: prevent backbone save from sending
           // uninitialized billing fields on create
@@ -325,7 +332,10 @@ define([
             { 
               model: editModel,
               uriStack: self.uriStack,
-              isCreate: true
+              isCreate: true,
+              editableKeys: editableKeys,
+              detailKeys: detailKeys,
+              editVisibleKeys: editVisibleKeys
             }));
           Backbone.Layout.setupView(editViewInstance);
           view.listenTo(editViewInstance,'remove',function(){
@@ -336,9 +346,17 @@ define([
           view.setView("#detail_content", editViewInstance).render();
           appModel.setPagePending();
           return editViewInstance;
-        });  
+        };  
+        $(this).queue([
+          appModel.getPrincipalInvestigatorOptions,
+          appModel.getUserOptions,
+          function(callback){
+            appModel.getUsernamesInGroupOptions(
+              'pinTransferApprovers', callback);
+          }, 
+          setupEdit
+        ]);
       };
-
       
       var view = this.tabViews[key];
       if (view) {
@@ -347,10 +365,11 @@ define([
       var detailView = DetailView.extend({
         afterRender: function() {
           var dview = DetailView.prototype.afterRender.apply(this,arguments);
+
+          $('#comments').empty();
+          $('#comments').append(Iccbl.collapsibleText(self.model.get('comments'), 240));
           
-          if (!_.isEmpty(model.get('study_type'))) {
-            // do nothing for studies here
-          } else {
+          if (_.isEmpty(model.get('study_type'))) {
             if(self.model.get('user_access_level_granted') == 3 ){
               self.createStatusHistoryTable($('#detail_extra_information'));
               self.createActivitySummary($('#detail_extra_information'));
@@ -368,9 +387,9 @@ define([
             // reconfirmation up screen itself.
             
             var addReconfirmationScreenControl = $([
-              '<a class="btn btn-default btn-sm pull-right" ',
-                'role="button" id="reconfirmationScreenButton" href="#">',
-                'Add a Reconfirmation Screen</a>'
+              '<a class="btn btn-default btn-sm controls-right" ',
+                'role="button" id="ScreenButton" href="#">',
+                'Add a reconfirmation screen</a>'
               ].join(''));
             if (appModel.hasPermission('screen','write')) {
               $('#generic-detail-buttonpanel-right').append(addReconfirmationScreenControl);
@@ -400,7 +419,7 @@ define([
                 return resource.apiUri + '?override=true';
               }
               
-              console.log('new reconfirmation up screen:', newModel);
+              console.log('new reconfirmation screen:', newModel);
               self.consumedStack = ['+add'];
               editVisibleKeys.push('primary_screen');
               showEdit(newModel);
@@ -417,7 +436,7 @@ define([
           if (_.isEmpty(self.model.get('study_type'))
               && appModel.hasGroup('readEverythingAdmin')) {
             var adminControl = $('<a id="admin-control"></a>');
-            if (self.isAdmin){
+            if (self.showAdmin){
               adminControl.append('&nbsp;admin&nbsp;&lt;&lt;&nbsp;')
             }else{
               adminControl.append('&nbsp;admin&nbsp;&gt;&gt;&nbsp;')
@@ -425,7 +444,7 @@ define([
             $('#generic-detail-buttonpanel-left').append(adminControl);
             adminControl.click(function(e){
               e.preventDefault();
-              outerSelf.isAdmin = !outerSelf.isAdmin;
+              outerSelf.showAdmin = !outerSelf.showAdmin;
               outerSelf.setDetail(delegateStack);
             });
           }
@@ -473,20 +492,20 @@ define([
           var activity = collection.at(0);
           
           $target_el.append($([
-            '<div class="col-xs-12"><strong>Activity Summary</strong></div>',
+            '<div class="col-xs-12 "><strong>Activity Summary</strong></div>',
             '<div id="" class="col-xs-12" >',
             '<table id="activity_summary_table" class="table-condensed data-list">',
             '<tr>',
-            '<td class="dl-title small">Activities</td>', 
-            '<td class="dl-data small">',
+            '<td class="dl-title ">Activities</td>', 
+            '<td class="dl-data ">',
             Iccbl.formatString(
               '<a href="#screen/{facility_id}/activities">{activity_count}</a>', 
               self.model),
             '</td>', 
             '</tr>',
             '<tr>',
-            '<td class="dl-title small">Last Activity</td>', 
-            '<td class="dl-data small">',
+            '<td class="dl-title ">Last Activity</td>', 
+            '<td class="dl-data ">',
             '<table id="last_activity" class="table-condensed data-list">',
             '<tr>',
             '<td class="dl-title ">Date</td>', 
@@ -495,7 +514,7 @@ define([
             '<tr>',
             '<td class="dl-title ">Activity Type</td>', 
             '<td class="dl-data ">',
-            appModel.getVocabularyTitle('activity.type',activity.get('type')),
+            appModel.getVocabularyTitle('activity.type.*',activity.get('type')),
             '</td>',
             '</tr>',
             '<tr>',
@@ -758,7 +777,6 @@ define([
         'headerCell': Backgrid.HeaderCell,
         'cell': Iccbl.LinkCell.extend({
           hrefTemplate: '#publication/{publication_id}',
-          className: 'text-wrap-cell',
           render: function(){
             var model = this.model;
             this.$el.empty();
@@ -897,9 +915,7 @@ define([
       var CollectionClass = Iccbl.CollectionOnClient.extend({
         url: url
       });
-      resource.fields['filename']['backgridCellType'] = Iccbl.LinkCell.extend({
-        className: 'text-wrap-cell'
-      });
+      resource.fields['filename']['backgridCellType'] = Iccbl.LinkCell;
       
       var collection = new CollectionClass();
       var colModel = Iccbl.createBackgridColModel(resource.fields); 
@@ -976,8 +992,10 @@ define([
         
         showAddButton.click(function(e) {
           e.preventDefault();
+          
+          var type_choices = appModel.getVocabularySelectOptions('attachedfiletype.screen');
           UploadDataForm.uploadAttachedFileDialog(
-            url, 'attachedfiletype.screen'
+            url, type_choices
           ).done(function(data, textStatus, jqXHR){
             var msg = 'Success';
             if (data) {
@@ -1058,9 +1076,7 @@ define([
             'description' : 'Requested By',
             'order': 1,
             'sortable': true,
-            'cell': Iccbl.TextWrapCell.extend({
-              className: 'text-wrap-cell-extra-narrow'
-            })
+            'cell': Iccbl.StringCell
           })
         ];
         var colModel = new Backgrid.Columns(columns);
@@ -1068,7 +1084,7 @@ define([
         colModel.sort();
 
         $target_el.append($([
-          '<div class="col-xs-12"><strong>',
+          '<div class="col-xs-12 "><strong>',
           'Recent Cherry Pick Requests ',
           '<a href="#screen/' + self.model.get('facility_id'),
           '/cherrypickrequest">(Total: ' + originalLength + ')</a></strong></div>',
@@ -1137,7 +1153,9 @@ define([
           'searchable': false,
           'editable' : false,
           'visible': true,
-          'headerCell': Backgrid.HeaderCell
+          'headerCell': Backgrid.HeaderCell.extend({
+            className: 'admin-field'
+          })
         };
         var columns = [
             _.extend({},colTemplate,{
@@ -1146,9 +1164,7 @@ define([
               'description' : 'Screen status',
               'order': 1,
               'sortable': true,
-              'cell': Iccbl.TextWrapCell.extend({
-                className: 'text-wrap-cell-extra-narrow'
-              })
+              'cell': Iccbl.StringCell
             }),
             _.extend({},colTemplate,{
               'name' : 'date_time',
@@ -1165,7 +1181,7 @@ define([
         $('#status').closest('tr').remove();
         $('#status_date').closest('tr').remove();
         $target_el.append($([
-          '<div class="col-xs-12"><strong>Status Items</strong></div>',
+          '<div class="col-xs-12 admin-field"><strong>Status Items</strong></div>',
           '<div class="col-xs-12" id="status_items"/>'].join('')));
         
         var status_grid = new Backgrid.Grid({
@@ -1301,7 +1317,8 @@ define([
                 return;
               }
             }));
-        
+        cpResource.fields['screen_facility_id']['visibility'] = [];
+        cpResource.fields['screen_type']['visibility'] = [];
         view = new ListView({ 
           uriStack: _.clone(delegateStack),
           resource: cpResource,
@@ -1337,6 +1354,9 @@ define([
       if (self.model.get('screen_type') == 'small_molecule'){
         defaults['transfer_volume_per_well_requested'] = '0.0000016';
         defaults['transfer_volume_per_well_approved'] = '0.0000016';
+      }else{
+        defaults['transfer_volume_per_well_requested'] = null;
+        defaults['transfer_volume_per_well_approved'] = null;
       }
       
       var newModel = appModel.createNewModel('cherrypickrequest', defaults);
@@ -1367,37 +1387,31 @@ define([
     setActivities: function(delegateStack) {
       console.log('set activities');
       var self = this;
-      var resource = appModel.getResource('activity');
-      var saResource = Iccbl.appModel.getResource('serviceactivity');
+      var activityResource = appModel.getResource('activity');
       
-      _.each(_.values(resource.fields), function(field){
+      _.each(_.values(activityResource.fields), function(field){
         if(_.result(field.display_options,'optgroup')=='screen'){
           field['visibility'] = [];
         }
       });
+      if (_.has(activityResource.fields, 'funding_support')){
+        activityResource.fields['funding_support']['visibility'] = [];
+      }
       
       if (!_.isEmpty(delegateStack) && delegateStack[0]=='+add') {
           self.addServiceActivity();
-
-//        // Do not allow return to +add screen
-//        delegateStack.shift();
-//        self.setActivities(delegateStack);
-//        return;
       }
       else if(!_.isEmpty(delegateStack) && !_.isEmpty(delegateStack[0]) &&
           !_.contains(appModel.LIST_ARGS, delegateStack[0]) ){
         // Detail View
         
-        // Only service activities are viewed; lab activities link to visits & cprs
-        // ServiceActivity for a screen; turn of edit for screen field and funding
-        saResource.fields['screen_facility_id'].editability = [];
-        saResource.fields['funding_support']['editability'] = [];
-        saResource.fields['funding_support']['visibility'] = [];
+        activityResource.fields['screen_facility_id'].editability = [];
+        activityResource.fields['funding_support']['editability'] = [];
         
         var activity_id = delegateStack.shift();
         self.consumedStack.push(activity_id);
         var _key = activity_id
-        appModel.getModelFromResource(saResource, _key, function(model){
+        appModel.getModelFromResource(activityResource, _key, function(model){
           view = new ServiceActivityView({
             model: model, 
             screen: self.model,
@@ -1418,25 +1432,27 @@ define([
         var addServiceActivityButton = $([
           '<a class="btn btn-default btn-sm pull-down" ',
             'role="button" id="add_button" href="#">',
-            'Add Service Activity</a>'
+            'Add service activity</a>'
           ].join(''));
         addServiceActivityButton.click(self.addServiceActivity);
-        if(appModel.hasPermission(saResource.key, 'edit')){
+        if(appModel.hasPermission(activityResource.key, 'edit')){
           extraControls.unshift(addServiceActivityButton);
         }
         var addLibraryScreeningButton = $([
           '<a class="btn btn-default btn-sm pull-down" ',
             'role="button" id="add_library_screening_button" href="#">',
-            'Add Library Screening Visit</a>'
+            'Add library screening Visit</a>'
           ].join(''));
         addLibraryScreeningButton.click(self.addLibraryScreening);
         if (appModel.hasPermission('libraryscreening','write')) {
           extraControls.unshift(addLibraryScreeningButton);
         }
+
+        activityResource.fields['screen_facility_id'].visibility = [];
         
         var view = new ActivityListView({ 
           uriStack: _.clone(delegateStack),
-          resource: resource,
+          resource: activityResource,
           url: url,
           extraControls: extraControls,
           screen: self.model
@@ -1456,16 +1472,28 @@ define([
       }
 
       var self = this;
-      var saResource = Iccbl.appModel.getResource('serviceactivity');
+      var activityResource = appModel.getResource('activity');
       var defaults = {
         screen_facility_id: self.model.get('facility_id')
       };
       
-      saResource.fields['serviced_user']['visibility'] = [];
-      saResource.fields['screen_facility_id']['editability'] = [];
+      activityResource.fields['serviced_user']['visibility'] = [];
+      activityResource.fields['serviced_user_id'].choiceHash = 
+        appModel._get_screen_member_choices(self.model);
+        
+      activityResource.fields['serviced_username']['editability'] = [];
+      activityResource.fields['screen_facility_id']['editability'] = [];
       // 20170605 - JAS - no funding support if attached to a screen
-      saResource.fields['funding_support']['editability'] = [];
-      saResource.fields['funding_support']['visibility'] = [];
+      activityResource.fields['funding_support']['editability'] = [];
+      activityResource.fields['funding_support']['visibility'] = [];
+
+      var vocab_scope_ref = 
+        activityResource.fields['classification']['vocabulary_scope_ref'];
+      var vocab_classification = Iccbl.appModel.getVocabularySelectOptions(vocab_scope_ref);
+      vocab_type = _.reject(vocab_classification, function(obj){
+        return obj.val == 'screening';
+      });
+      activityResource.fields['classification'].choiceHash = vocab_type;
       
       // NOTE: funding support removed from screen.service_activities: redundant
       //
@@ -1492,7 +1520,7 @@ define([
       //  }
       //}
       
-      var newModel = appModel.newModelFromResource(saResource, defaults);
+      var newModel = appModel.newModelFromResource(activityResource, defaults);
       var view = new ServiceActivityView({
         model: newModel,
         screen: self.model,
@@ -1579,6 +1607,10 @@ define([
           template: _.template(detailOneColTemplate),
           afterRender: function() {
             var dview = DetailView.prototype.afterRender.apply(this,arguments);
+            //$('#publishable_protocol').empty();
+            //$('#publishable_protocol').append(
+            //  Iccbl.collapsibleText(self.model.get('publishable_protocol'), 350));
+          
             self.createPublicationTable(this.$el.find('#publications'));
           }
         });
@@ -1587,7 +1619,7 @@ define([
           showEdit: function(){
             var pSelf = this;
             appModel.getAdminUserOptions(function(options){
-              pSelf.model.resource.fields['publishable_protocol_entered_by'].choiceHash = options;
+              self.model.resource.fields['publishable_protocol_entered_by'].choiceHash = options;
               return DetailLayout.prototype.showEdit.apply(pSelf, arguments);
             });
           }
@@ -1698,7 +1730,11 @@ define([
       if (!appModel.hasGroup('readEverythingAdmin')){
         return;
       }
-
+      
+      if (self.model.get('has_screen_result') != 1){
+        return;
+      }
+      
       console.log('showUserDslWarnings');
       var users = appModel.getUsers();
       var screenMembers = users.filter(function(model){

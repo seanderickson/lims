@@ -1,0 +1,29 @@
+key,scope,ordinal,title,comment
+assay_dev_consult,activity.type.other,0,Assay Dev Consult
+automation,activity.type.automation,1,Automation
+image_analysis,activity.type.other,2,Image Analysis
+informatics,activity.type.other,3,Informatics
+medchem_analytical,activity.type.other,4,MedChem - Analytical
+medchem_consult,activity.type.other,5,MedChem - Consult
+medchem_synthesis,activity.type.other,6,MedChem - Synthesis
+other,activity.type.other,7,Other
+training_acumen,activity.type.training,8,Training - Acumen
+training_biomekfx,activity.type.training,9,Training - BiomekFX
+training_combi,activity.type.training,10,Training - Combi
+training_combi_nl,activity.type.training,11,Training - Combi nL
+training_cybio,activity.type.training,12,Training - CyBio
+training_envision,activity.type.training,13,Training - Envision
+training_flexstation_iii,activity.type.training,14,Training - Flexstation III
+training_hp_d300,activity.type.training,15,Training - HP D300
+training_ique,activity.type.training,16,Training - iQue
+training_ixm,activity.type.training,17,Training - IXM
+training_ixm_c,activity.type.training,18,Training - IXM C
+training_lumina_ii,activity.type.training,19,Training - Lumina II
+training_m5,activity.type.training,20,Training - M5
+training_octet,activity.type.training,21,Training - Octet
+training_other,activity.type.training,22,Training - Other
+training_qpcr_abi,activity.type.training,23,Training - QPCR-ABI
+training_qpcr_qstudio_7_flex,activity.type.training,24,Training - QPCR-Qstudio 7 Flex
+training_qpcr_roche,activity.type.training,25,Training - QPCR-Roche
+training_velos,activity.type.training,26,Training - Velos
+training_wellmate,activity.type.training,27,Training - Wellmate

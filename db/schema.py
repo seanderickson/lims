@@ -114,6 +114,7 @@ class LIBRARY(schema_obj):
     VERSION_NUMBER = 'version_number'
     IS_RELEASED = 'is_released'
     PREVIEW_LOG_ID = 'preview_log_id'
+    IS_ARCHIVED = 'is_archived'
 
 class COPY(schema_obj):
     resource_name = 'librarycopy'
@@ -150,7 +151,7 @@ class PLATE(schema_obj):
             '{library_short_name}:{copy_name}:{plate_number}'
 
 class PLATE_LOCATION(schema_obj):
-    resource = 'plate_location'
+    resource = 'platelocation'
     
     ROOM = 'room'
     FREEZER = 'freezer'
@@ -163,8 +164,9 @@ class ACTIVITY(schema_obj):
     
     ACTIVITY_ID = 'activity_id'
     DATE_OF_ACTIVITY = 'date_of_activity'
-    ACTVITY_CLASS = 'activity_class'
+    CLASSIFICATION = 'classification'
     TYPE = 'type'
+    SCREEN_FACILITY_ID = 'screen_facility_id'
     SERVICED_USER_ID = 'serviced_user_id'
     SERVICED_USERNAME = 'serviced_username'
     PERFORMED_BY_USER_ID = 'performed_by_user_id'
@@ -301,9 +303,48 @@ class SILENCING_REAGENT(schema_obj):
     SILENCING_REAGENT_TYPE = 'silencing_reagent_type'
     IS_POOL = 'is_pool'
 
+class LAB_CHERRY_PICK(schema_obj):
+    
+    CPR_ID = 'cherry_pick_request_id'
+    DEST_WELL = 'destination_well'
+    DEST_PLATE_TYPE = 'destination_plate_type'
+    LIBRARY_SHORT_NAME = 'library_short_name'
+    LOCATION = 'location'
+    PLATE_NUMBER = 'library_plate'
+    SCREENER_WELL_ID = 'screener_well_id'
+    SCREENER_LIBRARY_SHORT_NAME = 'screener_library_short_name'
+    SELECTED = 'selected'
+    SELECTED_COPY_NAME = 'selected_copy_name'
+    SOURCE_COPY_NAME = 'source_copy_name'
+    SOURCE_WELL_ID = 'source_well_id'
+    SOURCE_WELL_NAME = 'source_well_name'
+    SOURCE_COPYWELL_ID = 'source_copywell_id'
+    SOURCE_PLATE_TYPE = 'source_plate_type'
+    STATUS = 'status'
+
 class VOCAB(reports.schema.VOCAB):
     ''' Define selected vocabulary constants used by the API.'''
     
+    class activity(schema_obj):
+        class classification(schema_obj):
+            SCREENING = 'screening'
+            TRAINING = 'training'
+            AUTOMATION = 'automation'
+            OTHER = 'other'
+            
+            SERVICE_CLASSIFICATIONS = [
+                TRAINING, AUTOMATION, OTHER]
+        
+        class type(schema_obj):
+            LIBRARY_SCREENING =  'library_screening'
+            EXT_LIBRARY_SCREENING = 'ext_library_screening'
+            CHERRY_PICK_TRANSFER = 'cp_transfer'
+            CHERRY_PICK_SCREENING = 'cp_screening'
+            
+            SCREENING_TYPES = [
+                LIBRARY_SCREENING, EXT_LIBRARY_SCREENING, 
+                CHERRY_PICK_SCREENING, CHERRY_PICK_TRANSFER]
+            
     class datacolumn(schema_obj):
         class data_type(schema_obj):
             BOOLEAN_POSITIVE = 'boolean_positive_indicator'
@@ -324,7 +365,26 @@ class VOCAB(reports.schema.VOCAB):
         class status(schema_obj):
             AVAILABLE = 'available'
             RETIRED = 'retired'
-    
+            DISCARDED = 'discarded'
+            LOST = 'lost'
+            GIVEN_AWAY = 'given_away'
+            DISCARDED_VOL_XFER = 'discarded_volume_transferred'
+            NOT_SPECIFIED = 'not_specified'
+            NOT_CREATED = 'not_created'
+            NOT_AVAILABLE = 'not_available'
+
+            retired_statuses = [
+                RETIRED, DISCARDED, LOST, GIVEN_AWAY, DISCARDED_VOL_XFER]
+
+        class plate_type(schema_obj):
+            ABGENE_384 = 'abgene_384'
+            COSTAR_96 = 'costar_96'
+            EPPENDORF_384 = 'eppendorf_384'
+            EPPENDORF_96 = 'eppendorf_96'
+            GENETIX_384 = 'genetix_384'
+            MARSH_384 = 'marsh_384'
+            NUNC_96 = 'nunc_96'
+        
     class copy(schema_obj):
         class usage_type(schema_obj):
             LIBRARY_SCREENING_PLATES = 'library_screening_plates'
@@ -362,7 +422,25 @@ class VOCAB(reports.schema.VOCAB):
             NOT_ALLOWED = 'not_allowed'
             RETIRED = 'retired'
             REQUIRES_PERMISSION = 'requires_permission'
-    
+        
+        class library_type(schema_obj):
+            FRAGMENT = 'fragment'
+            NATURAL_PRODUCTS = 'natural_products'
+            ACADEMIC_COLLECTION = 'academic_collection'
+            KNOWN_BIOACTIVES = 'known_bioactives'
+            SIRNA = 'sirna'
+            DISCRETE = 'discrete'
+            MIRNA_MIMI = 'mirna_mimic'
+            MIRNA_INHIBITOR = 'mirna_inhibitor'
+            COMMERCIAL = 'commercial'
+            OTHER = 'other'
+            
+            # Retired
+            DOS = 'dos'
+            NCI = 'nci'
+            ANNOTATION = 'annotation'
+            # NIH_MLP = 'nih_mlp' # TODO: not used in ICCB-L
+
     class screensaver_user(schema_obj):
         
         class classification(schema_obj):

@@ -36,17 +36,21 @@ define([
     initialize : function(args) {
       
       var self = this;
-      console.log('list args:', arguments);
+      if (appModel.DEBUG) console.log('list args:', arguments);
       var _options = self._options = args || {};
       var resource = self.resource = args.resource;
       self._classname = 'List2 - ' + resource.key;
       var urlSuffix = self.urlSuffix = "";
       var uriStack = args.uriStack || [];
-
       if (!self._options.extraControls){
         self._options.extraControls = [];
       } else {
         self._options.extraControls = _.clone(self._options.extraControls);
+      }
+      if (!self._options.extraListControls){
+        self._options.extraListControls = [];
+      } else {
+        self._options.extraListControls = _.clone(self._options.extraListControls);
       }
 
       var ListModel = Backbone.Model.extend({
@@ -70,10 +74,6 @@ define([
         pageSize: parseInt(self.listModel.get('rpp'))
       };
 
-//      if (! self._options.url) {
-//        self._options.url = self._options.resource.apiUri + '/' + self.urlSuffix;
-//      }
-      
       var collection;
       if( !_options.collection){
         var url = self._options.url || resource.apiUri;
@@ -98,15 +98,18 @@ define([
           collection.url = self._options.url;
         }
       }
+      
+      self.base_url = collection.url;
 
       function setComplexSearch(){
         var searchId = self.listModel.get(appModel.URI_PATH_COMPLEX_SEARCH);
         if (!_.isUndefined(searchId)){
-          console.log('change: ' + appModel.URI_PATH_COMPLEX_SEARCH, searchId);
+          if (appModel.DEBUG) console.log('change: ' + appModel.URI_PATH_COMPLEX_SEARCH, searchId);
           collection.type = 'POST';
           var searchData = appModel.getSearch(searchId);
-          var new_url = self._options.url + '/' + appModel.URI_PATH_COMPLEX_SEARCH + '/' + searchId;
-          collection.url = new_url;
+          var url = self.base_url;
+          url += '/' + appModel.URI_PATH_COMPLEX_SEARCH + '/' + searchId;
+          collection.url = url;
           collection.fetch = function(options){
             var options = options || {};
             options.data = _.extend({}, options.data);
@@ -121,8 +124,7 @@ define([
       function setEncodedSearch(){
         var searchData = self.listModel.get(appModel.URI_PATH_ENCODED_SEARCH);
         if (!_.isUndefined(searchData)){
-          console.log('change: ' + appModel.URI_PATH_ENCODED_SEARCH, searchData);
-          collection.url = self._options.url ;
+          if (appModel.DEBUG) console.log('change: ' + appModel.URI_PATH_ENCODED_SEARCH, searchData);
           collection.fetch = function(options){
             var options = options || {};
             options.data = _.extend({}, options.data);
@@ -202,18 +204,19 @@ define([
       if (_.isEmpty(search_data)){
         throw "no search found in the listmodel: " + self.listModel.toJSON();
       }
-      console.log('modify search:', resource.key, search_data);
+      if (appModel.DEBUG) console.log('modify search:', resource.key, search_data);
       
       
       function parse(value, errors){
         var parsedData;
-        console.log('parse', value);
         if(_.contains(
           ['well','reagent','smallmoleculereagent','silencingreagent'], 
           resource.key )){
           parsedData = Iccbl.parseRawWellSearch(value, errors);
         }else if (resource.key == 'compound_search'){
           parsedData = Iccbl.parseCompoundVendorIDSearch(value,errors);
+        }else if (resource.key == 'copywell'){
+          parsedData = Iccbl.parseRawCopyWellSearch(value,errors);
         }else if (resource.key == 'librarycopyplate'){
           parsedData = Iccbl.parseRawPlateSearch(value,errors);
         }else{
@@ -223,7 +226,7 @@ define([
         if (_.isEmpty(parsedData)){
           errors.push('no values found for input');
         } else {
-          console.log('parsedData', parsedData);
+          if (appModel.DEBUG) console.log('parsedData', parsedData);
         }
         return parsedData;
       };
@@ -269,7 +272,7 @@ define([
           self.listModel.set(appModel.URI_PATH_COMPLEX_SEARCH,searchId);
           
         }
-        self.collection.getFirstPage({reset: true, fetch: true});
+        self.collection.getFirstPage({reset: true, fetch: true}).fail(appModel.jqXHRfail);
         
       };
       
@@ -325,7 +328,7 @@ define([
         ok: function() {
           var errors = form.commit();
           if(!_.isEmpty(errors)){
-            console.log('form errors, abort submit: ' + JSON.stringify(errors));
+            if (appModel.DEBUG) console.log('form errors, abort submit: ' + JSON.stringify(errors));
             return false;
           }
           
@@ -338,7 +341,7 @@ define([
      * Parse the uriStack and set the listModel state
      */
     parseUriStack: function(uriStack, initialOptions ){
-      console.log('parseUriStack', uriStack, initialOptions);
+      if (appModel.DEBUG) console.log('parseUriStack', uriStack, initialOptions);
       var self = this;
       var listInitial = initialOptions || {};
       listInitial = _.extend({},_.pick(listInitial,self.LIST_MODEL_ROUTE_KEYS));
@@ -373,7 +376,7 @@ define([
                 searchHash[parts[0]] = decodeURIComponent(parts[1]);
               }
             });
-            console.log('searchHash', searchHash);
+            if (appModel.DEBUG) console.log('searchHash', searchHash);
             
             listInitial[key] = searchHash;
           } else if (key == appModel.URI_PATH_ENCODED_SEARCH) {
@@ -409,7 +412,7 @@ define([
           }
         }
       }
-      console.log('parseUriStack, listInitial', listInitial);
+      if (appModel.DEBUG) console.log('parseUriStack, listInitial', listInitial);
       return listInitial;
     },
     
@@ -488,11 +491,13 @@ define([
       if(!_.isEmpty(urlparams)){
         url += '&' + urlparams;
       }
-      console.log('collection url: ' + url)
+      if (appModel.DEBUG) console.log('collection url: ' + url)
       
       if(_.has(self._options, appModel.API_PARAM_NESTED_SEARCH)){
-        console.log('nested_search_data found on the self._options: ', 
-          self._options[appModel.API_PARAM_NESTED_SEARCH]);
+        if (appModel.DEBUG){
+          console.log('nested_search_data found on the self._options: ', 
+            self._options[appModel.API_PARAM_NESTED_SEARCH]);
+        }
         var or_clauses = '';
         var search_list = self._options[appModel.API_PARAM_NESTED_SEARCH];
         _.each(search_list, function(hash){
@@ -510,12 +515,13 @@ define([
           search_title_val += '[ ' + or_clauses + ' ]';
         }
       }            
-
-      if(search_title_val !== ''){
-        self.trigger('update_title', 'Search: ' + search_title_val);
-      } else {
-        self.trigger('update_title', '');
-      }
+      
+      // 20181115 - removed per JAS
+      //if(search_title_val !== ''){
+      //  self.trigger('update_title', 'Search: ' + search_title_val);
+      //} else {
+      //  self.trigger('update_title', '');
+      //}
       
       return url;
     },
@@ -563,10 +569,11 @@ define([
         }
       });
       self.currentStack = newStack;
-      console.log('reportState', previousStack, newStack);
+      if (appModel.DEBUG) console.log('reportState', previousStack, newStack);
       if (!previousStack || !_.isEqual(previousStack,newStack)){
-        console.log('trigger list stack change...');
+        if (appModel.DEBUG) console.log('trigger list stack change...');
         self.trigger('uriStack:change', newStack );
+        self.getCollectionUrl(0)
       }else{
         
       }
@@ -611,7 +618,7 @@ define([
       self.listenTo(
         self.collection, "MyCollection:detail", 
         function (model) {
-          console.log('detail handler for' + model.get('toString'));
+          if (appModel.DEBUG) console.log('detail handler for' + model.get('toString'));
           if(!_.isUndefined(self._options.detailHandler)){
             self._options.detailHandler(model);
           }else{
@@ -649,13 +656,11 @@ define([
             okText: 'confirm',
             ok: function(e){
               var errors = form.commit({ validate: true }); // runs schema and model validation
-              console.log('errors', errors);
               if(!_.isEmpty(errors) ){
                 console.log('form errors, abort submit: ',errors);
                 return false;
               }else{
                 var values = form.getValue();
-                console.log('form values', values);
                 var comments = values['comments'];
                 var headers = {};
                 headers[appModel.HEADER_APILOG_COMMENT] = comments;
@@ -668,7 +673,7 @@ define([
                   wait: true,
                   headers: headers,
                   success: function(model,response){
-                    console.log('model removed successfully', model, response);
+                    if (appModel.DEBUG) console.log('model removed successfully', model, response);
                   }
                 }).fail(function(){ appModel.jqXHRfail.apply(this,arguments); });      
               }
@@ -696,7 +701,7 @@ define([
       });
       this.listenTo(rppModel, 'change', function() {
           var rpp = parseInt(rppModel.get('selection'));
-          console.log('===--- rppModel change: ' + rpp );
+          if (appModel.DEBUG) console.log('===--- rppModel change: ' + rpp );
           self.listModel.set('rpp', String(rpp));
           self.listModel.set('page',1);
           // set this because of how checkstate is triggered
@@ -742,7 +747,7 @@ define([
           var toRemove = [];
           var previous = self.listModel.previous('includes');
           var current = self.listModel.get('includes');
-          console.log('previous includes:', previous, 'current', current);
+          if (appModel.DEBUG) console.log('previous includes:', previous, 'current', current);
           
           _.each(_.difference(previous,current), function(premoved){
             var negate = false;
@@ -796,7 +801,7 @@ define([
             }
           });
           
-          console.log('toRemove:', toRemove, 'toAdd', toAdd);
+          if (appModel.DEBUG) console.log('toRemove:', toRemove, 'toAdd', toAdd);
           
           _.each(toAdd, function(key){
             var field = fields[key];
@@ -811,7 +816,7 @@ define([
                 var colField = fields[colKey];
                 var colOrdinal = colField['ordinal'];
                 if(colOrdinal>ordinal){
-                  console.log('add col', key, ordinal, 'before col', colKey,colOrdinal)
+                  if (appModel.DEBUG) console.log('add col', key, ordinal, 'before col', colKey,colOrdinal)
                   return true;
                 }
                 index += 1;
@@ -823,13 +828,13 @@ define([
                     self.listModel.get('order')),
                     { at: index});
             } else {
-              console.log('column already included', key)
+              if (appModel.DEBUG) console.log('column already included', key)
             }
           });
           _.each(toRemove, function(key){
             var column = self.grid.columns.findWhere({ name: key });
             if (!column){
-              console.log('column already not present', key)
+              if (appModel.DEBUG) console.log('column already not present', key)
             } else {
               self.grid.removeColumn(column);
             }
@@ -849,9 +854,14 @@ define([
       });
 
       if(self.collection instanceof Backbone.PageableCollection){
+        var windowSize = 10;
+        if ($(window).width()<768 ) {
+          windowSize = 4;
+        }
         var paginator = self.paginator = new Backgrid.Extension.Paginator({
       	  goBackFirstOnSort: false, // Default is true
-      	  collection: self.collection      	  
+      	  collection: self.collection,
+      	  windowSize: windowSize
       	});            
         this.objects_to_destroy.push(paginator);
       }
@@ -859,7 +869,7 @@ define([
       // Extraselector
       if( _.has(schemaResult, 'extraSelectorOptions')){
         var searchHash = self.listModel.get(appModel.URI_PATH_SEARCH);
-        console.log('extraselector init: searchTerms: ' + JSON.stringify(searchHash));
+        if (appModel.DEBUG) console.log('extraselector init: searchTerms: ' + JSON.stringify(searchHash));
 
         var extraSelectorModel = new Backbone.Model({ selection: '' });
         var extraSelectorKey = schemaResult.extraSelectorOptions.searchColumn;
@@ -958,7 +968,7 @@ define([
       
       if(_.isObject(this.objects_to_destroy)){
           this.objects_to_destroy.each(function(view_obj){
-            console.log('destroy: ', view_obj);
+            if (appModel.DEBUG) console.log('destroy: ', view_obj);
               view_obj.remove();
               view_obj.off();
               view_obj.stopListening();
@@ -1026,25 +1036,19 @@ define([
       });
       
       if (!_.isEmpty(self.listModel.get(appModel.URI_PATH_COMPLEX_SEARCH))){
-        self._options.extraControls.unshift($modifySearch);
+        self._options.extraListControls.unshift($modifySearch);
       }else if (! _.isEmpty(self.listModel.get(appModel.URI_PATH_ENCODED_SEARCH))){
-        self._options.extraControls.unshift($modifySearch);
+        self._options.extraListControls.unshift($modifySearch);
       }
 
       if(_.has(self._options,'extraControls')){
-        self.$('#extra_controls').append(
-          '<div id="extra_controls_div" class="panel"></div>');
         _.each(self._options.extraControls, function(control){
-          // Adjust the checkbox types, so that the first also has a margin
-          // otherwise, wrapped checkboxes are offset
-          control.has('input[type="checkbox"]').css('margin-left','10px');
-          console.log('append extra control: ', control);
-          self.$('#extra_controls_div').append(control);
+          self.$('#extra_controls').append(control);
         });
       }
       if(_.has(self._options,'extraListControls')){
         _.each(self._options.extraListControls, function(control){
-          self.$('#list_controls').prepend(control);
+          self.$('#list_controls').append(control);
         });
       }
 
@@ -1074,10 +1078,11 @@ define([
           msg += self._options.header_message;
         }
         if (msg) msg += ', ';
+        var listing_title = _.result(self.resource, 'listing_title', self.resource.title);
         msg += 'Page ' + self.collection.state.currentPage + 
                ' of ' + ( self.collection.state.lastPage ? self.collection.state.lastPage:1 ) + 
                ' pages, ' + self.collection.state.totalRecords + 
-               ' ' + self._options.resource.title  + ' records';
+               ' ' + listing_title ;
         self.$('#pagination_message').html(msg);
       });
       
@@ -1106,7 +1111,7 @@ define([
       }
 
       var searchHash = _.clone(this.listModel.get(appModel.URI_PATH_SEARCH));
-      console.log('clear hash', searchHash, fields_to_clear);
+      if (appModel.DEBUG) console.log('clear hash', searchHash, fields_to_clear);
       var fields = this._options.resource.fields;
       if (fields_to_clear){
         fields = _.pick(fields,fields_to_clear);
@@ -1120,13 +1125,13 @@ define([
           key = key.slice(1);
         }
         if (_.has(fields, key)){
-          console.log('clearing key', originalKey);
+          if (appModel.DEBUG) console.log('clearing key', originalKey);
           delete searchHash[originalKey];
         } else {
-          console.log('Not clearing search term:', originalKey);
+          if (appModel.DEBUG) console.log('Not clearing search term:', originalKey);
         }
       });
-      console.log('cleared hash', searchHash);
+      if (appModel.DEBUG) console.log('cleared hash', searchHash);
       this.listModel.set(appModel.URI_PATH_SEARCH, searchHash);
       // FIXME: any call to getFirstPage results in a fetch, disabled for now
       //this.collection.getFirstPage({reset: true, fetch: true});
@@ -1183,8 +1188,12 @@ define([
       var includes = self.listModel.get('includes') || [];
       var _fields = this._options.resource.fields;
       
+      var is_admin = appModel.hasGroup('readEverythingAdmin');
+      var adminKeys = this.adminKeys = this._options.resource.adminKeys();
       _fields = _.omit(_fields, function(value, key, object) {
-        return _.contains(value.visibility, 'api');
+        return (   _.contains(value.visibility, 'api') 
+                || _.contains(value.visibility, 'none')
+                || (!is_admin && _.contains(adminKeys, key)) );
       });
       
       var screenModel = _.result(self._options,'screen');
@@ -1264,9 +1273,14 @@ define([
         if (_visible == true){
           model.set('checked', true);
         }
+        
+        if (_.contains(adminKeys, model.get('key'))){
+          model.set('treeselector_display_class', 'bg-danger');
+        }
+        
         columnCollection.add(model);
       });
-      console.log('columnCollection', columnCollection);
+      if (appModel.DEBUG) console.log('columnCollection', columnCollection);
 
       function showColumns(collection){
         var new_includes = [];
@@ -1283,551 +1297,42 @@ define([
             }
           }
         });
-        console.log('new includes', new_includes);
+        if (appModel.DEBUG) console.log('new includes', new_includes);
         self.listModel.set({'includes': new_includes });
       };
       
       // 2. initialize the tree selector
-       var dcView = new TreeSelector({
+      var dcView = new TreeSelector({
         collection: columnCollection,
         treeAttributes: ['resource', 'title'],
         extraControls: [],
         startExpanded: true
-       });
-       Backbone.Layout.setupView(dcView);
-  
-        var el = dcView.render().el;
-        var dialog = appModel.showModal({
-          buttons_on_top: true,
-          css: { 
-              display: 'table',
-              height: '500px',
-              width: '80%'
-            },
-          css_modal_content: {
-            overflow: 'hidden'
+      });
+      Backbone.Layout.setupView(dcView);
+      var el = dcView.render().el;
+      var title = 'Select Columns to display';
+      if (is_admin && !_.isEmpty(adminKeys)){
+        title += '<br><span class="small">'
+          + 'Note: <label class="bg-danger">Admin fields</label>'
+          + ' are indicated by color</span>';
+      }
+      var dialog = appModel.showModal({
+        buttons_on_top: true,
+        css: { 
+            display: 'table',
+            height: '500px',
+            width: '80%'
           },
-          ok: function(){
-            showColumns(columnCollection);
-          },
-          view: el,
-          title: 'Select Columns to display'
-        });
-    },
-    
-//    /** Build the select columns dialog **/
-//    /** FIXME: 20170809 - replace with the TreeSelector **/
-//    select_columns1: function(event){
-//
-//      console.log('select_columns...');
-//      
-//      var self = this;
-//      var form_template = [
-//        "<form  class='form-horizontal container' >",
-//        "<div class='btn btn-default btn-sm ' id='select-all' >Select All</div>",
-//        "<div class='btn btn-default btn-sm ' id='clear-all' >Clear All</div>",
-//        "<button class='btn btn-default btn-sm ' id='modal-cancel'>Cancel</button>",
-//        "<button class='btn btn-default btn-sm ' id='modal-ok'>Ok</button>"
-//      ];
-//      var field_template = '<div data-fields="<%= name %>" ></div>';
-//      var optgroupSelectionTemplate = [
-//        '<div class="form-group" >',
-//        '<input class="selection-group" type="checkbox" id="<%= id %>-checkbox"> </input>',
-//        '<label class="selection-group .h5 " id="<%= id %>" title="<%= help %>" ><%= name %> columns</label>',
-//        '</div>'
-//        ].join('');
-//      var fieldCheckboxTemplate =  _.template('\
-//          <div class="form-group" style="margin-bottom: 0px;" > \
-//            <div class="checkbox" style="min-height: 0px; padding-top: 0px;" > \
-//              <label title="<%= help %>" for="<%= editorId %>"><div><span data-editor\></div><%= title %></label>\
-//            </div>\
-//          </div>\
-//        ');      
-//      var optgroupFieldCheckboxTemplate =  _.template('\
-//          <div class="form-group sub-resource-field" style="margin-bottom: 0px;" > \
-//            <div class="checkbox" style="min-height: 0px; padding-top: 0px;" > \
-//            <label for="<%= editorId %>" > - </label>\
-//              <label title="<%= help %>" for="<%= editorId %>"><div><span data-editor\></div><%= title %></label>\
-//            </div>\
-//          </div>\
-//        ');
-//      var optgroupFieldCheckboxTemplate1 =  _.template('\
-//          <div class="form-group sub-resource-field" style="margin-bottom: 0px;" > \
-//            <div class="checkbox" style="min-height: 0px; padding-top: 0px;" > \
-//              <label title="<%= help %>" for="<%= editorId %>"><div><span data-editor\></div><%= title %></label>\
-//            </div>\
-//          </div>\
-//        ');
-//      
-//      var includes = self.listModel.get('includes') || [];
-//      var _fields = this._options.resource.fields;
-//      
-//      _fields = _.omit(_fields, function(value, key, object) {
-//        return _.contains(value.visibility, 'api');
-//      });
-//      
-//      // Create the (two level) tree of fields:
-//      // - fields for the current resource are shown as normal
-//      // - if the field information specifies an optgroup
-//      // - or if the field scope is not the current resource scope, create an optGroup entry,
-//      // these items are indented and nested in an optgroup form-group.
-//      var _optGroups = {};
-//      var already_visible = {};
-//      var default_visible = {};
-//      var _optgroups_shown = [];
-//      var defaultScope = 'fields.' + self._options.resource.key;
-//      console.log('defaultScope: ' , defaultScope);
-//      var orderedKeys = _.sortBy(_.keys(_fields), function(key){
-//        return _fields[key]['ordinal'];
-//      });
-//      _optGroups[defaultScope] = {
-//        title: defaultScope,
-//        keys: []
-//      }
-//      
-//      _.each(orderedKeys, function(key){
-//
-//        var prop = _fields[key];
-//        var optGroup = defaultScope;
-//        var title, fieldType, fieldResource, subResource;
-//        
-//        if (prop.display_options && prop.display_options.optgroup ){
-//          optGroup = prop.display_options.optgroup;
-//          title = optGroup.charAt(0).toUpperCase() + optGroup.slice(1);
-//          if(!_.has(_optGroups, optGroup)){
-//            _optGroups[optGroup] = 
-//              {
-//                title: title,
-//                help: title,
-//                keys: []
-//              };
-//          }
-//        }
-//        else if (prop['scope'] == 'otherscreen.datacolumns'){
-//          optGroup = 'otherscreen';
-//          if(!_.has(_optGroups, optGroup)){
-//            _optGroups[optGroup] = 
-//              {
-//                title: 'Other Screen',
-//                help: 'Other screen data column fields',
-//                keys: []
-//              }
-//          }
-//          
-//        }
-//        else if (prop['scope'] != defaultScope ){
-//          optGroup = prop['scope'];
-//          fieldType = optGroup.split('.')[0]
-//          fieldResource = optGroup.split('.')[1];
-//          if(fieldType == 'datacolumn'){
-//            title = fieldResource.charAt(0).toUpperCase() + fieldResource.slice(1);
-//            if(!_.has(_optGroups, optGroup)){
-//              _optGroups[optGroup] = 
-//                {
-//                  title: title,
-//                  help: 'Screen result data column field',
-//                  keys: []
-//                }
-//            }
-//          }else{
-//            if(!_.has(_optGroups, optGroup)){
-//              subResource = appModel.getResource(fieldResource);
-//              _optGroups[optGroup] = 
-//                {
-//                  title: subResource.title,
-//                  help: subResource.description,
-//                  keys: []
-//                }
-//            }
-//          }
-//        }
-//        
-//        _optGroups[optGroup].keys.push(key);
-//
-//        var _visible = (_.has(prop, 'visibility') && 
-//            _.contains(prop['visibility'], 'l'));
-//        default_visible[key] = _visible;
-//        _visible = _visible || _.contains(includes, key);
-//        _visible = _visible && !_.contains(includes, '-'+key);
-//        already_visible[key] = _visible;
-//
-//        console.log('col: ', key, optGroup, _visible);
-//        
-//        if(_visible){
-//          _optgroups_shown[optGroup] = true;
-//        }
-//      });
-//
-//      // Build the form model
-//      // Build the form template; manually lay out the fields/optgroups
-//      var formSchema= {};
-//      var FormFields = Backbone.Model.extend({
-//        schema: formSchema
-//      });
-//      var formFields = new FormFields();
-//      
-//      // first, the fields not in an optGroup
-//      _.each(_optGroups[defaultScope].keys,function(key){
-//        formSchema[key] = formFieldSchema = { 
-//          title: _fields[key]['title'], 
-//          key:  key, 
-//          type: 'Checkbox',
-//          help: _fields[key]['description'],
-//          template: fieldCheckboxTemplate 
-//        };
-//
-//        form_template.push( 
-//          _.template(field_template)({ 
-//              editorId: key+'-id', 
-//              title: _fields[key]['title'],
-//              name: key 
-//            })
-//        );
-//        if(already_visible[key]){
-//          formFields.set( key, true);
-//        }
-//      });
-//      _.each(_.keys(_optGroups),function(optGroup){
-//        if (optGroup == defaultScope ) return;
-//        
-//        form_template.push(
-//          _.template(optgroupSelectionTemplate)( 
-//            {
-//              id: optGroup,
-//              name: _optGroups[optGroup].title,
-//              help: _optGroups[optGroup].description
-//            })
-//        );
-//        _.each(_optGroups[optGroup].keys,function(key){
-//          formSchema[key] = formFieldSchema = { 
-//            title: _fields[key]['title'], 
-//            key:  key, 
-//            type: 'Checkbox',
-//            help: _fields[key]['description'],
-//            template: optgroupFieldCheckboxTemplate 
-//          };
-//          if (optGroup == 'otherscreen'){
-//            formSchema[key]['template'] = optgroupFieldCheckboxTemplate1;
-//          }
-//          
-//          form_template.push( 
-//            _.template(field_template)({ name: key }) );
-//          if(already_visible[key]){
-//            _optgroups_shown.push(optGroup);
-//            formFields.set( key, true);
-//          }
-//        });
-//      });
-//        
-//      form_template.push('</form>');
-//
-//      var form = new Backbone.Form({
-//        model: formFields,
-//        template: _.template(form_template.join(''))
-//      });
-//
-//      form.events = {
-//        'click .btn#select-all': function(){
-//          $("form input:checkbox").each(function(){
-//            $(this).prop("checked",true);
-//          });
-//        },
-//        'click .btn#clear-all': function(){
-//          $("form input:checkbox").each(function(){
-//            $(this).prop("checked",false);
-//          });
-//        },
-//        // click on the optgroup text expands
-//        'click label.selection-group': function(e){
-//          _.each(_optGroups[e.target.id].keys, function(key){
-//            form.$el.find('[name='+key+']').closest('.form-group').toggle();
-//          });
-//        },
-//        // click on the optgroup checkbox checks all sub boxes
-//        'click input.selection-group': function(e){
-//          var optGroup = e.target.id.split('-')[0];
-//          console.log('id: ' + e.target.id + ', ' + optGroup + ', ' + e.target.checked );
-//          _.each(_optGroups[optGroup].keys, function(key){
-//            form.$el.find('[name='+key+']').closest('.form-group').show();
-//            form.setValue(key, e.target.checked );
-//          });
-//        },
-//      };
-//      
-//      var _form_el = form.render().el;
-//      
-//      // if any fields in the optGroup are shown, toggle the optGroup
-//      _.each(_optgroups_shown,function(optGroup){
-//        _.each(_optGroups[optGroup].keys,function(key){
-//          form.$el.find('[name='+key+']').closest('.form-group').toggle();
-//        });
-//      });
-//      
-//      // if all fields in the optGroup are shown, check the optGroup
-//      _.each(_optgroups_shown, function(optGroup){
-//        if(_.every(_optGroups[optGroup].keys, function(sub_key){
-//          return formFields.get(sub_key);
-//        })){
-//          $(_form_el).find(
-//              '#' + optGroup + '-checkbox').prop("checked", true);
-//        }
-//      });
-//      
-//      appModel.showModal({
-//        cancelText: 'Cancel',
-//        okText: 'Ok',
-//        ok: function(){
-//
-//          var new_includes = [];
-//          var other_screens =[];
-//        
-//          form.commit();
-//          if(_.isUndefined(
-//              _.find(formFields.values(),function(val){ return val==true; }))){
-//            // TODO: display "nothing selected" error
-//            console.log('error: nothing selected');
-//            self.select_columns();
-//            return;
-//          }
-//          
-//          _.each(formFields.keys(), function(key){
-//            var value = formFields.get(key);
-//            var max_ordinal = _.max(_fields, function(field){
-//              return field['ordinal'];
-//            });
-//            var field = _fields[key];
-//            if(value && !already_visible[key] ){
-//              if (_.result(field, 'is_screen_column')===true){
-//                new_includes.unshift(key); 
-//                other_screens.push(field['screen_facility_id']);
-//                value = false; // stop processing this value
-//              }else{
-//                // 20161213 - Moved to listModel listener
-////                self.grid.insertColumn(
-////                    Iccbl.createBackgridColumn(
-////                        key,field,
-////                        self.collection.state.orderStack));
-//              }
-//            }
-//            if(!value && default_visible[key]){
-//              new_includes.unshift('-' + key);
-//              
-//              // 20161213 - Moved to listModel listener
-////              column =  self.grid.columns.find(function(column){
-////                if(column.get('name') == key){
-////                  self.grid.removeColumn(column);
-////                  return true;
-////                }
-////              });
-//            }else if(!value){
-//              // 20161213 - Moved to listModel listener
-////              column =  self.grid.columns.find(function(column){
-////                if(column.get('name') == key){
-////                  self.grid.removeColumn(column);
-////                  return true;
-////                }
-////              });
-//            }
-//            if(value && !default_visible[key]){
-//              new_includes.unshift(key);
-//            }
-//          });
-//          
-//          if (!_.isEmpty(other_screens)){
-//            self.show_other_screens(other_screens);
-//          }else{
-//            self.listModel.set({'includes': new_includes });
-//            // New 20161213 - use listmodel event listener instead            
-//            //self.collection.fetch();
-//            //
-//            //// trigger an event to notify new header forms to self-display
-//            //self.collection.trigger("MyServerSideFilter:search", 
-//            //  self.listModel.get(appModel.URI_PATH_SEARCH), self.collection);
-//          }
-//        },
-//        view: _form_el,
-//        title: 'Select columns'  
-//      });
-//      
-//    },
-    
-//    show_other_screens: function(other_screens){
-//      console.log('show_other_screens', other_screens);
-//      var self = this;
-//      var schemaUrl = [self._options.url,'schema'].join('/');
-//      var orderStack = self.listModel.get('order') || [];
-//      appModel.getResourceFromUrl(schemaUrl, function(newSchema){
-//        var count = 0;
-//        _.each(_.values(newSchema['fields']),function(newField){
-//          if (_.result(newField,'is_datacolumn')===true){
-//            if (other_screens === newField['screen_facility_id']
-//                || _.contains(other_screens, newField['screen_facility_id'])){
-//              self.grid.insertColumn(
-//                  Iccbl.createBackgridColumn(
-//                      newField['key'],newField,
-//                      orderStack));
-//            }
-//          }
-//        });
-//
-//        self._options.resource = newSchema;                
-//        var searchHash = _.clone(self.listModel.get(appModel.URI_PATH_SEARCH));
-//        searchHash['other_screens'] = other_screens;
-//        self.listModel.set(appModel.URI_PATH_SEARCH,searchHash);
-//        // New 20161213 see listmodel change listener
-//        //self.collection.fetch();
-//        //
-//        //// trigger an event to notify new header forms to self-display
-//        //self.collection.trigger("MyServerSideFilter:search", 
-//        //  self.listModel.get(appModel.URI_PATH_SEARCH), self.collection);
-//        
-//      },
-//      { other_screens: other_screens });
-//    },
-
-//    /**
-//     * Special function for screen result lists
-//     * 20170905 - Deprecated: other screen result columns are now selected using
-//     * the treeSelector
-//     */
-//    show_mutual_positives: function(screen_facility_id, show_mutual_positives){
-//      var self = this;
-//      var _fields = this._options.resource.fields;
-//      var orderStack = self.listModel.get('order') || [];
-//
-//      if (show_mutual_positives){
-//
-//        var schemaUrl = [self._options.url,
-//                         'schema'].join('/');
-//        appModel.getResourceFromUrl(schemaUrl, function(newSchema){
-//          var count = 0;
-//          _.each(_.values(newSchema['fields']),function(newField){
-//            if (_.result(newField,'is_datacolumn')===true){
-//              if (screen_facility_id != newField['screen_facility_id']){
-//                console.log('insert: ', newField);
-//                self.grid.insertColumn(
-//                    Iccbl.createBackgridColumn(
-//                        newField['key'],newField,
-//                        orderStack));
-//              }
-//            }
-//          });
-//  
-//          self._options.resource = newSchema;                
-//          var searchHash = _.clone(self.listModel.get(appModel.URI_PATH_SEARCH));
-//          searchHash['show_mutual_positives'] = 'true';
-//          self.listModel.set(appModel.URI_PATH_SEARCH,searchHash);
-//
-//          // New 20161213 - use listmodel event listener instead            
-//          //self.collection.fetch();
-//          //
-//          //// trigger an event to notify new header forms to self-display
-//          //self.collection.trigger("MyServerSideFilter:search", 
-//          //  self.listModel.get(appModel.URI_PATH_SEARCH), self.collection);
-//          
-//        },
-//        { show_mutual_positives: true});
-//      
-//      
-//      
-//      }else{
-//        var searchHash = _.clone(self.listModel.get(appModel.URI_PATH_SEARCH));
-//        _.each(_.pairs(_fields), function(pair){
-//          var key = pair[1]['key'];
-//          var prop = pair[1];
-//          var fieldType = prop['scope'].split('.')[0]
-//          var field_screen_facility_id = _.result(prop,'screen_facility_id', '');
-//          // Note: if filtering/ordering on one of the mutual positive columns, 
-//          // do not remove it here.
-//          if(fieldType == 'datacolumn'
-//              && field_screen_facility_id != screen_facility_id 
-//              && ! _.findKey(searchHash, function(val,hashkey){
-//                return hashkey.indexOf(key) > -1
-//              })
-//              && ! _.find(orderStack, function(orderkey){
-//                return orderkey.indexOf(key) > -1
-//              })
-//            ){
-//            console.log('remove: ', key);
-//            prop['visibility'] = _.without(prop['visibility'], 'l');
-//            var currentColumn = self.grid.columns.findWhere({ name: key });
-//            if(currentColumn){
-//              self.grid.removeColumn(currentColumn);
-//            }
-//          }
-//        });
-//        if(_.has(searchHash,'show_mutual_positives')){
-//          delete searchHash['show_mutual_positives'];
-//          self.listModel.set(appModel.URI_PATH_SEARCH,searchHash);
-//        }        
-//        
-//      }    
-//    },
-    
-//    /**
-//     * Special function for screen result lists
-//     */
-//    show_mutual_positives_bak: function(screen_facility_id, show_mutual_positives){
-//      var self = this;
-//      var _fields = this._options.resource.fields;
-//      var orderStack = self.listModel.get('order') || [];
-//
-//      if (show_mutual_positives){
-//        
-//        _.each(_.pairs(_fields), function(pair){
-//          var key = pair[1]['key'];
-//          var prop = pair[1];
-//          var fieldType = prop['scope'].split('.')[0];
-//          var field_screen_facility_id = _.result(prop,'screen_facility_id', '');
-//          
-//          if(fieldType == 'datacolumn' 
-//            && field_screen_facility_id != screen_facility_id ){
-//            prop['visibility'].push('l');
-//            var currentColumn = self.grid.columns.findWhere({ name: key });
-//            if(! currentColumn){
-//              self.grid.insertColumn(
-//                Iccbl.createBackgridColumn(
-//                    key,prop,
-//                    orderStack));
-//            }
-//          }
-//        });
-//        
-//        var searchHash = _.clone(self.listModel.get(appModel.URI_PATH_SEARCH));
-//        searchHash['show_mutual_positives'] = 'true';
-//        self.listModel.set(appModel.URI_PATH_SEARCH,searchHash);
-//      }else{
-//        var searchHash = _.clone(self.listModel.get(appModel.URI_PATH_SEARCH));
-//        _.each(_.pairs(_fields), function(pair){
-//          var key = pair[1]['key'];
-//          var prop = pair[1];
-//          var fieldType = prop['scope'].split('.')[0]
-//          var field_screen_facility_id = _.result(prop,'screen_facility_id', '');
-//          // Note: if filtering/ordering on one of the mutual positive columns, 
-//          // do not remove it here.
-//          if(fieldType == 'datacolumn'
-//              && field_screen_facility_id != screen_facility_id 
-//              && ! _.findKey(searchHash, function(val,hashkey){
-//                return hashkey.indexOf(key) > -1
-//              })
-//              && ! _.find(orderStack, function(orderkey){
-//                return orderkey.indexOf(key) > -1
-//              })
-//            ){
-//            console.log('remove: ', key);
-//            prop['visibility'] = _.without(prop['visibility'], 'l');
-//            var currentColumn = self.grid.columns.findWhere({ name: key });
-//            if(currentColumn){
-//              self.grid.removeColumn(currentColumn);
-//            }
-//          }
-//        });
-//        if(_.has(searchHash,'show_mutual_positives')){
-//          delete searchHash['show_mutual_positives'];
-//          self.listModel.set(appModel.URI_PATH_SEARCH,searchHash);
-//        }        
-//      }
-//    },
+        css_modal_content: {
+          overflow: 'hidden'
+        },
+        ok: function(){
+          showColumns(columnCollection);
+        },
+        view: el,
+        title: title
+      });
+    }
     
   });
   

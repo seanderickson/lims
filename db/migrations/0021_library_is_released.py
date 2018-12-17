@@ -9,7 +9,10 @@ def migrate_extant_libraries(apps, schema_editor):
     
     Library.objects.all().update(is_released=True)
     
-
+    Library.objects.all()\
+        .filter(library_type__in=['dos','annotation','nci'])\
+        .update(is_archived=True)
+        
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -20,6 +23,11 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='library',
             name='is_released',
+            field=models.BooleanField(default=False),
+        ),
+        migrations.AddField(
+            model_name='library',
+            name='is_archived',
             field=models.BooleanField(default=False),
         ),
         migrations.RunPython(migrate_extant_libraries),

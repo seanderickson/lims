@@ -22,8 +22,7 @@ function($, _, Backgrid, Backbone, Iccbl, appModel,
    * 
    * @param treeAttributes: object attributes to use for constructing the tree
    *   hierarchy.
-   */
-  /**
+   * 
    * TODO: (performance enhancement) consider rebuilding tree on each action
    * to contain only visible (searched, selected) nodes.
    */
@@ -53,10 +52,22 @@ function($, _, Backgrid, Backbone, Iccbl, appModel,
        * attributes.
        */
       function buildTree(collection, treeAttributes, chKey) {
+        console.log('buildTree...');
         var dataTree = {}
         
         function makeNodes(dataTree, attrs, i, model){
           var attr = model.get(attrs[i]);
+          
+          if (_.isUndefined(attr)){
+            // TODO: some columns in the collection may not be represented
+            // with all the needed field schema attributes specified by treeAttributes
+            // (this is a bug).
+            // e.g. cherryPickRequest.setCherryPickPlates, the "selected" virtual
+            // column is not meant to be seen in the treeSelector and does not have
+            // all of the field schema fields.
+            return;
+          }
+          
           attr = attr.replace(/\"/g,"'").trim();
           var data_name = _.map(
             attrs.slice(0,i+1), function(key){
@@ -75,6 +86,11 @@ function($, _, Backgrid, Backbone, Iccbl, appModel,
             if (model.has('description')){
               node.description = model.get('description');
             }
+            
+            if (model.has('treeselector_display_class')){
+              node.display_class = model.get('treeselector_display_class');
+            }
+            
           } else {
             makeNodes(node.nodes, attrs, i+1, model)
           }
@@ -83,7 +99,6 @@ function($, _, Backgrid, Backbone, Iccbl, appModel,
         collection.each(function(model){
           makeNodes(dataTree, treeAttributes, 0, model);
         });
-        console.log('dataTree created', dataTree);
         
         function makeList(nodes){
           var html = ''
@@ -98,6 +113,9 @@ function($, _, Backgrid, Backbone, Iccbl, appModel,
             if (node.checked===true){
               html += ' data-checked=true ';
             }
+            if (node.display_class){
+              html += 'class="' + node.display_class + '" ';
+            }
             
             html += ' >&nbsp;' + node.text;
             if (!_.isEmpty(node.nodes)){
@@ -110,7 +128,7 @@ function($, _, Backgrid, Backbone, Iccbl, appModel,
           return html;
         }
         html = makeList(dataTree);
-        // console.log('html', html);
+        console.log('buildTree finished.');
         return { dataTree: dataTree, html: html };
       }; // buildTree
       self.treeData = buildTree(
@@ -118,7 +136,11 @@ function($, _, Backgrid, Backbone, Iccbl, appModel,
       
       console.log('initialized TreeSelector');
     },
-    
+    beforeRender: function(){
+      var self = this;
+      self.model_title = $("#modal_title").html();
+      $("#modal_title").append('&nbsp;(rendering...<div id="loading"></div>)');
+    },
     afterRender: function(){
       var self = this;
       var chKey = this.PROP_CHECK_KEY;
@@ -182,12 +204,14 @@ function($, _, Backgrid, Backbone, Iccbl, appModel,
         handleDuplicateCheckboxes: true,         
         createInputs: 'checkbox'
       });
+      
+      $("#modal_title").html(self.model_title);
+
       var bonsaiSelected = $selectedTreeControl.data('bonsai');
 
       function toggleExpanded(){
         var state = $toggleExpanded.attr('aria-pressed');
         $toggleExpanded.attr('aria-pressed',!state);
-        console.log('state', state);
         if (state == 'true'){
           bonsai.collapseAll();
           $toggleExpanded.empty();
@@ -325,7 +349,6 @@ function($, _, Backgrid, Backbone, Iccbl, appModel,
         var id = self.collection.modelId(model)
         var li = $treeControl.find('#'+ id)
         var selectedLi = $selectedTreeControl.find('#'+ id)
-        console.log('collection change:'+chKey, id, li, model);
         if (li){
           if (model.get(chKey)===true){
             li.find('input').prop(chKey, true).trigger('change');
@@ -335,7 +358,6 @@ function($, _, Backgrid, Backbone, Iccbl, appModel,
           }
         }
         if (selectedLi){
-          console.log('found selected li', selectedLi);
           if (model.get(chKey)===true){
             selectedLi.show();
             selectedLi.parents().show();
@@ -399,8 +421,16 @@ function($, _, Backgrid, Backbone, Iccbl, appModel,
         $toggleExpanded.empty();
         $toggleExpanded.append('Collapse');
 
-        if (!_.isEmpty(searchedModels)){
-          $selectSearchHitsButton.show();
+        // NOTE: 20180926 - limit "select all" availability for performance:
+        // TODO: improve tree selector performance: note, however, that 
+        // selecting too many columns may also make the query non-performant.
+        // A better solution may be to pass in a "max selections" setting, that
+        // is based on the capabilities for the query servicing the list view.
+        var MAX_SELECTIONS = 40;
+        if (!_.isEmpty(searchedModels) ){
+          if (_.size(searchedModels) < MAX_SELECTIONS ){
+            $selectSearchHitsButton.show();
+          }
           $unselectSearchHitsButton.show();
         } else {
           $selectSearchHitsButton.hide();
@@ -475,7 +505,6 @@ function($, _, Backgrid, Backbone, Iccbl, appModel,
         return [];
       }
       pattern = pattern.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
-      console.log('search for "' + pattern + '"');
       var reSearch = new RegExp('.*' + pattern + '.*', "i");
       
       searchedModels = collection.filter(

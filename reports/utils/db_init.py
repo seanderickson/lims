@@ -47,11 +47,16 @@ class ApiError(Exception):
     def __str__(self):
         return str(self.message)
 
-def _print_result(r):
-    result = r.json()
-    result = result.get(SCHEMA.API_RESULT_META, result)
-    return result.get(SCHEMA.API_MSG_RESULT, result)
-    
+def _get_json_meta(r):
+    if r.text:
+        return r.json().get(SCHEMA.API_RESULT_META,{})
+    return {}
+
+def _get_json_data(r):
+    if r.text:
+        return r.json().get(SCHEMA.API_RESULT_DATA,[])
+    return {}
+
 
 def delete(obj_url, headers, session=None, authentication=None):
     if session:
@@ -78,10 +83,11 @@ def put(input_file, obj_url,headers, session=None, authentication=None):
                 headers=headers, data=f.read(),verify=False)
         if not r.status_code < 300:
             raise ApiError(obj_url,'PUT',r)
+        
         print 'PUT: {} to {}, response: {}, count: {}, result: {} '.format(
             input_file, obj_url, r.status_code, 
-            len(r.json().get(SCHEMA.API_RESULT_DATA, [])),
-            _print_result(r))
+            len(_get_json_data(r)),
+            _get_json_meta(r).get(SCHEMA.API_MSG_RESULT))
 
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug('result: %r', r.json())
@@ -98,9 +104,11 @@ def patch(input_file, obj_url,headers, session=None, authentication=None):
         if not r.status_code < 300:
             raise ApiError(obj_url,'PATCH',r)
         
-        print 'PATCH: {} to {}, response: {}, result: {} '.format(
+        print 'PATCH: {} to {}, response: {}, count: {}, result: {} '.format(
             input_file, obj_url, r.status_code, 
-            _print_result(r))
+            len(_get_json_data(r)),
+            _get_json_meta(r).get(SCHEMA.API_MSG_RESULT))
+
         
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug('result: %r', r.json())
@@ -124,15 +132,17 @@ def post(input_file, extension, obj_url,headers, session=None, authentication=No
         if not r.status_code < 300:
             raise ApiError(obj_url,'PATCH',r)
         
-        print 'POST: {} to {}, response: {}, result: {} '.format(
+        print 'POST: {} to {}, response: {}, count: {}, result: {} '.format(
             input_file, obj_url, r.status_code, 
-            _print_result(r))
+            len(_get_json_data(r)),
+            _get_json_meta(r).get(SCHEMA.API_MSG_RESULT))
+
         
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug('result: %r', r.json())
 
 
-parser = argparse.ArgumentParser(description='url')
+parser = argparse.ArgumentParser(description='DB init Utility')
 parser.add_argument(
     '-u', '--url', required=True,
     help='api url, e.g.: "http://localhost:8000/reports/api/v1')

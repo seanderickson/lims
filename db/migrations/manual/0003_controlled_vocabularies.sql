@@ -1,11 +1,5 @@
 BEGIN;
 
-INSERT INTO schema_history (screensaver_revision, date_updated, comment)
-SELECT
-20140003,
-current_timestamp,
-'migrate different controlled vocabularies';
-
 /**
   Purpose: convert the old controlled vocabulary types to newer names 
   * newer names have no spaces, and only alphanumeric and "_","." chars
@@ -115,6 +109,42 @@ update copy set usage_type = 'library_screening_plates' where usage_type = 'Libr
 update copy set usage_type = 'stock_plates' where usage_type = 'Stock Plates';
 update copy set usage_type = '96_stock_plates' where usage_type = '96 Stock Plates';
 
+/**
+          cherry_pick_assay_protocols_followed          
+--------------------------------------------------------
+ New assay protocols only
+ Same protocol as primary assay
+ Same protocol as primary assay and new assay protocols
+**/
+
+update cherry_pick_request 
+  set cherry_pick_assay_protocols_followed = 'new_assay_protocols_only'
+  where cherry_pick_assay_protocols_followed = 'New assay protocols only';
+update cherry_pick_request 
+  set cherry_pick_assay_protocols_followed = 'same_as_primary_assay'
+  where cherry_pick_assay_protocols_followed = 'Same protocol as primary assay';
+update cherry_pick_request 
+  set cherry_pick_assay_protocols_followed = 'same_as_primary_and_new_assay' 
+  where cherry_pick_assay_protocols_followed = 'Same protocol as primary assay and new assay protocols';
+  
+/**
+ cherry_pick_followup_results_status 
+-------------------------------------
+ Not Received
+ N/A
+ Received
+**/
+  
+update cherry_pick_request 
+  set cherry_pick_followup_results_status = 'received'
+  where cherry_pick_followup_results_status = 'Received';
+update cherry_pick_request 
+  set cherry_pick_followup_results_status = 'not_received'
+  where cherry_pick_followup_results_status = 'Not Received';
+update cherry_pick_request 
+  set cherry_pick_followup_results_status = 'n_a'
+  where cherry_pick_followup_results_status = 'N/A';
+  
 
 /** 
  assay_well_control_type 

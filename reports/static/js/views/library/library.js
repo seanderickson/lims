@@ -709,7 +709,7 @@ define([
         type: EditView.ChosenSelect,
         editorClass: 'chosen-select',
         editorAttrs: { widthClass: 'col-sm-5'},
-        validators: [],
+        validators: ['required'],
         options: appModel.getVocabularySelectOptions(
           plateStatusField.vocabulary_scope_ref),
         template: fieldTemplate 

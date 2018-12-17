@@ -151,7 +151,7 @@ class PLATE(schema_obj):
             '{library_short_name}:{copy_name}:{plate_number}'
 
 class PLATE_LOCATION(schema_obj):
-    resource = 'plate_location'
+    resource = 'platelocation'
     
     ROOM = 'room'
     FREEZER = 'freezer'
@@ -306,21 +306,21 @@ class SILENCING_REAGENT(schema_obj):
 class LAB_CHERRY_PICK(schema_obj):
     
     CPR_ID = 'cherry_pick_request_id'
-    STATUS = 'status'
-    SELECTED = 'selected'
+    DEST_WELL = 'destination_well'
+    DEST_PLATE_TYPE = 'destination_plate_type'
     LIBRARY_SHORT_NAME = 'library_short_name'
+    LOCATION = 'location'
     PLATE_NUMBER = 'library_plate'
-    SOURCE_COPY_NAME = 'source_copy_name'
     SCREENER_WELL_ID = 'screener_well_id'
     SCREENER_LIBRARY_SHORT_NAME = 'screener_library_short_name'
+    SELECTED = 'selected'
+    SELECTED_COPY_NAME = 'selected_copy_name'
+    SOURCE_COPY_NAME = 'source_copy_name'
     SOURCE_WELL_ID = 'source_well_id'
     SOURCE_WELL_NAME = 'source_well_name'
     SOURCE_COPYWELL_ID = 'source_copywell_id'
-    SELECTED_COPY_NAME = 'selected_copy_name'
     SOURCE_PLATE_TYPE = 'source_plate_type'
-    DEST_WELL = 'destination_well'
-    DEST_PLATE_TYPE = 'destination_plate_type'
-    LOCATION = 'location'
+    STATUS = 'status'
 
 class VOCAB(reports.schema.VOCAB):
     ''' Define selected vocabulary constants used by the API.'''

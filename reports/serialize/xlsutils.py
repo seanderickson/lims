@@ -20,10 +20,12 @@ logger = logging.getLogger(__name__)
 
 LIST_DELIMITER_XLS = ';'
 
-# TODO: compare with other packages: openpyxl, pyexcelerate
 def xls_write_workbook(file, data, request=None, image_keys=None, 
     title_function=None, list_brackets=None):
     '''
+    
+    TODO: compare with other packages: openpyxl, pyexcelerate
+    
     ***WARNING*** xlsx files load fully into memory on display - if there are 
     >~ 2000 images, this will cause performance issues on the client.***
     @param sheet_rows iterable of dicts, one per row
@@ -91,7 +93,7 @@ def write_rows_to_sheet(wb, sheet_rows, sheet_basename,
             if val is not None:
                 if image_keys and key in image_keys:
                     max_rows_per_sheet = MAX_IMAGE_ROWS_PER_XLS_FILE
-                    # hack to speed things up:
+                    # hack to speed things up for the db.api:
                     if ( key == 'structure_image' and
                             'library_well_type' in values and
                             values['library_well_type'].lower() == 'empty' ):

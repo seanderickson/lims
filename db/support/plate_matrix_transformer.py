@@ -1,15 +1,17 @@
+''' Perform collation operations for the plate matrix transformer'''
 from __future__ import unicode_literals
 
-import logging
 import argparse
-
-import db.support.raw_data_reader as raw_data_reader
+from collections import OrderedDict
+import logging
 
 from django.db.utils import ProgrammingError
-from collections import OrderedDict
 import xlsxwriter
-from reports import ValidationError
+
 from db.support import lims_utils
+import db.support.raw_data_reader as raw_data_reader
+from reports import ValidationError
+
 
 logger = logging.getLogger(__name__)
 

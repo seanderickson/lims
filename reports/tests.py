@@ -75,7 +75,7 @@ from reports import HEADER_APILOG_COMMENT, DJANGO_ACCEPT_PARAM, \
     HTTP_PARAM_AUTH, HTTP_PARAM_CONTENT_TYPE
 import reports; 
 from reports.api import compare_dicts, API_RESULT_DATA, API_RESULT_META
-from reports.dump_obj import dumpObj
+from reports.utils.dump_obj import dumpObj
 from reports.models import MetaHash, UserGroup, \
     UserProfile, ApiLog, Permission, Job
 import reports.schema as SCHEMA

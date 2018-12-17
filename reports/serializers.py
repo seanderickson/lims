@@ -1,4 +1,4 @@
-# Non-streaming implementations of Tastypie Serializer
+# Non-streaming implementations serializers
 # see reports.serialize.streaming_serializers for the Streaming alternatives.
 from __future__ import unicode_literals
 
@@ -30,8 +30,9 @@ from reports.serialize.xlsutils import LIST_DELIMITER_XLS
 import reports.serialize.xlsutils as xlsutils
 
 
-# NOTE: Django creates an "HTTP_ACCEPT" member in the request.META dictionary
-# for the HTTP Header "Accept"
+logger = logging.getLogger(__name__)
+
+# Note: "Accept" is stored in the Django "request" as "HTTP_ACCEPT"
 DJANGO_ACCEPT_PARAM = 'HTTP_ACCEPT'
 
 CONTENT_TYPES = OrderedDict((
@@ -42,10 +43,6 @@ CONTENT_TYPES = OrderedDict((
         ('json', JSON_MIMETYPE),
     ))
 
-
-logger = logging.getLogger(__name__)
-
-    
 class BaseSerializer(object):
     
     content_types = CONTENT_TYPES
@@ -115,6 +112,7 @@ class BaseSerializer(object):
                     content_type, format)
         
         if content_type is None:
+
             if request.META \
                 and request.META.get(DJANGO_ACCEPT_PARAM, '*/*') != '*/*':
                 

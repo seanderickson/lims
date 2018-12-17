@@ -1,3 +1,4 @@
+'''Read raw data matrices for the raw data transformer'''
 from __future__ import unicode_literals
 
 import argparse
@@ -33,7 +34,8 @@ def parse_to_numeric(matrices):
                     row[i] = Decimal(str(x))
                 except Exception, e:
                     logger.warn('matrix parse error: %r', e)
-                    errors.append('matrix: %d, row: %d, col: %d, non numeric value: %r'
+                    errors.append(
+                        'matrix: %d, row: %d, col: %d, non numeric value: %r'
                         % (matrix_index, j, i, x)) 
     return errors
 

@@ -53,7 +53,6 @@ from db.models import Reagent, Library, ScreensaverUser, \
 import db.models
 from db.schema import VOCAB
 import db.schema as SCHEMA
-
 from db.support import lims_utils, screen_result_importer, bin_packer
 from db.support.plate_matrix_transformer import Collation, Counter
 import db.support.plate_matrix_transformer
@@ -91,7 +90,6 @@ START_PLATE = LIBRARY.START_PLATE
 END_PLATE = LIBRARY.END_PLATE
 SCREEN_TYPE = SCREEN.SCREEN_TYPE
 
-
 # Import other constants
 
 API_ACTION = VOCAB.apilog.api_action
@@ -100,10 +98,9 @@ DSL = VOCAB.screen.data_sharing_level
 LCP_STATUS = VOCAB.lab_cherry_pick.status
 SCREEN_AVAILABILITY = VOCAB.screen.screen_result_availability
 DATE_FORMAT = SCHEMA.DATE_FORMAT
-
-
-logger = logging.getLogger(__name__)
-
+LCP_COPYWELL_KEY = db.api.LabCherryPickResource.LCP_COPYWELL_KEY
+VOCAB_USER_AGREEMENT_RNAI = db.api.UserAgreementResource.VOCAB_USER_AGREEMENT_RNAI
+VOCAB_USER_AGREEMENT_SM = db.api.UserAgreementResource.VOCAB_USER_AGREEMENT_SM
 
 BASE_URI = '/db/api/v1'
 BASE_REPORTS_URI = '/reports/api/v1'
@@ -113,15 +110,16 @@ except:
     APP_ROOT_DIR = os.path.abspath(os.path.dirname(db.__path__))
 BASE_URI_DB = '/db/api/v1'
 
-LCP_COPYWELL_KEY = db.api.LabCherryPickResource.LCP_COPYWELL_KEY
-VOCAB_USER_AGREEMENT_RNAI = db.api.UserAgreementResource.VOCAB_USER_AGREEMENT_RNAI
-VOCAB_USER_AGREEMENT_SM = db.api.UserAgreementResource.VOCAB_USER_AGREEMENT_SM
+logger = logging.getLogger(__name__)
 
 
 class DBResourceTestCase(IResourceTestCase):
-    """
-    Invoke _bootstrap_init_files on setup
-    """
+    '''
+    Create a DB specific test case parent class that will:
+    - invoke _bootstrap_init_files on setup,
+    - provide support test data creation functionality.
+    '''
+    
     def __init__(self,*args,**kwargs):
     
         super(DBResourceTestCase, self).__init__(*args,**kwargs)
@@ -209,8 +207,10 @@ class DBResourceTestCase(IResourceTestCase):
             _data['vendor_identifier'] = 'ID-%d' % well_index
             _data['vendor_batch_id'] = 2
 
-            _data['sequence'] = ['ACTG','CATG','TACG','GACT','ATCG'][well_index%5]
-            _data['anti_sense_sequence'] = ['ACTG','CATG','TACG','GACT','ATCG'][-well_index%5]
+            _data['sequence'] = \
+                ['ACTG','CATG','TACG','GACT','ATCG'][well_index%5]
+            _data['anti_sense_sequence'] = \
+                ['ACTG','CATG','TACG','GACT','ATCG'][-well_index%5]
             vendor_gene_name = ['v_gene_name%d'%well_index]
             vendor_entrezgene_id = ['vendor_gene_%d'%well_index]
             vendor_entrezgene_symbols = ['vendor_entrezgene_sym_%d'%well_index]
@@ -255,7 +255,8 @@ class DBResourceTestCase(IResourceTestCase):
         extra_required = ['initial_plate_well_volume', 'initial_plate_status',
             'plate_type']
         missing = set(extra_required)-set(copy_input_data.keys())
-        self.assertFalse(missing, 'missing params for copy create: %r' % missing)
+        self.assertFalse(
+            missing, 'missing params for copy create: %r' % missing)
         
         resource_uri = BASE_URI_DB + '/librarycopy'
         resource_test_uri = '/'.join([
@@ -268,7 +269,8 @@ class DBResourceTestCase(IResourceTestCase):
         logger.info('created library copy: %r', copy_data)
         return copy_data
     
-    def create_plate_range(self, library_short_name, copy_name, start_plate, end_plate):
+    def create_plate_range(
+            self, library_short_name, copy_name, start_plate, end_plate):
         
         return SCHEMA.PLATE.PLATE_RANGE_FORMAT.format(
             library_short_name=library_short_name, copy_name=copy_name,
@@ -314,7 +316,8 @@ class DBResourceTestCase(IResourceTestCase):
         logger.info('resp: %r', resp)
         
         self.assertTrue(API_RESULT_META in resp, '%r' % resp)
-        self.assertTrue(SCHEMA.API_MSG_RESULT in resp[API_RESULT_META], '%r' % resp)
+        self.assertTrue(
+            SCHEMA.API_MSG_RESULT in resp[API_RESULT_META], '%r' % resp)
         meta = resp[API_RESULT_META][SCHEMA.API_MSG_RESULT]
         
         self.assertTrue(len(resp[API_RESULT_DATA]) == 1)
@@ -338,23 +341,30 @@ class DBResourceTestCase(IResourceTestCase):
         
         if data:
             input_data.update(data)
-        if not set(['lab_head_id','lab_head_username']) & set(input_data.keys()):
+        if not set(['lab_head_id','lab_head_username'])\
+                & set(input_data.keys()):
             lab_head = self.create_lab_head()
             input_data['lab_head_id'] = str(lab_head['screensaver_user_id'])
         
         if 'lab_head_id' in input_data:
-            user_input_data = { 'lab_head_id': str(input_data['lab_head_id']) }
+            user_input_data = { 
+                'lab_head_id': str(input_data['lab_head_id']) }
         elif 'lab_head_username' in input_data:
-            user_input_data = { 'lab_head_username': input_data['lab_head_username'] }
+            user_input_data = { 
+                'lab_head_username': input_data['lab_head_username'] }
             
-        if not set(['lead_screener_id','lead_screener_username']) & set(input_data.keys()):
+        if not set(['lead_screener_id','lead_screener_username'])\
+                & set(input_data.keys()):
             lead_screener = self.create_screening_user(user_input_data)
-            input_data['lead_screener_id'] = str(lead_screener['screensaver_user_id'])
-        if not set(['collaborator_ids','collaborator_usernames']) & set(input_data.keys()):
+            input_data['lead_screener_id'] = \
+                str(lead_screener['screensaver_user_id'])
+        if not set(['collaborator_ids','collaborator_usernames'])\
+                & set(input_data.keys()):
             collaborator1 = self.create_screening_user(user_input_data)
             collaborator2 = self.create_screening_user(user_input_data)
             input_data['collaborator_ids'] = [
-                collaborator1['screensaver_user_id'], collaborator2['screensaver_user_id']]
+                collaborator1['screensaver_user_id'], 
+                collaborator2['screensaver_user_id']]
         if 'collaborator_ids' in input_data:
             # convert ids to strings for testing
             input_data['collaborator_ids'] = [ 
@@ -413,17 +423,6 @@ class DBResourceTestCase(IResourceTestCase):
             (resp.status_code, self.get_content(resp)))
         return self.deserialize(resp)
 
-#     def create_screensaveruser(self, data=None):
-#         ''' Create a test ScreensaverUser through the API'''
-#         
-#         input_data = ScreensaverUserFactory.attributes()
-#         if data:
-#             input_data.update(data)
-#         resource_uri = '/'.join([BASE_URI_DB, 'screensaveruser'])
-#         test_uri = '/'.join([resource_uri,input_data['username']])
-#         logger.info('create user: %r', input_data)
-#         return self._create_resource(input_data,resource_uri,test_uri)
-#     
     def create_staff_user(self, data=None):
         input_data = ScreensaverUserFactory.attributes()
         if data:
@@ -487,8 +486,8 @@ class DBResourceTestCase(IResourceTestCase):
         
         def post_input(input_file):
             # NOTE: create a detail URI; post_list is not implemented
-            resource_uri = \
-                BASE_URI_DB + '/screensaveruser/%s/useragreement/' % screensaver_user_id
+            resource_uri = BASE_URI_DB \
+                + '/screensaveruser/%s/useragreement/' % screensaver_user_id
             logger.info('POST user agreement %r to the server...', resource_uri)
             user_agreement_input['attached_file'] = input_file
             user_agreement_input['filename'] = filename
@@ -538,7 +537,6 @@ class DBResourceTestCase(IResourceTestCase):
             
         return user_agreement_output
     
-            
     def create_lab_affiliation(self, data=None):
         attributes = LabAffiliationFactory.attributes()
         if data is not None:
@@ -872,6 +870,10 @@ class DBResourceTestCase(IResourceTestCase):
  
 
 def setUpModule():
+    '''Perform test setup for the db module:
+    - create a super user,
+    - bootstrap metadata
+    '''
 
     logger.info('=== setup Module')
     keepdb = False
@@ -966,6 +968,7 @@ def tearDownModule():
     # User.objects.all().delete()
 
 class LibraryResource(DBResourceTestCase):
+    '''Test API functionality for libraries and related data'''
 
     def setUp(self):
 
@@ -992,15 +995,19 @@ class LibraryResource(DBResourceTestCase):
     def test_c_copy_well_search_parser(self):
         tests = (
             ('50 A6 A7 A8 C', [
-                {'plates': [50], 'wellnames': ['A06','A07','A08'], 'copies': ['C'] }]),
+                {'plates': [50], 'wellnames': ['A06','A07','A08'], 
+                    'copies': ['C'] }]),
             ('50a6,b10,c20 C',[
-                {'plates': [50], 'wellnames': ['A06','B10','C20'], 'copies': ['C'] }]),
+                {'plates': [50], 'wellnames': ['A06','B10','C20'], 
+                    'copies': ['C'] }]),
             ('50a6 b10 c20 C',[
-                {'plates': [50], 'wellnames': ['A06','B10','C20'], 'copies': ['C'] }]),
+                {'plates': [50], 'wellnames': ['A06','B10','C20'], 
+                    'copies': ['C'] }]),
             ('50A6 C', [
                 {'well_ids': ['00050:A06'], 'copies': ['C'] }]),
             ('00050:A06 A7 c10 C, D, E', [
-                {'plates': [50], 'wellnames': ['A06','A07','C10'], 'copies': ['C','D','E'] }]),
+                {'plates': [50], 'wellnames': ['A06','A07','C10'], 
+                    'copies': ['C','D','E'] }]),
             ('5000-5100 C,D', [
                 {'plate_ranges': [[5000,5100],], 'copies': ['C','D'] }]),
             (
@@ -1017,9 +1024,12 @@ class LibraryResource(DBResourceTestCase):
             ('50-60 70-75 A1,A2 ZZ', [{
                 'plate_ranges': [[50,60],[70,75]], 'wellnames': ['A01','A02'],
                 'copies': ['ZZ']}]),
-            ('xxxy', {'errors': { SCHEMA.API_PARAM_SEARCH: 'Must specify either a plate, plate range, or well_id' }}),
+            ('xxxy', {'errors': { 
+                SCHEMA.API_PARAM_SEARCH: 
+                    'Must specify either a plate, plate range, or well_id' }}),
             ('A01 A02 ', {'errors': { 
-                SCHEMA.API_PARAM_SEARCH: 'Must specify either a plate, plate range, or well_id' }}),
+                SCHEMA.API_PARAM_SEARCH: 
+                    'Must specify either a plate, plate range, or well_id' }}),
         )
         
         for (test_search, expected_searches) in tests:
@@ -1063,11 +1073,15 @@ class LibraryResource(DBResourceTestCase):
     def test_b_well_search_parser(self):
         
         tests = (
-            ('50 A6 A7 A8', [{'plates': [50], 'wellnames': ['A06','A07','A08']}]),
-            ('50a6,b10,c20',[{'plates': [50], 'wellnames': ['A06','B10','C20']}]),
-            ('50a6 b10 c20',[{'plates': [50], 'wellnames': ['A06','B10','C20']}]),
+            ('50 A6 A7 A8', [{'plates': [50], 
+                'wellnames': ['A06','A07','A08']}]),
+            ('50a6,b10,c20',[{'plates': [50], 
+                'wellnames': ['A06','B10','C20']}]),
+            ('50a6 b10 c20',[{'plates': [50], 
+                'wellnames': ['A06','B10','C20']}]),
             ('50A6', [{'well_ids': ['00050:A06']}]),
-            ('00050:A06 A7 c10', [{'plates': [50], 'wellnames': ['A06','A07','C10']}]),
+            ('00050:A06 A7 c10', [{'plates': [50], 
+                'wellnames': ['A06','A07','C10']}]),
             (
             '50    A06\n'
             '51    C10\n'
@@ -1076,17 +1090,23 @@ class LibraryResource(DBResourceTestCase):
                 {'plates': [51], 'wellnames': ['C10']},
                 {'plates': [53], 'wellnames': ['F22']},]
             ),
-            ('50-60 A1,A2', [{'plate_ranges': [[50,60],], 'wellnames': ['A01','A02']}]),
+            ('50-60 A1,A2', [{
+                'plate_ranges': [[50,60],], 'wellnames': ['A01','A02']}]),
             ('50-60 70-75 A1,A2', [{
-                'plate_ranges': [[50,60],[70,75]], 'wellnames': ['A01','A02']}]),
-            ('xxxy', {'errors': { SCHEMA.API_PARAM_SEARCH: 'part not recognized' }}),
+                'plate_ranges': [[50,60],[70,75]], 
+                'wellnames': ['A01','A02']}]),
+            ('xxxy', {'errors': { 
+                SCHEMA.API_PARAM_SEARCH: 'part not recognized' }}),
             ('A01 A02 ', {'errors': { 
-                SCHEMA.API_PARAM_SEARCH: 'Must specify either a plate, plate range, or well_id' }}),
+                SCHEMA.API_PARAM_SEARCH: 
+                    'Must specify either a plate, plate range, or well_id' }}),
             ('A01 A02 1000', [{'plates':[1000], 'wellnames':['A01','A02']}]),
-            ('A01 A02 1000-1010', [{'plate_ranges':[[1000,1010],], 'wellnames':['A01','A02']}]),
+            ('A01 A02 1000-1010', [{'plate_ranges':[[1000,1010],], 
+                'wellnames':['A01','A02']}]),
             ((
             '50A06\n'
-            '00050:A07\n'), [{'well_ids': ['00050:A06']},{'well_ids': ['00050:A07']}]),
+            '00050:A07\n'), [{
+                'well_ids': ['00050:A06']},{'well_ids': ['00050:A07']}]),
             ((
             '00050:A06\n'
             '00050:A07\n'
@@ -1098,7 +1118,8 @@ class LibraryResource(DBResourceTestCase):
                 {'well_ids': ['00050:A06']},{'well_ids': ['00050:A07']},
                 {'well_ids': ['00051:A06']},{'well_ids': ['00051:A07']},
                 {'well_ids': ['00053:A07']},]),
-            ('00050:A06 50:A07 52A6', [{'well_ids': ['00050:A06','00050:A07','00052:A06']}]),
+            ('00050:A06 50:A07 52A6', [{
+                'well_ids': ['00050:A06','00050:A07','00052:A06']}]),
             ('00050:A06 50:A07 A6', {'errors': { 
                 SCHEMA.API_PARAM_SEARCH: 
                     'Well names may not be defined with multiple well_ids' }}),
@@ -1427,7 +1448,6 @@ class LibraryResource(DBResourceTestCase):
              })
 
         # 2. Patch some wells
-        logger.info('set some experimental wells...')
         experimental_well_count = 384
         plate = library_item[START_PLATE]
         input_well_data = [
@@ -3032,9 +3052,12 @@ class LibraryResource(DBResourceTestCase):
         expected_errors = [
             [u'01536:A01', {
                 u'line': 1, 
-                u'mg_ml_concentration': [u"parse error: Invalid literal for Decimal: u'bad_value'"]}],
+                u'mg_ml_concentration': 
+                    [u"parse error: Invalid literal for Decimal: u'bad_value'"]}],
             [u'01536:A03', {
-                u'library_well_type': [u"'experimentalxxx' is not one of [u'undefined', u'experimental', u'empty', u'dmso', u'library_control', u'rnai_buffer']"], 
+                u'library_well_type': 
+                    [u"'experimentalxxx' is not one of "
+                        "[u'undefined', u'experimental', u'empty', u'dmso', u'library_control', u'rnai_buffer']"], 
                 u'line': 131}],
             [u'01536:A04', {
                 u'pubchem_cid': [u"parse error: invalid literal for int() with base 10: '558309aaa'"], 
@@ -3047,7 +3070,8 @@ class LibraryResource(DBResourceTestCase):
                 u'molecular_mass': [u"parse error: Invalid literal for Decimal: u'bbb368.46602'"]}],
             [u'01536:A09', {
                 u'line: 607': u'duplicate', 
-                u'library_well_type': [u"'void' is not one of [u'undefined', u'experimental', u'empty', u'dmso', u'library_control', u'rnai_buffer']"], 
+                u'library_well_type': [u"'void' is not one of "
+                    "[u'undefined', u'experimental', u'empty', u'dmso', u'library_control', u'rnai_buffer']"], 
                 u'line': 576}],              
             [u'line: 301', {
                 u'well_id': u'required'}]]
@@ -3167,32 +3191,43 @@ class LibraryResource(DBResourceTestCase):
 
             expected_errors = [
                 [u'55001:A06', {
-                    u'vendor_entrezgene_id': [u"parse error: invalid literal for int() with base 10: '22848a'"], 
+                    u'vendor_entrezgene_id': 
+                        [u"parse error: invalid literal for int() with base 10: '22848a'"], 
                     u'line': 7}],
                 [u'55001:A08', {
                     u'line': 6, 
-                    u'molar_concentration': [u"parse error: Invalid literal for Decimal: u'1 uM'"]}],
+                    u'molar_concentration': 
+                        [u"parse error: Invalid literal for Decimal: u'1 uM'"]}],
                 [u'55001:A09', {
                     u'library_well_type': 
-                        u'Reagent fields may only be specified for a library_well_type in: '
-                        '(experimental, library_control), reagent fields specified: [vendor_identifier, vendor_name]', 
+                        'Reagent fields may only be specified for a library_well_type in: '
+                        '(experimental, library_control), '
+                        'reagent fields specified: [vendor_identifier, vendor_name]', 
                     u'line': 5}],
                 [u'55001:A11', {
                     u'library_well_type': [
-                        u"'buffer1' is not one of [u'undefined', u'experimental', u'empty', u'dmso', u'library_control', u'rnai_buffer']"], 
+                        u"'buffer1' is not one of "
+                        "[u'undefined', u'experimental', u'empty', u'dmso', u'library_control', u'rnai_buffer']"], 
                     u'line': 12}],
                 [u'55001:A15', {
                     u'vendor_identifier': 
-                        u'vendor_name and vendor_identifier must both be specified, or neither should be specified', 
-                        u'vendor_name': u'vendor_name and vendor_identifier must both be specified, or neither should be specified'}],
+                        u'vendor_name and vendor_identifier must both be '
+                        'specified, or neither should be specified', 
+                    u'vendor_name': 
+                        u'vendor_name and vendor_identifier must both be '
+                        'specified, or neither should be specified'}],
                 [u'55001:A20', {
                     u'vendor_identifier': u'Required if sequence is specified'}],
                 [u'55001:A21', {
                     u'library_well_type': [u'required'], 
                     u'line': 3}],
                 [u'55001:A22', {
-                    u'vendor_identifier': u'vendor_name and vendor_identifier must both be specified, or neither should be specified', 
-                    u'vendor_name': u'vendor_name and vendor_identifier must both be specified, or neither should be specified'}],
+                    u'vendor_identifier': 
+                        u'vendor_name and vendor_identifier must both be '
+                        'specified, or neither should be specified', 
+                    u'vendor_name': 
+                        u'vendor_name and vendor_identifier must both be '
+                        'specified, or neither should be specified'}],
                 [u'55001:A23', {
                     u'silencing_reagent_type': u'Required if sequence is specified'}],
                 [u'55001:A24', {
@@ -3218,7 +3253,6 @@ class LibraryResource(DBResourceTestCase):
                     # NOTE: error message may vary, not checking at this time
                     # self.assertEqual(error[key],expected_error[key])
                 
-            
     def test8_sirna_duplex(self):
         
         logger.info('test8_sirna_duplex ...')
@@ -13667,10 +13701,6 @@ class RawDataTransformer(DBResourceTestCase):
                     else:
                         self.assertTrue(row['Type'], 'X')
                         self.assertEqual(row['Pre-Loaded Controls'], None)
-                    
-                    
-                    
-                    
                     
                 # TODO:
                 # c. transformation (1536->384)

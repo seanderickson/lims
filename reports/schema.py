@@ -36,13 +36,10 @@ API_MSG_ACTION = 'Action'
 API_MSG_SUCCESS = 'Success'
 API_MSG_RESTRICTED_DATA = '(restricted data)'
 
-
 API_PARAM_SEARCH = 'search'
-
 # Nested search data; not encoded, a hash of data being passed internally 
 # If passed from the client, nested search data will be ANDed with other searches
 API_PARAM_NESTED_SEARCH = 'nested_search_data'
-
 # Complex search - a search data structure sent as a POST header 
 API_PARAM_COMPLEX_SEARCH_ID = 'search_id'
 
@@ -52,7 +49,6 @@ URI_PATH_COMPLEX_SEARCH = 'csearch'
 DATE_FORMAT = "%Y-%m-%d"
 # Date Time format to use for serialized date times
 DATE_TIME_FORMAT = "%Y-%m-%d %H:%M:%S"
-
 DATE_TIME_FILE_FORMAT = "%Y%m%d-%H%M%S"
 
 class schema_obj(object):
@@ -77,11 +73,15 @@ class ERROR(schema_obj):
     
     LINE = 'line'
 
+class API_PARAM(schema_obj):
+    ''' API resource request parameters.'''
+    
+    VISIBILITIES = 'visibilities'
 
+   
 ##### Define API resources
 
 class RESOURCE(schema_obj):
-    ''' Constants for the Resource resource: constant field names'''
     resource_name = 'resource'
     
     KEY = 'key'
@@ -97,6 +97,7 @@ class RESOURCE(schema_obj):
     FIELDS = 'fields'
     
 class FIELD(schema_obj):
+    resource_name = 'field'
     
     KEY = 'key'
     SCOPE = 'scope'
@@ -114,6 +115,10 @@ class FIELD(schema_obj):
     FILTERING = 'filtering'
     VOCAB_SCOPE_REF = 'vocabulary_scope_ref'
     RESOURCE_URI = 'resource_uri'
+    
+    DEPENDENCIES = 'dependencies'
+    VALUE_TEMPLATE = 'value_template'
+    IS_ALPHANUMERIC = 'alphanumeric_sort'
     
     DATA_ACCESS_LEVEL = 'data_access_level'
     VIEW_GROUPS = 'view_groups' 
@@ -220,7 +225,42 @@ class APILOG(schema_obj):
     
 class VOCAB(schema_obj):
     ''' Define selected vocabulary constants used by the API.'''
-    
+
+    class filter_type(schema_obj):
+        ''' Define API list filters'''
+        
+        # EXACT and EQUAL are synonyms
+        EXACT = 'exact'
+        EQUAL = 'eq'
+        
+        IS_NULL = 'is_null'
+        IS_BLANK = 'is_blank'
+        
+        CONTAINS = 'contains'
+        # Case insentive contains
+        ICONTAINS = 'icontains'
+        
+        # Filter for items in the given list
+        IN = 'in'
+        
+        # Numerical filters
+        LESS_THAN = 'lt'
+        LESS_THAN_EQUAL = 'lte'
+        GREATER_THAN = 'gt'
+        GREATER_THAN_EQUAL = 'gte'
+        NOT_EQUAL = 'ne'
+        
+        # RANGE uses two part [begin,end] values
+        RANGE = 'range'
+        # ABOUT compares the filter value to the target, rounded to the same precision
+        ABOUT = 'about'
+        
+        # INVERTED may be prepended to any field name to invert the type
+        INVERTED = '-'
+        
+        # Separator used to split filter strings apart.
+        LOOKUP_SEP = '__'
+        
     class resource(schema_obj):
         class visibility(schema_obj):
             LIST = 'l'
@@ -238,6 +278,9 @@ class VOCAB(schema_obj):
             FLOAT = 'float'
             DECIMAL = 'decimal'
             INTEGER = 'integer'
+    
+            NUMERIC_TYPES = [FLOAT, DECIMAL, INTEGER]
+        
         class display_type(schema_obj):
             LINK = 'link'
             IMAGE = 'image'

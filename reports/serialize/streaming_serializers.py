@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 '''
-Utilities for streaming sql connection cursors in different serialization formats
+Utilities for streaming sql connection cursors to different serialization formats.
 '''
 
 from __future__ import unicode_literals
@@ -9,6 +9,7 @@ import cStringIO
 from collections import OrderedDict
 import json
 import logging
+import numbers
 import os.path
 import re
 import shutil
@@ -24,18 +25,17 @@ import six
 import unicodecsv
 import xlsxwriter
 
-from reports.utils import default_converter
 from reports import LIST_DELIMITER_SQL_ARRAY, \
     MAX_IMAGE_ROWS_PER_XLS_FILE, MAX_ROWS_PER_XLS_FILE, \
     CSV_DELIMITER
-from reports.serialize import XLSX_MIMETYPE, LimsJSONEncoder, encode_utf8,\
+from reports.serialize import XLSX_MIMETYPE, LimsJSONEncoder, encode_utf8, \
     ZIP_MIMETYPE
 import reports.serialize
 import reports.serialize.csvutils as csvutils
 import reports.serialize.sdfutils as sdfutils
 from reports.serialize.xlsutils import generic_xls_write_workbook, \
     xls_write_workbook, write_xls_image, LIST_DELIMITER_XLS
-import numbers
+from reports.utils import default_converter
 
 
 logger = logging.getLogger(__name__)
@@ -46,6 +46,7 @@ DEBUG_STREAMING = False or logger.isEnabledFor(logging.DEBUG)
 
 
 def closing_iterator_wrapper(iterable, close):
+    '''For use with database connections that must be closed after iterating.'''
     try:
         for item in iterable:
             yield item
@@ -53,10 +54,9 @@ def closing_iterator_wrapper(iterable, close):
         logger.debug('close connection...')
         close()
 
-
 class ChunkIterWrapper(object):
     ''' 
-    Iterate in "chunks" of chunk_size chars.
+    Iterate over a byte array in fixed "chunks" of chunk_size bytes.
     '''
     def __init__(self, iter_stream, chunk_size = 1024**2):
         self.iter_stream = iter_stream
@@ -69,16 +69,20 @@ class ChunkIterWrapper(object):
         
         bytecount = 0
         try:
+            
             if self.fragment:
-                #  FIXME: 
-                # if fragment (row remainder) is still > chunk_size, will just serve it here.
+                
+                # FIXME: if fragment (row remainder) is still > chunk_size, 
+                # will just serve it here; e.g. from long rows.
                 bytecount = len(self.fragment)
                 bytes.write(self.fragment)
                 self.fragment = None
 
             while bytecount < self.chunk_size:
+            
                 row = self.iter_stream.next()
                 rowlen = len(row)
+                
                 if bytecount + rowlen < self.chunk_size:
                     bytes.write(row)
                     bytecount += rowlen
@@ -87,6 +91,7 @@ class ChunkIterWrapper(object):
                     bytes.write(row[:nextbytes])
                     self.fragment = row[nextbytes:]
                     bytecount += nextbytes
+        
         except StopIteration:
             if self.fragment:
                 bytes.write(self.fragment)
@@ -111,8 +116,7 @@ class ChunkIterWrapper(object):
 
 def interpolate_value_template(value_template, row):
     ''' 
-    Utility function for transforming cell values:
-    a "value_template" is of the form:
+    Utility function interpolating the values defined in the "value_template":
     "text... {field_name} ..text"
     wherein the {field_name} is replaced with the field-value
     '''                
@@ -133,20 +137,21 @@ def interpolate_value_template(value_template, row):
             return ''
     return re.sub(r'{([^}]+)}', get_value_from_template, value_template)
 
-# TODO: inject or wrap dependency on well.library_well_type 
 def image_generator(rows, image_keys, request):
     '''
     Check that any image values in the rows can be fetched:
     - replace the raw value given with the absolute URI
+    
     @param rows an iterator that returns a dict for each row
     
+    TODO: inject or wrap dependency on well.library_well_type 
     '''
     for row in rows:
         for key,val in row.items():
             if not val:
                 continue
             if key in image_keys:
-                # hack to speed things up:
+                # Hack to speed things up for the db.api:
                 if ( key == 'structure_image' and
                         'library_well_type' in row and
                         row['library_well_type'] == 'empty' ):
@@ -172,6 +177,7 @@ def image_generator(rows, image_keys, request):
 
 
 def json_generator(data, meta, is_for_detail=False):
+    '''Yield the given data list as a JSON encoded char array'''
     
     if DEBUG_STREAMING: logger.info('meta: %r', meta )
     
@@ -211,14 +217,14 @@ def json_generator(data, meta, is_for_detail=False):
 
 
 class Echo(object):
-    """An object that implements just the write method of the file-like
-    interface.
-    """
+    '''Implement the write method of the file-like interface.'''
+    
     def write(self, value):
         return value
 
 
 def csv_generator(data, title_function=None, list_brackets=None):    
+    '''Yield the given data list as a CSV encoded char array'''
     
     pseudo_buffer = Echo()
     quotechar = b'"' # note that csv under python 2.7 doesn't allow multibyte quote char
@@ -245,15 +251,10 @@ def csv_generator(data, title_function=None, list_brackets=None):
 
 def sdf_generator(data, title_function=None):    
     '''
-    Yield each field of each row as a string in SDF molfile format
-    - chemical/x-mdl-sdfile
-    see: http://download.accelrys.com/freeware/ctfile-formats/ctfile-formats.zip
+    Yield the given data list as a SDF molfile encoded char array.
     
-    @param field_hash optional field definitions:
-    key - sql recordset field key
-    value - hash defining:
-    - data_type
-    - value_template
+    Mimetype: chemical/x-mdl-sdfile
+    see: http://download.accelrys.com/freeware/ctfile-formats/ctfile-formats.zip
     '''
     try:
         rownum = 0
@@ -295,33 +296,49 @@ def sdf_generator(data, title_function=None):
         raise
 
 
-def cursor_generator(cursor, visible_fields, list_fields=[], value_templates=[]):
+def cursor_generator(cursor, visible_fields, list_fields=None, value_templates=None):
     '''
-    Generate dicts from cursor rows and visible fields 
+    Yield the given cursor as a row of dicts:
+    
+    @param visible_fields fields to extract from the cursor
+    @param list_fields fields to extract as list values
+    @param value_templates
+
     '''
     logger.debug('visible: %r, list: %r, value templates: %r', 
         visible_fields, list_fields, value_templates)
+    
     for row in cursor:
+        
         output_row = []
+    
         for key in visible_fields:
+        
             value = None
             if row.has_key(key):
                 value = row[key]
             else:
                 logger.debug('no value for key: %r, %r', key, row)
-            if value is not None and key in list_fields:
+            
+            if value is not None and list_fields is not None \
+                and key in list_fields:
+            
                 if isinstance(value, six.string_types):
                     # NOTE: filter empty strings; func.array_to_string inserts 
                     # a separator before every element, even if list has one value
                     value = list(filter(None,value.split(LIST_DELIMITER_SQL_ARRAY)))
-            if key in value_templates:
+            
+            if value_templates and key in value_templates:
+                
                 value_template = value_templates[key]
                 new_value = interpolate_value_template(value_template, row)
                 if DEBUG_STREAMING: 
                     logger.info('field: %r, value: %r, new_value: %r, value_template: %r', 
                         key, value, new_value, value_template)
                 value = new_value
+        
             output_row.append(value)
+
         yield OrderedDict(zip(visible_fields,output_row))
 
 
@@ -330,47 +347,60 @@ def get_xls_response(
         title_function=None, list_brackets=None):
     '''
     Create an xlsx file that will be streamed through the StreamingHttpResponse.
+    
     - if length exceeds MAX_ROWS_PER_XLS_FILE, create multiple files and zip them.
     - TODO: when using xlsx, can simply add extra sheets to the file.
+    
     @param output_filename - for naming temp files
  
-    FIXME: wrap cursor with cursorgenerator; pass in the image columns as arg
-    FIXME: rework this using the generic_xlsx_response as a template:
+    TODO: wrap cursor with cursorgenerator; pass in the image columns as arg
+    TODO: rework this using the generic_xlsx_response as a template:
     - this method is used for all xlsx serialization at this time, except 
     for in testing, and in ScreenResultSerializer - 20160419.
     '''
+
     if not isinstance(data, dict):
         raise ProgrammingError(
             'unknown data for xls serialization: %r, must be a dict of '
             'sheet_row entries' % type(data))
  
-    # create a temp dir
-    # with TemporaryFile() as f:
+    # Create a temp dir to store multiple generated files
     temp_dir = os.path.join(
         settings.TEMP_FILE_DIR, str(time.clock()).replace('.', '_'))
     os.mkdir(temp_dir)
+    
     try:
         # Create an new Excel file and add a worksheet.
         filename = '%s.xlsx' % (output_filename)
         temp_file = os.path.join(temp_dir, filename)
         file_names_to_zip = [temp_file]
-        if DEBUG_STREAMING: logger.info('temp file: %r', temp_file)
+
+        if DEBUG_STREAMING: 
+            logger.info('temp file: %r', temp_file)
 
         workbook = xlsxwriter.Workbook(temp_file, {'constant_memory': True})
         
         for key, sheet_rows in data.items():
+            
+            # Determine if the source is a dict, a string, or an iterator
+            
             if isinstance(sheet_rows, (dict, OrderedDict)):
+            
                 sheet_name = default_converter(key)
                 logger.info('writing sheet %r...', sheet_name)
                 sheet = workbook.add_worksheet(sheet_name)
                 for i, row in enumerate(csvutils.dict_to_rows(sheet_rows)):
                     sheet.write_row(i,0,row)
+            
             elif isinstance(sheet_rows, basestring):
                 sheet_name = default_converter(key)
                 logger.info('writing single string sheet %r...', sheet_name)
                 sheet = workbook.add_worksheet(sheet_name)
                 sheet.write_string(0,0,sheet_rows)
+            
             else:
+                # Sheet data is defined in an iterator or rows
+                
                 sheet_name = default_converter(key)
                 logger.info('writing sheets for base name %r...', sheet_name)
 
@@ -379,7 +409,9 @@ def get_xls_response(
                 filerow = 0
                 cumulative_filerows = 0
                 sheets = 1
+                
                 for row,values in enumerate(sheet_rows):
+                    
                     if filerow == 0:
                         for i,(key,val) in enumerate(values.items()):
                             title = key
@@ -387,17 +419,21 @@ def get_xls_response(
                                 title = title_function(key)
                             sheet.write_string(filerow,i,title)
                         filerow += 1
+                    
                     for i, (key,val) in enumerate(values.items()):
+                    
                         val = csvutils.convert_list_vals(
                             val, delimiter=LIST_DELIMITER_XLS,
                             list_brackets=list_brackets)
+                        
                         if val is not None:
+                            
                             if image_keys and key in image_keys:
                                 max_rows_per_sheet = MAX_IMAGE_ROWS_PER_XLS_FILE
                                 if not request:
                                     raise Exception(
                                         'must specify the request parameter for image export')
-                                # hack to speed things up:
+                                # Hack to speed things up for the db.api:
                                 if ( key == 'structure_image' and
                                         'library_well_type' in values and
                                         values['library_well_type'].lower() == 'empty' ):
@@ -427,6 +463,7 @@ def get_xls_response(
                         sheet = workbook.add_worksheet(sheet_name)
                         file_names_to_zip.append(temp_file)
                         filerow = 0
+                        
                 logger.info('wrote %d filerows to file: %r',filerow, temp_file)
                               
         workbook.close()
@@ -466,11 +503,11 @@ def get_xls_response(
             logger.exception('on xlsx & zip file process file: %s' % output_filename)
             raise
 
-
 def get_xls_response_all_images_to_one_file(
         data, output_filename, request=None, image_keys=None,
         title_function=None, list_brackets=None):
     '''
+    For testing only - see get_xls_response
     '''
     # using XlsxWriter for constant memory usage
     max_rows_per_sheet = 2**20
@@ -500,17 +537,19 @@ def get_xls_response_all_images_to_one_file(
 
 
 class FileWrapper1:
-    """
-    Wrapper to convert file-like objects to iterables
-        - modified to delete the file after iterating (use only with temporary files)
-    """
+    '''
+    Modified FileWrapper to delete file after iterating;
+    (for use with temporary files).
+    '''
 
     def __init__(self, filelike, delete_on_close=True, blksize=8192):
+        
         self.filelike = filelike
         self.blksize = blksize
         self.delete_on_close = delete_on_close
 
     def __getitem__(self,key):
+        
         data = self.filelike.read(self.blksize)
         if data:
             return data
@@ -527,6 +566,7 @@ class FileWrapper1:
         return self
 
     def next(self):
+       
         data = self.filelike.read(self.blksize)
         if data:
             return data

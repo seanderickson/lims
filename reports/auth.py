@@ -1,6 +1,8 @@
 from __future__ import unicode_literals
+
 import logging
 import re
+
 from django.conf import settings
 from django.contrib.auth.models import User
 
@@ -16,34 +18,38 @@ USER_PROXY_LOGIN_PATTERN = re.compile(r'(\w+)\:(\w+)')
 USER_PROXY_ADMIN_GROUP = 'userView'
 
 class CustomAuthenticationBackend():
-    """
-    Authenticate users - if auth_user has a valid password, use that, otherwise,
-    use eCommons.
-    """
+    '''
+    Authenticate users with the authentication service.
+    
+    - if auth_user has a valid password, use that, otherwise,  use eCommons.
+    '''
 
     def authenticate(self, request, username=None, password=None):
         '''
         Authenticate the user given by the username and password.
         
-        @return the user object.
+        Staff users may login as another user, using the syntax:
         
-        Note: Special superuser login as another user:
-        if the syntax <some_superuser-username>:<username> is used, 
-        then log in using the <superuser-username> and superuser password,
-        but return the user for the subordinate <username> given.
+        <staff-username>:<other-user-username>
+
+        @return the user object.
         '''
         username = username.lower()
         logger.info('find and authenticate the user: %s', username)
 
-        # Proxy Login 
         matchObject = USER_PROXY_LOGIN_PATTERN.match(username)
         if(matchObject):
+
             staff_user = matchObject.group(1)
             logged_in_as = matchObject.group(2)
             s_user = self._inner_authenticate(staff_user, password)
+
             if s_user:
+                
                 is_allowed = s_user.is_staff
-                if not is_allowed:
+            
+                if is_allowed is not True:
+                    
                     try:
                         is_allowed = (
                             s_user.userprofile.usergroup_set
@@ -54,7 +60,9 @@ class CustomAuthenticationBackend():
                     except Exception, e:
                         logger.exception(
                             'Unexpected error querying user groups: %r', e)
-                if is_allowed:
+        
+                if is_allowed is True:
+                    
                     try:
                         user = User.objects.get(username=logged_in_as)
                         logger.info('logged in staff user %r as %r',
@@ -66,7 +74,8 @@ class CustomAuthenticationBackend():
                         if user.is_staff:
                             if not s_user.is_superuser:
                                 raise PermissionDenied(
-                                    '"login as" may only be used by super users to access another staff account')
+                                    '"login as" may only be used by super users'
+                                    ' to access another staff account')
                         return user
                     except User.DoesNotExist, e:
                         msg = 'no such user with the id: %r' % logged_in_as
@@ -79,7 +88,9 @@ class CustomAuthenticationBackend():
                     logger.warn(msg)
                     raise LoginFailedException(msg)
             return None
+        
         else:
+            
             user = self._inner_authenticate(username, password)
             if settings.IS_PRODUCTION_READY is not True:
                 if not any([user.is_staff,user.is_superuser]):
@@ -92,12 +103,17 @@ class CustomAuthenticationBackend():
             return user
 
     def _inner_authenticate(self, username, password):
+        
         username = username.lower()
+        
         if DEBUG_AUTHENTICATION:
             logger.info('inner_authenticate: %r', username)
+        
         try:
             user = User.objects.get(username=username)
+        
             if user.has_usable_password():
+            
                 if(user.check_password(password)):
                     logger.info('logged in user %r using password',username)
                     return user
@@ -105,7 +121,9 @@ class CustomAuthenticationBackend():
                     msg = 'User password authentication failed: "%s"' % username
                     logger.info(msg)
                     raise LoginFailedException(msg)
+            
             elif reports.hms.auth.authenticate(username, password):
+            
                 logger.info(
                     'eCommons authentication succeeded: %r', username)
                 if(user.is_active):
@@ -119,6 +137,7 @@ class CustomAuthenticationBackend():
                 msg = 'User not authenticated with the ecommons server: %s' % username
                 logger.warn(msg)
                 raise LoginFailedException(msg)
+
         except User.DoesNotExist, e:
             msg = 'No user found for: "%s"' % username
             logger.warn(msg)
@@ -128,7 +147,9 @@ class CustomAuthenticationBackend():
             raise LoginFailedException(e)
 
     def get_user(self, user_id):
+
         try:
             return User.objects.get(pk=user_id)
         except User.DoesNotExist:
             return None
+

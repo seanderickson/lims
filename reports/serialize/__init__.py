@@ -1,6 +1,7 @@
 from __future__ import unicode_literals
 
 import datetime
+from decimal import Decimal
 import io
 import logging
 
@@ -14,7 +15,6 @@ import pytz
 import six
 
 from reports import ValidationError
-from decimal import Decimal
 
 
 logger = logging.getLogger(__name__)
